@@ -1,0 +1,133 @@
+{% comment %}
+  Cart Max — App Embed Block
+  Auto-injected on every page when enabled in theme editor.
+  Mounts the Preact cart drawer and installs fetch interception.
+{% endcomment %}
+
+<div id="cartmax-root" data-cartmax-enabled="true"></div>
+
+{% comment %}
+  Inline interception script — must run BEFORE any theme/third-party JS
+  fires ATC calls. This patches fetch + XHR to observe cart API calls.
+{% endcomment %}
+<script>
+  (function() {
+    'use strict';
+
+    // Match both /cart/add.js AND /cart/add (Dawn uses the non-.js form)
+    var CART_PATTERNS = ['/cart/add', '/cart/update', '/cart/change', '/cart/clear'];
+
+    function isCartEndpoint(url) {
+      try {
+        var path = new URL(url, window.location.origin).pathname;
+        return CART_PATTERNS.some(function(ep) {
+          return path === ep || path === ep + '.js';
+        });
+      } catch(e) {
+        return typeof url === 'string' && CART_PATTERNS.some(function(ep) {
+          return url.indexOf(ep) !== -1;
+        });
+      }
+    }
+
+    function extractUrl(input) {
+      if (typeof input === 'string') return input;
+      if (input instanceof Request) return input.url;
+      return '';
+    }
+
+    // Flag for Cart Max's own API calls — skip interception for these
+    window.__cartmaxInternal = false;
+
+    // Patch window.fetch
+    var originalFetch = window.fetch;
+    var _cartmaxFetching = false;
+
+    window.fetch = function() {
+      var url = extractUrl(arguments[0]);
+      // Don't intercept our own calls (internal cart ops or /cart.js refetch)
+      if (_cartmaxFetching || window.__cartmaxInternal) {
+        return originalFetch.apply(this, arguments);
+      }
+      if (isCartEndpoint(url)) {
+        console.log('[CartMax] Intercepted fetch:', url);
+        return originalFetch.apply(this, arguments).then(function(response) {
+          _cartmaxFetching = true;
+          originalFetch.call(window, '/cart.js').then(function(r) {
+            return r.json();
+          }).then(function(cart) {
+            console.log('[CartMax] Dispatching cart-changed event', cart);
+            window.dispatchEvent(new CustomEvent('cartmax:cart-changed', {
+              detail: { source: 'fetch', url: url, cart: cart }
+            }));
+          }).catch(function(err) {
+            console.error('[CartMax] Error fetching cart:', err);
+          }).finally(function() {
+            _cartmaxFetching = false;
+          });
+          return response;
+        });
+      }
+      return originalFetch.apply(this, arguments);
+    };
+
+    // Patch XMLHttpRequest
+    var originalXHROpen = XMLHttpRequest.prototype.open;
+    var originalXHRSend = XMLHttpRequest.prototype.send;
+
+    XMLHttpRequest.prototype.open = function(method, url) {
+      this._cartmaxUrl = url;
+      return originalXHROpen.apply(this, arguments);
+    };
+
+    XMLHttpRequest.prototype.send = function() {
+      var xhr = this;
+      if (xhr._cartmaxUrl && isCartEndpoint(xhr._cartmaxUrl)) {
+        console.log('[CartMax] Intercepted XHR:', xhr._cartmaxUrl);
+        xhr.addEventListener('load', function() {
+          // Fetch fresh cart state
+          originalFetch.call(window, '/cart.js').then(function(r) {
+            return r.json();
+          }).then(function(cart) {
+            window.dispatchEvent(new CustomEvent('cartmax:cart-changed', {
+              detail: { source: 'xhr', url: xhr._cartmaxUrl, cart: cart }
+            }));
+          }).catch(function() {});
+        });
+      }
+      return originalXHRSend.apply(this, arguments);
+    };
+
+    // Queue events until Preact mounts — prevents race condition
+    window.__cartmaxQueue = [];
+    window.addEventListener('cartmax:cart-changed', function(e) {
+      if (!window.__cartmaxReady) {
+        window.__cartmaxQueue.push(e);
+      }
+    });
+
+    console.log('[CartMax] Fetch interception installed');
+  })();
+</script>
+
+{{ 'cartmax.css' | asset_url | stylesheet_tag }}
+<script src="{{ 'cartmax.js' | asset_url }}" defer></script>
+
+{% schema %}
+{
+  "name": "Cart Max Drawer",
+  "target": "body",
+  "settings": [
+    {
+      "type": "header",
+      "content": "Cart Max Settings"
+    },
+    {
+      "type": "checkbox",
+      "id": "enabled",
+      "label": "Enable Cart Max",
+      "default": true
+    }
+  ]
+}
+{% endschema %}
