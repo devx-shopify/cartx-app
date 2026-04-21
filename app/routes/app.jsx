@@ -17,11 +17,7 @@ export default function App() {
     <AppProvider embedded apiKey={apiKey}>
       <s-app-nav>
         <s-link href="/app">Home</s-link>
-        <s-link href="/app/offers">Offers</s-link>
-        <s-link href="/app/coupons">Coupons</s-link>
-        <s-link href="/app/claim-gifts">Claim Gifts</s-link>
-        <s-link href="/app/progress-bar">Progress Bar</s-link>
-        <s-link href="/app/upsells">Upsells</s-link>
+        <s-link href="/app/promotions">Promotions</s-link>
         <s-link href="/app/settings">Settings</s-link>
       </s-app-nav>
       <Outlet />
