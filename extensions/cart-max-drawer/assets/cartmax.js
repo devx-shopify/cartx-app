@@ -429,6 +429,7 @@
       window.addEventListener("cartmax:internal-reload", (e2) => {
         if (e2.detail && e2.detail.cart) {
           var newCart = e2.detail.cart;
+          var newEval = e2.detail.evalResult || this.state.evalResult;
           this._currency = newCart.currency || this._currency;
           var oldItems = this.state.cart && this.state.cart.items || [];
           var newKeys = {};
@@ -442,7 +443,7 @@
             }
           });
           if (Object.keys(removing).length > 0) {
-            this.setState({ removing, updating: {}, pendingQty: {}, loading: false });
+            this.setState({ removing, updating: {}, pendingQty: {}, loading: false, evalResult: newEval });
             setTimeout(() => {
               this.setState({ cart: newCart, removing: {} });
               updateCartCount(newCart.item_count);
@@ -450,6 +451,7 @@
           } else {
             this.setState({
               cart: newCart,
+              evalResult: newEval,
               loading: false,
               updating: {},
               removing: {},
@@ -1055,177 +1057,10 @@
     }
   };
 
-  // src/rules.js
-  function normalizeId(id) {
-    var s2 = String(id);
-    return s2.startsWith("gid://") ? s2.split("/").pop() : s2;
-  }
-  function adjustedTotal(items) {
-    var cents = 0;
-    for (var i2 = 0; i2 < items.length; i2++) {
-      if (items[i2].properties && items[i2].properties["_freebie"] === "true") continue;
-      cents += items[i2].line_price || 0;
-    }
-    return cents / 100;
-  }
-  function adjustedQty(items) {
-    var qty = 0;
-    for (var i2 = 0; i2 < items.length; i2++) {
-      if (items[i2].properties && items[i2].properties["_freebie"] === "true") continue;
-      qty += items[i2].quantity || 0;
-    }
-    return qty;
-  }
-  function pageMatch(handles, path) {
-    if (!handles || handles.length === 0) return false;
-    if (handles.indexOf("/") !== -1) return true;
-    var clean = path.split("?")[0];
-    return handles.indexOf(clean) !== -1;
-  }
-  function evaluateTrigger(offer, adjTotal, adjQty) {
-    var t2 = offer.trigger || {};
-    var priceMet = t2.price_threshold && adjTotal >= t2.price_threshold;
-    var qtyMet = t2.quantity_threshold && adjQty >= t2.quantity_threshold;
-    return priceMet || qtyMet;
-  }
-  function evaluateOffers(offers, cart, adjTotal, adjQty, page) {
-    var toAdd = [];
-    var toRemove = [];
-    var triggeredIds = {};
-    for (var i2 = 0; i2 < offers.length; i2++) {
-      var offer = offers[i2];
-      if (!pageMatch(offer.page_handles, page)) continue;
-      var triggered = evaluateTrigger(offer, adjTotal, adjQty);
-      if (triggered) {
-        triggeredIds[offer.id] = true;
-        if (offer.reward && offer.reward.type === "auto_add_gift" && offer.reward.add_mode === "auto") {
-          var giftVids = offer.reward.gift_variants || [];
-          for (var g2 = 0; g2 < giftVids.length; g2++) {
-            var vid = normalizeId(giftVids[g2]);
-            var alreadyIn = (cart.items || []).some(function(li) {
-              return normalizeId(li.variant_id) === vid && li.properties && li.properties["_offer_id"] === offer.id;
-            });
-            if (!alreadyIn) {
-              toAdd.push({
-                variant_id: giftVids[g2],
-                quantity: offer.reward.quantity_per_variant || 1,
-                properties: { _freebie: "true", _offer_id: offer.id }
-              });
-            }
-          }
-        }
-      }
-    }
-    for (var j2 = 0; j2 < (cart.items || []).length; j2++) {
-      var item = cart.items[j2];
-      if (!item.properties || item.properties["_freebie"] !== "true") continue;
-      if (item.properties["_claimed"] === "true") continue;
-      var offerId = item.properties["_offer_id"];
-      if (!offerId) continue;
-      if (!triggeredIds[offerId]) {
-        toRemove.push(item.key);
-      }
-    }
-    return { to_add: toAdd, to_remove: toRemove };
-  }
-  function buildBar(config, adjTotal, adjQty, page, moneyFormat) {
-    if (!config.progress_bar || !config.progress_bar.enabled) return null;
-    var entries = [];
-    for (var i2 = 0; i2 < (config.offers || []).length; i2++) {
-      var offer = config.offers[i2];
-      if (!offer.bar || !offer.bar.show) continue;
-      if (!pageMatch(offer.page_handles, page)) continue;
-      entries.push({
-        threshold: offer.trigger.price_threshold || offer.trigger.quantity_threshold,
-        trigger_type: offer.trigger.price_threshold ? "price" : "quantity",
-        label: offer.bar.label || "",
-        top_message: offer.bar.top_message || null
-      });
-    }
-    if (entries.length === 0) return null;
-    entries.sort(function(a2, b2) {
-      return a2.threshold - b2.threshold;
-    });
-    var mode = entries.some(function(e2) {
-      return e2.trigger_type === "price";
-    }) ? "price" : "quantity";
-    var filtered = entries.filter(function(e2) {
-      return e2.trigger_type === mode;
-    });
-    if (filtered.length === 0) return null;
-    var currentValue = mode === "price" ? adjTotal : adjQty;
-    var segmentWidth = 100 / filtered.length;
-    var progress = 0;
-    var topMessage = null;
-    var tiers = [];
-    for (var t2 = 0; t2 < filtered.length; t2++) {
-      var tier = filtered[t2];
-      var state;
-      if (currentValue >= tier.threshold) {
-        state = "active";
-        progress += segmentWidth;
-      } else if (!topMessage) {
-        state = "next";
-        var remaining = tier.threshold - currentValue;
-        progress += currentValue / tier.threshold * segmentWidth;
-        if (tier.top_message) {
-          var amountStr = remaining.toFixed(2);
-          var formatted = moneyFormat ? moneyFormat.replace(/\{\{\s*amount\s*\}\}/, amountStr).replace(/\{\{\s*amount_no_decimals\s*\}\}/, String(Math.round(remaining))).replace(/\{\{\s*amount_with_comma_separator\s*\}\}/, amountStr.replace(".", ",")) : "$" + amountStr;
-          topMessage = tier.top_message.replace(/\[\[\s*price\s*\]\]/gi, formatted);
-        }
-      } else {
-        state = "inactive";
-      }
-      tiers.push({
-        threshold: tier.threshold,
-        label: tier.label,
-        state
-      });
-    }
-    if (topMessage === null && currentValue >= filtered[filtered.length - 1].threshold) {
-      topMessage = config.progress_bar.all_complete_message || null;
-    }
-    return {
-      enabled: true,
-      mode,
-      progress_pct: Math.min(progress, 100),
-      top_message: topMessage,
-      tiers
-    };
-  }
-  function localEvaluate(cachedConfig, cart) {
-    if (!cachedConfig || !cart) return null;
-    var items = cart.items || [];
-    var adjTotal = adjustedTotal(items);
-    var adjQty = adjustedQty(items);
-    var page = window.location.pathname;
-    var offerResult = evaluateOffers(cachedConfig.offers || [], cart, adjTotal, adjQty, page);
-    var bar = buildBar(cachedConfig, adjTotal, adjQty, page, cachedConfig.money_format || "");
-    var ribbonMessage = null;
-    if (bar && bar.tiers) {
-      for (var i2 = 0; i2 < bar.tiers.length; i2++) {
-        if (bar.tiers[i2].state === "next") {
-          ribbonMessage = bar.tiers[i2].ribbon_message || null;
-          break;
-        }
-      }
-    }
-    return {
-      to_add: offerResult.to_add,
-      to_remove: offerResult.to_remove,
-      bar,
-      ribbon_message: ribbonMessage
-    };
-  }
-
   // src/evaluate.js
   var PROXY_URL = "/apps/cartmax/evaluate-cart";
   var _cachedConfig = null;
   var _configCacheTime = 0;
-  var CONFIG_CACHE_TTL = 6e4;
-  function isCacheValid() {
-    return _cachedConfig && Date.now() - _configCacheTime < CONFIG_CACHE_TTL;
-  }
   async function callEvaluate(cart) {
     var ctx = getContext();
     if (!ctx.shopId || !ctx.themeId) return null;
@@ -1320,7 +1155,6 @@
   }
   async function applyResult(result, cart, pendingAction) {
     if (result.frozen) return null;
-    window.dispatchEvent(new CustomEvent("cartmax:eval-result", { detail: result }));
     var existingItems = cart.items || [];
     var updates = {};
     var hasUpdates = false;
@@ -1392,7 +1226,9 @@
         window.dispatchEvent(new CustomEvent("cartmax:gift-unavailable", {
           detail: { variants: _unavailableGifts.slice() }
         }));
-        window.dispatchEvent(new CustomEvent("cartmax:internal-reload", { detail: { cart: freshCart } }));
+        window.dispatchEvent(new CustomEvent("cartmax:internal-reload", {
+          detail: { cart: freshCart, evalResult: _lastResult }
+        }));
         return freshCart;
       } catch (e2) {
       }
@@ -1413,21 +1249,15 @@
     var ctx = getContext();
     if (!ctx.shopId || !ctx.themeId) return;
     var evalCart = action ? simulateCart(cart, action) : cart;
-    if (isCacheValid()) {
-      try {
-        var localResult = localEvaluate(_cachedConfig, evalCart);
-        if (localResult) {
-          window.dispatchEvent(new CustomEvent("cartmax:eval-result", { detail: localResult }));
-        }
-      } catch (e2) {
-      }
-    }
     _evaluating = true;
     try {
       var result = await callEvaluate(evalCart);
       if (result) {
         _lastResult = result;
-        await applyResult(result, cart, action || null);
+        var updatedCart = await applyResult(result, cart, action || null);
+        if (!updatedCart) {
+          window.dispatchEvent(new CustomEvent("cartmax:eval-result", { detail: result }));
+        }
       }
     } catch (err) {
       console.error("[CartMax] Evaluate error:", err);

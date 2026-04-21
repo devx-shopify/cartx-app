@@ -134,9 +134,6 @@ function clearAvailableGifts(cartItems) {
 async function applyResult(result, cart, pendingAction) {
   if (result.frozen) return null;
 
-  // Dispatch bar/ribbon to Preact IMMEDIATELY
-  window.dispatchEvent(new CustomEvent('cartmax:eval-result', { detail: result }));
-
   var existingItems = cart.items || [];
 
   // Build update payload (qty changes + removals)
@@ -228,7 +225,9 @@ async function applyResult(result, cart, pendingAction) {
       window.dispatchEvent(new CustomEvent('cartmax:gift-unavailable', {
         detail: { variants: _unavailableGifts.slice() },
       }));
-      window.dispatchEvent(new CustomEvent('cartmax:internal-reload', { detail: { cart: freshCart } }));
+      window.dispatchEvent(new CustomEvent('cartmax:internal-reload', {
+        detail: { cart: freshCart, evalResult: _lastResult },
+      }));
       return freshCart;
     } catch (e) {}
   }
@@ -258,26 +257,18 @@ async function runEvaluate(cart, action) {
   // Simulate cart with pending action
   var evalCart = action ? simulateCart(cart, action) : cart;
 
-  // ── Local eval for instant feedback (if config is cached) ──
-  if (isCacheValid()) {
-    try {
-      var localResult = localEvaluate(_cachedConfig, evalCart);
-      if (localResult) {
-        // Push bar/ribbon immediately — don't wait for server
-        window.dispatchEvent(new CustomEvent('cartmax:eval-result', { detail: localResult }));
-      }
-    } catch (e) {
-      // Local eval failed — no problem, server eval will handle it
-    }
-  }
-
-  // ── Server eval for accuracy (gifts, coupons, claims, upsells) ──
+  // ── Server eval + apply ──
   _evaluating = true;
   try {
     var result = await callEvaluate(evalCart);
     if (result) {
       _lastResult = result;
-      await applyResult(result, cart, action || null);
+      var updatedCart = await applyResult(result, cart, action || null);
+      // If no cart mutations happened (no gifts to add/remove, no pending action),
+      // push eval result directly — internal-reload won't fire
+      if (!updatedCart) {
+        window.dispatchEvent(new CustomEvent('cartmax:eval-result', { detail: result }));
+      }
     }
   } catch (err) {
     console.error('[CartMax] Evaluate error:', err);

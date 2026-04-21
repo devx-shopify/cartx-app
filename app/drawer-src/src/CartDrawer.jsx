@@ -56,12 +56,14 @@ export default class CartDrawer extends Component {
     });
 
     // Cart updated (single /cart/update.js completed) → sync drawer
+    // Batches cart data + eval result in one setState to avoid multiple re-renders
     window.addEventListener('cartmax:internal-reload', (e) => {
       if (e.detail && e.detail.cart) {
         var newCart = e.detail.cart;
+        var newEval = e.detail.evalResult || this.state.evalResult;
         this._currency = newCart.currency || this._currency;
 
-        // Smooth transition: keep removing animation for items that are gone
+        // Detect removed items for animation
         var oldItems = (this.state.cart && this.state.cart.items) || [];
         var newKeys = {};
         (newCart.items || []).forEach(function (item) { newKeys[item.key] = true; });
@@ -74,15 +76,16 @@ export default class CartDrawer extends Component {
         });
 
         if (Object.keys(removing).length > 0) {
-          // Show removal animation first, then update cart data
-          this.setState({ removing: removing, updating: {}, pendingQty: {}, loading: false });
+          this.setState({ removing: removing, updating: {}, pendingQty: {}, loading: false, evalResult: newEval });
           setTimeout(() => {
             this.setState({ cart: newCart, removing: {} });
             updateCartCount(newCart.item_count);
           }, 300);
         } else {
+          // Single setState: cart + eval + clear all pending states
           this.setState({
             cart: newCart,
+            evalResult: newEval,
             loading: false,
             updating: {},
             removing: {},
