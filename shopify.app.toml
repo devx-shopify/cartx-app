@@ -2,12 +2,11 @@
 
 client_id = "3021118f1f808e0497865a902802d352"
 name = "Cart Max"
-application_url = "https://example.com"
+application_url = "https://merrilee-nonanarchic-dextrosinistrally.ngrok-free.dev:3000"
 embedded = true
 
 [build]
 automatically_update_urls_on_dev = true
-include_config_on_deploy = true
 
 [webhooks]
 api_version = "2026-07"
@@ -22,7 +21,12 @@ api_version = "2026-07"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = ""
+scopes = "read_themes,read_products,write_products,read_discounts,write_discounts,read_customers"
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://merrilee-nonanarchic-dextrosinistrally.ngrok-free.dev:3000/auth/callback" ]
+
+[app_proxy]
+url = "https://merrilee-nonanarchic-dextrosinistrally.ngrok-free.dev:3000/proxy"
+subpath = "cartmax"
+prefix = "apps"

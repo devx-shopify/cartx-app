@@ -1,0 +1,14 @@
+{
+  "name": "cart-max-drawer-src",
+  "private": true,
+  "scripts": {
+    "build": "node build.js",
+    "watch": "node build.js --watch"
+  },
+  "dependencies": {
+    "preact": "^10.25.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}

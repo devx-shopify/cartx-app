@@ -1,1 +1,1472 @@
-"use strict";(()=>{var F,v,it,wt,C,et,ot,st,W,Q,U,lt,z,H,V,kt,I={},M=[],Ct=/acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i,N=Array.isArray;function w(e,t){for(var n in t)e[n]=t[n];return e}function J(e){e&&e.parentNode&&e.parentNode.removeChild(e)}function _(e,t,n){var o,a,r,s={};for(r in t)r=="key"?o=t[r]:r=="ref"?a=t[r]:s[r]=t[r];if(arguments.length>2&&(s.children=arguments.length>3?F.call(arguments,2):n),typeof e=="function"&&e.defaultProps!=null)for(r in e.defaultProps)s[r]===void 0&&(s[r]=e.defaultProps[r]);return R(e,s,o,a,null)}function R(e,t,n,o,a){var r={type:e,props:t,key:n,ref:o,__k:null,__:null,__b:0,__e:null,__c:null,constructor:void 0,__v:a??++it,__i:-1,__u:0};return a==null&&v.vnode!=null&&v.vnode(r),r}function q(e){return e.children}function D(e,t){this.props=e,this.context=t}function O(e,t){if(t==null)return e.__?O(e.__,e.__i+1):null;for(var n;t<e.__k.length;t++)if((n=e.__k[t])!=null&&n.__e!=null)return n.__e;return typeof e.type=="function"?O(e):null}function St(e){if(e.__P&&e.__d){var t=e.__v,n=t.__e,o=[],a=[],r=w({},t);r.__v=t.__v+1,v.vnode&&v.vnode(r),G(e.__P,r,t,e.__n,e.__P.namespaceURI,32&t.__u?[n]:null,o,n??O(t),!!(32&t.__u),a),r.__v=t.__v,r.__.__k[r.__i]=r,dt(o,r,a),t.__e=t.__=null,r.__e!=n&&_t(r)}}function _t(e){if((e=e.__)!=null&&e.__c!=null)return e.__e=e.__c.base=null,e.__k.some(function(t){if(t!=null&&t.__e!=null)return e.__e=e.__c.base=t.__e}),_t(e)}function nt(e){(!e.__d&&(e.__d=!0)&&C.push(e)&&!j.__r++||et!=v.debounceRendering)&&((et=v.debounceRendering)||ot)(j)}function j(){try{for(var e,t=1;C.length;)C.length>t&&C.sort(st),e=C.shift(),t=C.length,St(e)}finally{C.length=j.__r=0}}function ct(e,t,n,o,a,r,s,c,p,l,d){var i,m,u,g,b,y,h,f=o&&o.__k||M,k=t.length;for(p=Et(n,t,f,p,k),i=0;i<k;i++)(u=n.__k[i])!=null&&(m=u.__i!=-1&&f[u.__i]||I,u.__i=i,y=G(e,u,m,a,r,s,c,p,l,d),g=u.__e,u.ref&&m.ref!=u.ref&&(m.ref&&X(m.ref,null,u),d.push(u.ref,u.__c||g,u)),b==null&&g!=null&&(b=g),(h=!!(4&u.__u))||m.__k===u.__k?(p=ut(u,p,e,h),h&&m.__e&&(m.__e=null)):typeof u.type=="function"&&y!==void 0?p=y:g&&(p=g.nextSibling),u.__u&=-7);return n.__e=b,p}function Et(e,t,n,o,a){var r,s,c,p,l,d=n.length,i=d,m=0;for(e.__k=new Array(a),r=0;r<a;r++)(s=t[r])!=null&&typeof s!="boolean"&&typeof s!="function"?(typeof s=="string"||typeof s=="number"||typeof s=="bigint"||s.constructor==String?s=e.__k[r]=R(null,s,null,null,null):N(s)?s=e.__k[r]=R(q,{children:s},null,null,null):s.constructor===void 0&&s.__b>0?s=e.__k[r]=R(s.type,s.props,s.key,s.ref?s.ref:null,s.__v):e.__k[r]=s,p=r+m,s.__=e,s.__b=e.__b+1,c=null,(l=s.__i=Tt(s,n,p,i))!=-1&&(i--,(c=n[l])&&(c.__u|=2)),c==null||c.__v==null?(l==-1&&(a>d?m--:a<d&&m++),typeof s.type!="function"&&(s.__u|=4)):l!=p&&(l==p-1?m--:l==p+1?m++:(l>p?m--:m++,s.__u|=4))):e.__k[r]=null;if(i)for(r=0;r<d;r++)(c=n[r])!=null&&!(2&c.__u)&&(c.__e==o&&(o=O(c)),ht(c,c));return o}function ut(e,t,n,o){var a,r;if(typeof e.type=="function"){for(a=e.__k,r=0;a&&r<a.length;r++)a[r]&&(a[r].__=e,t=ut(a[r],t,n,o));return t}e.__e!=t&&(o&&(t&&e.type&&!t.parentNode&&(t=O(e)),n.insertBefore(e.__e,t||null)),t=e.__e);do t=t&&t.nextSibling;while(t!=null&&t.nodeType==8);return t}function Tt(e,t,n,o){var a,r,s,c=e.key,p=e.type,l=t[n],d=l!=null&&(2&l.__u)==0;if(l===null&&c==null||d&&c==l.key&&p==l.type)return n;if(o>(d?1:0)){for(a=n-1,r=n+1;a>=0||r<t.length;)if((l=t[s=a>=0?a--:r++])!=null&&!(2&l.__u)&&c==l.key&&p==l.type)return s}return-1}function rt(e,t,n){t[0]=="-"?e.setProperty(t,n??""):e[t]=n==null?"":typeof n!="number"||Ct.test(t)?n:n+"px"}function A(e,t,n,o,a){var r,s;t:if(t=="style")if(typeof n=="string")e.style.cssText=n;else{if(typeof o=="string"&&(e.style.cssText=o=""),o)for(t in o)n&&t in n||rt(e.style,t,"");if(n)for(t in n)o&&n[t]==o[t]||rt(e.style,t,n[t])}else if(t[0]=="o"&&t[1]=="n")r=t!=(t=t.replace(lt,"$1")),s=t.toLowerCase(),t=s in e||t=="onFocusOut"||t=="onFocusIn"?s.slice(2):t.slice(2),e.l||(e.l={}),e.l[t+r]=n,n?o?n[U]=o[U]:(n[U]=z,e.addEventListener(t,r?V:H,r)):e.removeEventListener(t,r?V:H,r);else{if(a=="http://www.w3.org/2000/svg")t=t.replace(/xlink(H|:h)/,"h").replace(/sName$/,"s");else if(t!="width"&&t!="height"&&t!="href"&&t!="list"&&t!="form"&&t!="tabIndex"&&t!="download"&&t!="rowSpan"&&t!="colSpan"&&t!="role"&&t!="popover"&&t in e)try{e[t]=n??"";break t}catch{}typeof n=="function"||(n==null||n===!1&&t[4]!="-"?e.removeAttribute(t):e.setAttribute(t,t=="popover"&&n==1?"":n))}}function at(e){return function(t){if(this.l){var n=this.l[t.type+e];if(t[Q]==null)t[Q]=z++;else if(t[Q]<n[U])return;return n(v.event?v.event(t):t)}}}function G(e,t,n,o,a,r,s,c,p,l){var d,i,m,u,g,b,y,h,f,k,S,P,tt,L,B,x=t.type;if(t.constructor!==void 0)return null;128&n.__u&&(p=!!(32&n.__u),r=[c=t.__e=n.__e]),(d=v.__b)&&d(t);t:if(typeof x=="function")try{if(h=t.props,f=x.prototype&&x.prototype.render,k=(d=x.contextType)&&o[d.__c],S=d?k?k.props.value:d.__:o,n.__c?y=(i=t.__c=n.__c).__=i.__E:(f?t.__c=i=new x(h,S):(t.__c=i=new D(h,S),i.constructor=x,i.render=Ot),k&&k.sub(i),i.state||(i.state={}),i.__n=o,m=i.__d=!0,i.__h=[],i._sb=[]),f&&i.__s==null&&(i.__s=i.state),f&&x.getDerivedStateFromProps!=null&&(i.__s==i.state&&(i.__s=w({},i.__s)),w(i.__s,x.getDerivedStateFromProps(h,i.__s))),u=i.props,g=i.state,i.__v=t,m)f&&x.getDerivedStateFromProps==null&&i.componentWillMount!=null&&i.componentWillMount(),f&&i.componentDidMount!=null&&i.__h.push(i.componentDidMount);else{if(f&&x.getDerivedStateFromProps==null&&h!==u&&i.componentWillReceiveProps!=null&&i.componentWillReceiveProps(h,S),t.__v==n.__v||!i.__e&&i.shouldComponentUpdate!=null&&i.shouldComponentUpdate(h,i.__s,S)===!1){t.__v!=n.__v&&(i.props=h,i.state=i.__s,i.__d=!1),t.__e=n.__e,t.__k=n.__k,t.__k.some(function(T){T&&(T.__=t)}),M.push.apply(i.__h,i._sb),i._sb=[],i.__h.length&&s.push(i);break t}i.componentWillUpdate!=null&&i.componentWillUpdate(h,i.__s,S),f&&i.componentDidUpdate!=null&&i.__h.push(function(){i.componentDidUpdate(u,g,b)})}if(i.context=S,i.props=h,i.__P=e,i.__e=!1,P=v.__r,tt=0,f)i.state=i.__s,i.__d=!1,P&&P(t),d=i.render(i.props,i.state,i.context),M.push.apply(i.__h,i._sb),i._sb=[];else do i.__d=!1,P&&P(t),d=i.render(i.props,i.state,i.context),i.state=i.__s;while(i.__d&&++tt<25);i.state=i.__s,i.getChildContext!=null&&(o=w(w({},o),i.getChildContext())),f&&!m&&i.getSnapshotBeforeUpdate!=null&&(b=i.getSnapshotBeforeUpdate(u,g)),L=d!=null&&d.type===q&&d.key==null?pt(d.props.children):d,c=ct(e,N(L)?L:[L],t,n,o,a,r,s,c,p,l),i.base=t.__e,t.__u&=-161,i.__h.length&&s.push(i),y&&(i.__E=i.__=null)}catch(T){if(t.__v=null,p||r!=null)if(T.then){for(t.__u|=p?160:128;c&&c.nodeType==8&&c.nextSibling;)c=c.nextSibling;r[r.indexOf(c)]=null,t.__e=c}else{for(B=r.length;B--;)J(r[B]);Y(t)}else t.__e=n.__e,t.__k=n.__k,T.then||Y(t);v.__e(T,t,n)}else r==null&&t.__v==n.__v?(t.__k=n.__k,t.__e=n.__e):c=t.__e=Dt(n.__e,t,n,o,a,r,s,p,l);return(d=v.diffed)&&d(t),128&t.__u?void 0:c}function Y(e){e&&(e.__c&&(e.__c.__e=!0),e.__k&&e.__k.some(Y))}function dt(e,t,n){for(var o=0;o<n.length;o++)X(n[o],n[++o],n[++o]);v.__c&&v.__c(t,e),e.some(function(a){try{e=a.__h,a.__h=[],e.some(function(r){r.call(a)})}catch(r){v.__e(r,a.__v)}})}function pt(e){return typeof e!="object"||e==null||e.__b>0?e:N(e)?e.map(pt):w({},e)}function Dt(e,t,n,o,a,r,s,c,p){var l,d,i,m,u,g,b,y=n.props||I,h=t.props,f=t.type;if(f=="svg"?a="http://www.w3.org/2000/svg":f=="math"?a="http://www.w3.org/1998/Math/MathML":a||(a="http://www.w3.org/1999/xhtml"),r!=null){for(l=0;l<r.length;l++)if((u=r[l])&&"setAttribute"in u==!!f&&(f?u.localName==f:u.nodeType==3)){e=u,r[l]=null;break}}if(e==null){if(f==null)return document.createTextNode(h);e=document.createElementNS(a,f,h.is&&h),c&&(v.__m&&v.__m(t,r),c=!1),r=null}if(f==null)y===h||c&&e.data==h||(e.data=h);else{if(r=r&&F.call(e.childNodes),!c&&r!=null)for(y={},l=0;l<e.attributes.length;l++)y[(u=e.attributes[l]).name]=u.value;for(l in y)u=y[l],l=="dangerouslySetInnerHTML"?i=u:l=="children"||l in h||l=="value"&&"defaultValue"in h||l=="checked"&&"defaultChecked"in h||A(e,l,null,u,a);for(l in h)u=h[l],l=="children"?m=u:l=="dangerouslySetInnerHTML"?d=u:l=="value"?g=u:l=="checked"?b=u:c&&typeof u!="function"||y[l]===u||A(e,l,u,y[l],a);if(d)c||i&&(d.__html==i.__html||d.__html==e.innerHTML)||(e.innerHTML=d.__html),t.__k=[];else if(i&&(e.innerHTML=""),ct(t.type=="template"?e.content:e,N(m)?m:[m],t,n,o,f=="foreignObject"?"http://www.w3.org/1999/xhtml":a,r,s,r?r[0]:n.__k&&O(n,0),c,p),r!=null)for(l=r.length;l--;)J(r[l]);c||(l="value",f=="progress"&&g==null?e.removeAttribute("value"):g!=null&&(g!==e[l]||f=="progress"&&!g||f=="option"&&g!=y[l])&&A(e,l,g,y[l],a),l="checked",b!=null&&b!=e[l]&&A(e,l,b,y[l],a))}return e}function X(e,t,n){try{if(typeof e=="function"){var o=typeof e.__u=="function";o&&e.__u(),o&&t==null||(e.__u=e(t))}else e.current=t}catch(a){v.__e(a,n)}}function ht(e,t,n){var o,a;if(v.unmount&&v.unmount(e),(o=e.ref)&&(o.current&&o.current!=e.__e||X(o,null,t)),(o=e.__c)!=null){if(o.componentWillUnmount)try{o.componentWillUnmount()}catch(r){v.__e(r,t)}o.base=o.__P=null}if(o=e.__k)for(a=0;a<o.length;a++)o[a]&&ht(o[a],t,n||typeof e.type!="function");n||J(e.__e),e.__c=e.__=e.__e=void 0}function Ot(e,t,n){return this.constructor(e,n)}function ft(e,t,n){var o,a,r,s;t==document&&(t=document.documentElement),v.__&&v.__(e,t),a=(o=typeof n=="function")?null:n&&n.__k||t.__k,r=[],s=[],G(t,e=(!o&&n||t).__k=_(q,null,[e]),a||I,I,t.namespaceURI,!o&&n?[n]:a?null:t.firstChild?F.call(t.childNodes):null,r,!o&&n?n:a?a.__e:t.firstChild,o,s),dt(r,e,s)}F=M.slice,v={__e:function(e,t,n,o){for(var a,r,s;t=t.__;)if((a=t.__c)&&!a.__)try{if((r=a.constructor)&&r.getDerivedStateFromError!=null&&(a.setState(r.getDerivedStateFromError(e)),s=a.__d),a.componentDidCatch!=null&&(a.componentDidCatch(e,o||{}),s=a.__d),s)return a.__E=a}catch(c){e=c}throw e}},it=0,wt=function(e){return e!=null&&e.constructor===void 0},D.prototype.setState=function(e,t){var n;n=this.__s!=null&&this.__s!=this.state?this.__s:this.__s=w({},this.state),typeof e=="function"&&(e=e(w({},n),this.props)),e&&w(n,e),e!=null&&this.__v&&(t&&this._sb.push(t),nt(this))},D.prototype.forceUpdate=function(e){this.__v&&(this.__e=!0,e&&this.__h.push(e),nt(this))},D.prototype.render=q,C=[],ot=typeof Promise=="function"?Promise.prototype.then.bind(Promise.resolve()):setTimeout,st=function(e,t){return e.__v.__b-t.__v.__b},j.__r=0,W=Math.random().toString(8),Q="__d"+W,U="__a"+W,lt=/(PointerCapture)$|Capture$/i,z=0,H=at(!1),V=at(!0),kt=0;function mt(e,t){return window.__cartmaxInternal=!0,fetch(e,t).finally(function(){window.__cartmaxInternal=!1})}async function vt(){var e=await mt("/cart.js");return e.json()}async function Z(e,t){var n=await mt("/cart/change.js",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:e,quantity:t})});return n.json()}async function gt(e){return Z(e,0)}function E(e,t){var n=(e/100).toFixed(2),o=window.Shopify&&window.Shopify.money_format;if(o)return o.replace(/\{\{\s*amount\s*\}\}/,n).replace(/\{\{\s*amount_no_decimals\s*\}\}/,Math.round(e/100)).replace(/\{\{\s*amount_with_comma_separator\s*\}\}/,n.replace(".",","));var a={USD:"$",EUR:"\u20AC",GBP:"\xA3",INR:"\u20B9",CAD:"CA$",AUD:"A$",JPY:"\xA5",CNY:"\xA5"},r=a[t]||t+" ";return r+n}function yt(e,t){return e?(t=t||128,e.replace(/(\.\w{3,4})(\?.*)?$/,"_"+t+"x$1$2")):""}var Pt=['.cart-count-bubble span[aria-hidden="true"]',".cart-count-bubble",".cart-count","[data-cart-count]","#CartCount",'#cart-icon-bubble span[aria-hidden="true"]',"#cart-icon-bubble",".cart-link__bubble-num"],Ut=[".cart-count-bubble","#cart-icon-bubble"];function $(e){Pt.forEach(function(t){document.querySelectorAll(t).forEach(function(n){(n.children.length===0||n.matches('[aria-hidden="true"]'))&&(n.textContent=e)})}),Ut.forEach(function(t){document.querySelectorAll(t).forEach(function(n){e>0?(n.removeAttribute("hidden"),n.style.display=""):n.setAttribute("hidden","")})})}var Lt='a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';function bt(e){var t=e.querySelectorAll(Lt);if(t.length===0)return null;var n=t[0],o=t[t.length-1];function a(r){r.key==="Tab"&&(r.shiftKey?document.activeElement===n&&(r.preventDefault(),o.focus()):document.activeElement===o&&(r.preventDefault(),n.focus()))}return e.addEventListener("keydown",a),n.focus(),function(){e.removeEventListener("keydown",a)}}var At=300,Qt=500,Rt=300,K=class extends D{constructor(){super(),this.state={visible:!1,open:!1,cart:null,loading:!0,updating:{},removing:{},pendingQty:{}},this.close=this.close.bind(this),this.handleOverlayClick=this.handleOverlayClick.bind(this),this._closeTimer=null,this._focusCleanup=null,this._triggerElement=null,this._drawerRef=null,this._debounceTimers={},this._currency=window.Shopify&&window.Shopify.currency&&window.Shopify.currency.active||"USD"}componentDidMount(){window.addEventListener("cartmax:cart-changed",()=>{this.loadCart(),this.openDrawer()}),window.__cartmaxReady=!0,window.__cartmaxQueue&&window.__cartmaxQueue.length>0&&(this.loadCart(),this.openDrawer(),window.__cartmaxQueue=[]),document.addEventListener("click",t=>{var n=t.target.closest('a[href="/cart"], a[href="/cart/"], [data-cart-icon], #cart-icon-bubble');n&&(t.preventDefault(),t.stopPropagation(),this._triggerElement=n,this.loadCart(),this.openDrawer())},!0),document.addEventListener("keydown",t=>{t.key==="Escape"&&this.state.open&&this.close()})}async loadCart(){this.setState({loading:!0});try{var t=await vt();this._currency=t.currency||this._currency,this.setState({cart:t,loading:!1}),$(t.item_count)}catch{this.setState({loading:!1})}}openDrawer(){this._closeTimer&&(clearTimeout(this._closeTimer),this._closeTimer=null),this._triggerElement||(this._triggerElement=document.activeElement),this.setState({visible:!0,open:!1},()=>{requestAnimationFrame(()=>{this.setState({open:!0}),requestAnimationFrame(()=>{this._drawerRef&&(this._focusCleanup=bt(this._drawerRef))})})}),document.body.style.overflow="hidden",this.announce("Cart opened")}close(){this._focusCleanup&&(this._focusCleanup(),this._focusCleanup=null),this.setState({open:!1}),document.body.style.overflow="",this._closeTimer=setTimeout(()=>{this.setState({visible:!1}),this._closeTimer=null},At),this._triggerElement&&this._triggerElement.focus&&(this._triggerElement.focus(),this._triggerElement=null),this.announce("Cart closed")}handleOverlayClick(){this.close()}queueQuantityChange(t,n){var o=Object.assign({},this.state.pendingQty);o[t]=n,this.setState({pendingQty:o}),this._debounceTimers[t]&&clearTimeout(this._debounceTimers[t]),this._debounceTimers[t]=setTimeout(()=>{delete this._debounceTimers[t],this.flushQuantityChange(t,n)},Qt)}async flushQuantityChange(t,n){var o=Object.assign({},this.state.updating);o[t]=!0,this.setState({updating:o});try{var a=await Z(t,n),r=Object.assign({},this.state.updating);delete r[t];var s=Object.assign({},this.state.pendingQty);delete s[t],this._currency=a.currency||this._currency,this.setState({cart:a,updating:r,pendingQty:s}),$(a.item_count),this.announce("Cart updated")}catch{await this.loadCart();var r=Object.assign({},this.state.updating);delete r[t];var s=Object.assign({},this.state.pendingQty);delete s[t],this.setState({updating:r,pendingQty:s})}}handleRemove(t){this._debounceTimers[t]&&(clearTimeout(this._debounceTimers[t]),delete this._debounceTimers[t]);var n=Object.assign({},this.state.removing);n[t]=!0,this.setState({removing:n}),setTimeout(async()=>{var o=Object.assign({},this.state.updating);o[t]=!0,this.setState({updating:o});try{var a=await gt(t),r=Object.assign({},this.state.updating);delete r[t];var s=Object.assign({},this.state.removing);delete s[t];var c=Object.assign({},this.state.pendingQty);delete c[t],this._currency=a.currency||this._currency,this.setState({cart:a,updating:r,removing:s,pendingQty:c}),$(a.item_count),this.announce("Item removed from cart")}catch{await this.loadCart();var r=Object.assign({},this.state.updating);delete r[t];var s=Object.assign({},this.state.removing);delete s[t],this.setState({updating:r,removing:s})}},Rt)}announce(t){var n=document.getElementById("cartmax-live-region");n&&(n.textContent=t)}getDisplayQty(t){return this.state.pendingQty.hasOwnProperty(t.key)?this.state.pendingQty[t.key]:t.quantity}renderLineItem(t){var n=this.state.updating[t.key],o=this.state.removing[t.key],a=this.getDisplayQty(t),r=this.state.pendingQty.hasOwnProperty(t.key),s=this._currency,c="cartmax-line-item"+(o?" cartmax-line-removing":"");return _("div",{class:c,key:t.key},_("div",{class:"cartmax-line-image"},t.image?_("img",{src:yt(t.image,128),alt:t.title,width:64,height:64,loading:"lazy"}):_("div",{class:"cartmax-line-image-placeholder"})),_("div",{class:"cartmax-line-details"},_("div",{class:"cartmax-line-title"},t.product_title),t.variant_title?_("div",{class:"cartmax-line-variant"},t.variant_title):null,_("div",{class:"cartmax-line-price"},t.original_line_price!==t.final_line_price?_("span",{class:"cartmax-line-price-original"},E(t.original_line_price,s)):null,_("span",{class:t.original_line_price!==t.final_line_price?"cartmax-line-price-final":""},E(t.final_line_price,s))),t.line_level_discount_allocations&&t.line_level_discount_allocations.length>0?_("div",{class:"cartmax-line-discounts"},t.line_level_discount_allocations.map(function(p){return _("span",{class:"cartmax-line-discount-tag",key:p.discount_application.title},p.discount_application.title)})):null,_("div",{class:"cartmax-line-actions"},_("div",{class:"cartmax-qty-controls"},_("button",{class:"cartmax-qty-btn",onClick:()=>this.queueQuantityChange(t.key,a-1),disabled:n||a<=1,"aria-label":"Decrease quantity"},"\u2212"),_("span",{class:"cartmax-qty-value"+(r?" cartmax-qty-pending":"")},a),_("button",{class:"cartmax-qty-btn",onClick:()=>this.queueQuantityChange(t.key,a+1),disabled:n,"aria-label":"Increase quantity"},"+")),_("button",{class:"cartmax-remove-btn",onClick:()=>this.handleRemove(t.key),disabled:n||o,"aria-label":"Remove "+t.product_title},"Remove"))))}renderLoading(){return _("div",{class:"cartmax-loading"},_("div",{class:"cartmax-skeleton"}),_("div",{class:"cartmax-skeleton"}),_("div",{class:"cartmax-skeleton"}))}renderEmpty(){return _("div",{class:"cartmax-empty"},_("p",{class:"cartmax-empty-text"},"Your cart is empty"),_("button",{class:"cartmax-continue-btn",onClick:this.close},"Continue shopping"))}renderCartContents(){var t=this.state.cart,n=this._currency,o=t.total_discount>0;return[_("div",{class:"cartmax-body"},t.items.map(a=>this.renderLineItem(a))),_("div",{class:"cartmax-footer"},_("div",{class:"cartmax-totals"},_("div",{class:"cartmax-totals-row"},_("span",null,"Subtotal"),_("span",null,E(t.items_subtotal_price,n))),t.cart_level_discount_applications&&t.cart_level_discount_applications.length>0?t.cart_level_discount_applications.map(function(a){var r=a.total_allocated_amount||a.amount||0;return _("div",{class:"cartmax-totals-row cartmax-discount-row",key:a.title},_("span",null,a.title||"Discount"),_("span",null,"\u2212"+E(r,n)))}):null,o?_("div",{class:"cartmax-totals-row cartmax-discount-row"},_("span",null,"Total Discount"),_("span",null,"\u2212"+E(t.total_discount,n))):null,_("div",{class:"cartmax-totals-row cartmax-total-row"},_("span",null,"Total"),_("span",null,E(t.total_price,n)))),_("a",{class:"cartmax-checkout-btn",href:"/checkout"},"Checkout"),_("button",{class:"cartmax-continue-btn",onClick:this.close},"Continue shopping"))]}render(t,{visible:n,open:o,cart:a,loading:r}){var s=_("div",{id:"cartmax-live-region","aria-live":"polite","aria-atomic":"true",style:{position:"absolute",width:"1px",height:"1px",overflow:"hidden",clip:"rect(0,0,0,0)"}});if(!n)return _("div",{class:"cartmax-wrapper"},s);var c="cartmax-overlay"+(o?" cartmax-open":""),p=!r&&a&&a.items&&a.items.length===0,l=!r&&a&&a.items&&a.items.length>0,d=a?a.item_count:0;return _("div",{class:"cartmax-wrapper"},s,_("div",{class:c,onClick:this.handleOverlayClick},_("div",{class:"cartmax-drawer",ref:i=>{this._drawerRef=i},onClick:function(i){i.stopPropagation()},role:"dialog","aria-modal":"true","aria-label":"Shopping cart"},_("div",{class:"cartmax-header"},_("span",{class:"cartmax-title"},"Your Cart",d>0?_("span",{class:"cartmax-header-count"}," ("+d+")"):null),_("button",{class:"cartmax-close",onClick:this.close,"aria-label":"Close cart"},"\u2715")),r?this.renderLoading():p?this.renderEmpty():l?this.renderCartContents():null)))}};function xt(){var e=document.getElementById("cartmax-root");e&&ft(_(K),e)}document.readyState==="loading"?document.addEventListener("DOMContentLoaded",xt):xt();})();
+(() => {
+  // node_modules/preact/dist/preact.module.js
+  var n;
+  var l;
+  var u;
+  var t;
+  var i;
+  var r;
+  var o;
+  var e;
+  var f;
+  var c;
+  var s;
+  var a;
+  var h;
+  var p;
+  var v;
+  var y;
+  var d = {};
+  var w = [];
+  var _ = /acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i;
+  var g = Array.isArray;
+  function m(n2, l2) {
+    for (var u2 in l2) n2[u2] = l2[u2];
+    return n2;
+  }
+  function b(n2) {
+    n2 && n2.parentNode && n2.parentNode.removeChild(n2);
+  }
+  function k(l2, u2, t2) {
+    var i2, r2, o2, e2 = {};
+    for (o2 in u2) "key" == o2 ? i2 = u2[o2] : "ref" == o2 ? r2 = u2[o2] : e2[o2] = u2[o2];
+    if (arguments.length > 2 && (e2.children = arguments.length > 3 ? n.call(arguments, 2) : t2), "function" == typeof l2 && null != l2.defaultProps) for (o2 in l2.defaultProps) void 0 === e2[o2] && (e2[o2] = l2.defaultProps[o2]);
+    return x(l2, e2, i2, r2, null);
+  }
+  function x(n2, t2, i2, r2, o2) {
+    var e2 = { type: n2, props: t2, key: i2, ref: r2, __k: null, __: null, __b: 0, __e: null, __c: null, constructor: void 0, __v: null == o2 ? ++u : o2, __i: -1, __u: 0 };
+    return null == o2 && null != l.vnode && l.vnode(e2), e2;
+  }
+  function S(n2) {
+    return n2.children;
+  }
+  function C(n2, l2) {
+    this.props = n2, this.context = l2;
+  }
+  function $(n2, l2) {
+    if (null == l2) return n2.__ ? $(n2.__, n2.__i + 1) : null;
+    for (var u2; l2 < n2.__k.length; l2++) if (null != (u2 = n2.__k[l2]) && null != u2.__e) return u2.__e;
+    return "function" == typeof n2.type ? $(n2) : null;
+  }
+  function I(n2) {
+    if (n2.__P && n2.__d) {
+      var u2 = n2.__v, t2 = u2.__e, i2 = [], r2 = [], o2 = m({}, u2);
+      o2.__v = u2.__v + 1, l.vnode && l.vnode(o2), q(n2.__P, o2, u2, n2.__n, n2.__P.namespaceURI, 32 & u2.__u ? [t2] : null, i2, null == t2 ? $(u2) : t2, !!(32 & u2.__u), r2), o2.__v = u2.__v, o2.__.__k[o2.__i] = o2, D(i2, o2, r2), u2.__e = u2.__ = null, o2.__e != t2 && P(o2);
+    }
+  }
+  function P(n2) {
+    if (null != (n2 = n2.__) && null != n2.__c) return n2.__e = n2.__c.base = null, n2.__k.some(function(l2) {
+      if (null != l2 && null != l2.__e) return n2.__e = n2.__c.base = l2.__e;
+    }), P(n2);
+  }
+  function A(n2) {
+    (!n2.__d && (n2.__d = true) && i.push(n2) && !H.__r++ || r != l.debounceRendering) && ((r = l.debounceRendering) || o)(H);
+  }
+  function H() {
+    try {
+      for (var n2, l2 = 1; i.length; ) i.length > l2 && i.sort(e), n2 = i.shift(), l2 = i.length, I(n2);
+    } finally {
+      i.length = H.__r = 0;
+    }
+  }
+  function L(n2, l2, u2, t2, i2, r2, o2, e2, f2, c2, s2) {
+    var a2, h2, p2, v2, y2, _2, g2, m2 = t2 && t2.__k || w, b2 = l2.length;
+    for (f2 = T(u2, l2, m2, f2, b2), a2 = 0; a2 < b2; a2++) null != (p2 = u2.__k[a2]) && (h2 = -1 != p2.__i && m2[p2.__i] || d, p2.__i = a2, _2 = q(n2, p2, h2, i2, r2, o2, e2, f2, c2, s2), v2 = p2.__e, p2.ref && h2.ref != p2.ref && (h2.ref && J(h2.ref, null, p2), s2.push(p2.ref, p2.__c || v2, p2)), null == y2 && null != v2 && (y2 = v2), (g2 = !!(4 & p2.__u)) || h2.__k === p2.__k ? (f2 = j(p2, f2, n2, g2), g2 && h2.__e && (h2.__e = null)) : "function" == typeof p2.type && void 0 !== _2 ? f2 = _2 : v2 && (f2 = v2.nextSibling), p2.__u &= -7);
+    return u2.__e = y2, f2;
+  }
+  function T(n2, l2, u2, t2, i2) {
+    var r2, o2, e2, f2, c2, s2 = u2.length, a2 = s2, h2 = 0;
+    for (n2.__k = new Array(i2), r2 = 0; r2 < i2; r2++) null != (o2 = l2[r2]) && "boolean" != typeof o2 && "function" != typeof o2 ? ("string" == typeof o2 || "number" == typeof o2 || "bigint" == typeof o2 || o2.constructor == String ? o2 = n2.__k[r2] = x(null, o2, null, null, null) : g(o2) ? o2 = n2.__k[r2] = x(S, { children: o2 }, null, null, null) : void 0 === o2.constructor && o2.__b > 0 ? o2 = n2.__k[r2] = x(o2.type, o2.props, o2.key, o2.ref ? o2.ref : null, o2.__v) : n2.__k[r2] = o2, f2 = r2 + h2, o2.__ = n2, o2.__b = n2.__b + 1, e2 = null, -1 != (c2 = o2.__i = O(o2, u2, f2, a2)) && (a2--, (e2 = u2[c2]) && (e2.__u |= 2)), null == e2 || null == e2.__v ? (-1 == c2 && (i2 > s2 ? h2-- : i2 < s2 && h2++), "function" != typeof o2.type && (o2.__u |= 4)) : c2 != f2 && (c2 == f2 - 1 ? h2-- : c2 == f2 + 1 ? h2++ : (c2 > f2 ? h2-- : h2++, o2.__u |= 4))) : n2.__k[r2] = null;
+    if (a2) for (r2 = 0; r2 < s2; r2++) null != (e2 = u2[r2]) && 0 == (2 & e2.__u) && (e2.__e == t2 && (t2 = $(e2)), K(e2, e2));
+    return t2;
+  }
+  function j(n2, l2, u2, t2) {
+    var i2, r2;
+    if ("function" == typeof n2.type) {
+      for (i2 = n2.__k, r2 = 0; i2 && r2 < i2.length; r2++) i2[r2] && (i2[r2].__ = n2, l2 = j(i2[r2], l2, u2, t2));
+      return l2;
+    }
+    n2.__e != l2 && (t2 && (l2 && n2.type && !l2.parentNode && (l2 = $(n2)), u2.insertBefore(n2.__e, l2 || null)), l2 = n2.__e);
+    do {
+      l2 = l2 && l2.nextSibling;
+    } while (null != l2 && 8 == l2.nodeType);
+    return l2;
+  }
+  function O(n2, l2, u2, t2) {
+    var i2, r2, o2, e2 = n2.key, f2 = n2.type, c2 = l2[u2], s2 = null != c2 && 0 == (2 & c2.__u);
+    if (null === c2 && null == e2 || s2 && e2 == c2.key && f2 == c2.type) return u2;
+    if (t2 > (s2 ? 1 : 0)) {
+      for (i2 = u2 - 1, r2 = u2 + 1; i2 >= 0 || r2 < l2.length; ) if (null != (c2 = l2[o2 = i2 >= 0 ? i2-- : r2++]) && 0 == (2 & c2.__u) && e2 == c2.key && f2 == c2.type) return o2;
+    }
+    return -1;
+  }
+  function z(n2, l2, u2) {
+    "-" == l2[0] ? n2.setProperty(l2, null == u2 ? "" : u2) : n2[l2] = null == u2 ? "" : "number" != typeof u2 || _.test(l2) ? u2 : u2 + "px";
+  }
+  function N(n2, l2, u2, t2, i2) {
+    var r2, o2;
+    n: if ("style" == l2) if ("string" == typeof u2) n2.style.cssText = u2;
+    else {
+      if ("string" == typeof t2 && (n2.style.cssText = t2 = ""), t2) for (l2 in t2) u2 && l2 in u2 || z(n2.style, l2, "");
+      if (u2) for (l2 in u2) t2 && u2[l2] == t2[l2] || z(n2.style, l2, u2[l2]);
+    }
+    else if ("o" == l2[0] && "n" == l2[1]) r2 = l2 != (l2 = l2.replace(a, "$1")), o2 = l2.toLowerCase(), l2 = o2 in n2 || "onFocusOut" == l2 || "onFocusIn" == l2 ? o2.slice(2) : l2.slice(2), n2.l || (n2.l = {}), n2.l[l2 + r2] = u2, u2 ? t2 ? u2[s] = t2[s] : (u2[s] = h, n2.addEventListener(l2, r2 ? v : p, r2)) : n2.removeEventListener(l2, r2 ? v : p, r2);
+    else {
+      if ("http://www.w3.org/2000/svg" == i2) l2 = l2.replace(/xlink(H|:h)/, "h").replace(/sName$/, "s");
+      else if ("width" != l2 && "height" != l2 && "href" != l2 && "list" != l2 && "form" != l2 && "tabIndex" != l2 && "download" != l2 && "rowSpan" != l2 && "colSpan" != l2 && "role" != l2 && "popover" != l2 && l2 in n2) try {
+        n2[l2] = null == u2 ? "" : u2;
+        break n;
+      } catch (n3) {
+      }
+      "function" == typeof u2 || (null == u2 || false === u2 && "-" != l2[4] ? n2.removeAttribute(l2) : n2.setAttribute(l2, "popover" == l2 && 1 == u2 ? "" : u2));
+    }
+  }
+  function V(n2) {
+    return function(u2) {
+      if (this.l) {
+        var t2 = this.l[u2.type + n2];
+        if (null == u2[c]) u2[c] = h++;
+        else if (u2[c] < t2[s]) return;
+        return t2(l.event ? l.event(u2) : u2);
+      }
+    };
+  }
+  function q(n2, u2, t2, i2, r2, o2, e2, f2, c2, s2) {
+    var a2, h2, p2, v2, y2, d2, _2, k2, x2, M, $2, I2, P2, A2, H2, T2 = u2.type;
+    if (void 0 !== u2.constructor) return null;
+    128 & t2.__u && (c2 = !!(32 & t2.__u), o2 = [f2 = u2.__e = t2.__e]), (a2 = l.__b) && a2(u2);
+    n: if ("function" == typeof T2) try {
+      if (k2 = u2.props, x2 = T2.prototype && T2.prototype.render, M = (a2 = T2.contextType) && i2[a2.__c], $2 = a2 ? M ? M.props.value : a2.__ : i2, t2.__c ? _2 = (h2 = u2.__c = t2.__c).__ = h2.__E : (x2 ? u2.__c = h2 = new T2(k2, $2) : (u2.__c = h2 = new C(k2, $2), h2.constructor = T2, h2.render = Q), M && M.sub(h2), h2.state || (h2.state = {}), h2.__n = i2, p2 = h2.__d = true, h2.__h = [], h2._sb = []), x2 && null == h2.__s && (h2.__s = h2.state), x2 && null != T2.getDerivedStateFromProps && (h2.__s == h2.state && (h2.__s = m({}, h2.__s)), m(h2.__s, T2.getDerivedStateFromProps(k2, h2.__s))), v2 = h2.props, y2 = h2.state, h2.__v = u2, p2) x2 && null == T2.getDerivedStateFromProps && null != h2.componentWillMount && h2.componentWillMount(), x2 && null != h2.componentDidMount && h2.__h.push(h2.componentDidMount);
+      else {
+        if (x2 && null == T2.getDerivedStateFromProps && k2 !== v2 && null != h2.componentWillReceiveProps && h2.componentWillReceiveProps(k2, $2), u2.__v == t2.__v || !h2.__e && null != h2.shouldComponentUpdate && false === h2.shouldComponentUpdate(k2, h2.__s, $2)) {
+          u2.__v != t2.__v && (h2.props = k2, h2.state = h2.__s, h2.__d = false), u2.__e = t2.__e, u2.__k = t2.__k, u2.__k.some(function(n3) {
+            n3 && (n3.__ = u2);
+          }), w.push.apply(h2.__h, h2._sb), h2._sb = [], h2.__h.length && e2.push(h2);
+          break n;
+        }
+        null != h2.componentWillUpdate && h2.componentWillUpdate(k2, h2.__s, $2), x2 && null != h2.componentDidUpdate && h2.__h.push(function() {
+          h2.componentDidUpdate(v2, y2, d2);
+        });
+      }
+      if (h2.context = $2, h2.props = k2, h2.__P = n2, h2.__e = false, I2 = l.__r, P2 = 0, x2) h2.state = h2.__s, h2.__d = false, I2 && I2(u2), a2 = h2.render(h2.props, h2.state, h2.context), w.push.apply(h2.__h, h2._sb), h2._sb = [];
+      else do {
+        h2.__d = false, I2 && I2(u2), a2 = h2.render(h2.props, h2.state, h2.context), h2.state = h2.__s;
+      } while (h2.__d && ++P2 < 25);
+      h2.state = h2.__s, null != h2.getChildContext && (i2 = m(m({}, i2), h2.getChildContext())), x2 && !p2 && null != h2.getSnapshotBeforeUpdate && (d2 = h2.getSnapshotBeforeUpdate(v2, y2)), A2 = null != a2 && a2.type === S && null == a2.key ? E(a2.props.children) : a2, f2 = L(n2, g(A2) ? A2 : [A2], u2, t2, i2, r2, o2, e2, f2, c2, s2), h2.base = u2.__e, u2.__u &= -161, h2.__h.length && e2.push(h2), _2 && (h2.__E = h2.__ = null);
+    } catch (n3) {
+      if (u2.__v = null, c2 || null != o2) if (n3.then) {
+        for (u2.__u |= c2 ? 160 : 128; f2 && 8 == f2.nodeType && f2.nextSibling; ) f2 = f2.nextSibling;
+        o2[o2.indexOf(f2)] = null, u2.__e = f2;
+      } else {
+        for (H2 = o2.length; H2--; ) b(o2[H2]);
+        B(u2);
+      }
+      else u2.__e = t2.__e, u2.__k = t2.__k, n3.then || B(u2);
+      l.__e(n3, u2, t2);
+    }
+    else null == o2 && u2.__v == t2.__v ? (u2.__k = t2.__k, u2.__e = t2.__e) : f2 = u2.__e = G(t2.__e, u2, t2, i2, r2, o2, e2, c2, s2);
+    return (a2 = l.diffed) && a2(u2), 128 & u2.__u ? void 0 : f2;
+  }
+  function B(n2) {
+    n2 && (n2.__c && (n2.__c.__e = true), n2.__k && n2.__k.some(B));
+  }
+  function D(n2, u2, t2) {
+    for (var i2 = 0; i2 < t2.length; i2++) J(t2[i2], t2[++i2], t2[++i2]);
+    l.__c && l.__c(u2, n2), n2.some(function(u3) {
+      try {
+        n2 = u3.__h, u3.__h = [], n2.some(function(n3) {
+          n3.call(u3);
+        });
+      } catch (n3) {
+        l.__e(n3, u3.__v);
+      }
+    });
+  }
+  function E(n2) {
+    return "object" != typeof n2 || null == n2 || n2.__b > 0 ? n2 : g(n2) ? n2.map(E) : m({}, n2);
+  }
+  function G(u2, t2, i2, r2, o2, e2, f2, c2, s2) {
+    var a2, h2, p2, v2, y2, w2, _2, m2 = i2.props || d, k2 = t2.props, x2 = t2.type;
+    if ("svg" == x2 ? o2 = "http://www.w3.org/2000/svg" : "math" == x2 ? o2 = "http://www.w3.org/1998/Math/MathML" : o2 || (o2 = "http://www.w3.org/1999/xhtml"), null != e2) {
+      for (a2 = 0; a2 < e2.length; a2++) if ((y2 = e2[a2]) && "setAttribute" in y2 == !!x2 && (x2 ? y2.localName == x2 : 3 == y2.nodeType)) {
+        u2 = y2, e2[a2] = null;
+        break;
+      }
+    }
+    if (null == u2) {
+      if (null == x2) return document.createTextNode(k2);
+      u2 = document.createElementNS(o2, x2, k2.is && k2), c2 && (l.__m && l.__m(t2, e2), c2 = false), e2 = null;
+    }
+    if (null == x2) m2 === k2 || c2 && u2.data == k2 || (u2.data = k2);
+    else {
+      if (e2 = e2 && n.call(u2.childNodes), !c2 && null != e2) for (m2 = {}, a2 = 0; a2 < u2.attributes.length; a2++) m2[(y2 = u2.attributes[a2]).name] = y2.value;
+      for (a2 in m2) y2 = m2[a2], "dangerouslySetInnerHTML" == a2 ? p2 = y2 : "children" == a2 || a2 in k2 || "value" == a2 && "defaultValue" in k2 || "checked" == a2 && "defaultChecked" in k2 || N(u2, a2, null, y2, o2);
+      for (a2 in k2) y2 = k2[a2], "children" == a2 ? v2 = y2 : "dangerouslySetInnerHTML" == a2 ? h2 = y2 : "value" == a2 ? w2 = y2 : "checked" == a2 ? _2 = y2 : c2 && "function" != typeof y2 || m2[a2] === y2 || N(u2, a2, y2, m2[a2], o2);
+      if (h2) c2 || p2 && (h2.__html == p2.__html || h2.__html == u2.innerHTML) || (u2.innerHTML = h2.__html), t2.__k = [];
+      else if (p2 && (u2.innerHTML = ""), L("template" == t2.type ? u2.content : u2, g(v2) ? v2 : [v2], t2, i2, r2, "foreignObject" == x2 ? "http://www.w3.org/1999/xhtml" : o2, e2, f2, e2 ? e2[0] : i2.__k && $(i2, 0), c2, s2), null != e2) for (a2 = e2.length; a2--; ) b(e2[a2]);
+      c2 || (a2 = "value", "progress" == x2 && null == w2 ? u2.removeAttribute("value") : null != w2 && (w2 !== u2[a2] || "progress" == x2 && !w2 || "option" == x2 && w2 != m2[a2]) && N(u2, a2, w2, m2[a2], o2), a2 = "checked", null != _2 && _2 != u2[a2] && N(u2, a2, _2, m2[a2], o2));
+    }
+    return u2;
+  }
+  function J(n2, u2, t2) {
+    try {
+      if ("function" == typeof n2) {
+        var i2 = "function" == typeof n2.__u;
+        i2 && n2.__u(), i2 && null == u2 || (n2.__u = n2(u2));
+      } else n2.current = u2;
+    } catch (n3) {
+      l.__e(n3, t2);
+    }
+  }
+  function K(n2, u2, t2) {
+    var i2, r2;
+    if (l.unmount && l.unmount(n2), (i2 = n2.ref) && (i2.current && i2.current != n2.__e || J(i2, null, u2)), null != (i2 = n2.__c)) {
+      if (i2.componentWillUnmount) try {
+        i2.componentWillUnmount();
+      } catch (n3) {
+        l.__e(n3, u2);
+      }
+      i2.base = i2.__P = null;
+    }
+    if (i2 = n2.__k) for (r2 = 0; r2 < i2.length; r2++) i2[r2] && K(i2[r2], u2, t2 || "function" != typeof n2.type);
+    t2 || b(n2.__e), n2.__c = n2.__ = n2.__e = void 0;
+  }
+  function Q(n2, l2, u2) {
+    return this.constructor(n2, u2);
+  }
+  function R(u2, t2, i2) {
+    var r2, o2, e2, f2;
+    t2 == document && (t2 = document.documentElement), l.__ && l.__(u2, t2), o2 = (r2 = "function" == typeof i2) ? null : i2 && i2.__k || t2.__k, e2 = [], f2 = [], q(t2, u2 = (!r2 && i2 || t2).__k = k(S, null, [u2]), o2 || d, d, t2.namespaceURI, !r2 && i2 ? [i2] : o2 ? null : t2.firstChild ? n.call(t2.childNodes) : null, e2, !r2 && i2 ? i2 : o2 ? o2.__e : t2.firstChild, r2, f2), D(e2, u2, f2);
+  }
+  n = w.slice, l = { __e: function(n2, l2, u2, t2) {
+    for (var i2, r2, o2; l2 = l2.__; ) if ((i2 = l2.__c) && !i2.__) try {
+      if ((r2 = i2.constructor) && null != r2.getDerivedStateFromError && (i2.setState(r2.getDerivedStateFromError(n2)), o2 = i2.__d), null != i2.componentDidCatch && (i2.componentDidCatch(n2, t2 || {}), o2 = i2.__d), o2) return i2.__E = i2;
+    } catch (l3) {
+      n2 = l3;
+    }
+    throw n2;
+  } }, u = 0, t = function(n2) {
+    return null != n2 && void 0 === n2.constructor;
+  }, C.prototype.setState = function(n2, l2) {
+    var u2;
+    u2 = null != this.__s && this.__s != this.state ? this.__s : this.__s = m({}, this.state), "function" == typeof n2 && (n2 = n2(m({}, u2), this.props)), n2 && m(u2, n2), null != n2 && this.__v && (l2 && this._sb.push(l2), A(this));
+  }, C.prototype.forceUpdate = function(n2) {
+    this.__v && (this.__e = true, n2 && this.__h.push(n2), A(this));
+  }, C.prototype.render = S, i = [], o = "function" == typeof Promise ? Promise.prototype.then.bind(Promise.resolve()) : setTimeout, e = function(n2, l2) {
+    return n2.__v.__b - l2.__v.__b;
+  }, H.__r = 0, f = Math.random().toString(8), c = "__d" + f, s = "__a" + f, a = /(PointerCapture)$|Capture$/i, h = 0, p = V(false), v = V(true), y = 0;
+
+  // src/helpers.js
+  var _internalFetchDepth = 0;
+  function internalFetch(url, opts) {
+    _internalFetchDepth++;
+    window.__cartmaxInternal = true;
+    return fetch(url, opts).finally(function() {
+      _internalFetchDepth--;
+      if (_internalFetchDepth === 0) {
+        window.__cartmaxInternal = false;
+      }
+    });
+  }
+  function fetchCart() {
+    return internalFetch("/cart.js").then(function(r2) {
+      return r2.json();
+    });
+  }
+  function cartUpdateAll(payload) {
+    return internalFetch("/cart/update.js", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(function(r2) {
+      return r2.json();
+    });
+  }
+  function formatMoney(cents, currency) {
+    var amount = (cents / 100).toFixed(2);
+    var fmt = window.Shopify && window.Shopify.money_format;
+    if (fmt) {
+      return fmt.replace(/\{\{\s*amount\s*\}\}/, amount).replace(/\{\{\s*amount_no_decimals\s*\}\}/, Math.round(cents / 100)).replace(/\{\{\s*amount_with_comma_separator\s*\}\}/, amount.replace(".", ","));
+    }
+    var symbols = {
+      USD: "$",
+      EUR: "\u20AC",
+      GBP: "\xA3",
+      INR: "\u20B9",
+      CAD: "CA$",
+      AUD: "A$",
+      JPY: "\xA5",
+      CNY: "\xA5"
+    };
+    return (symbols[currency] || currency + " ") + amount;
+  }
+  function resizeImage(url, size) {
+    if (!url) return "";
+    size = size || 128;
+    return url.replace(/(\.\w{3,4})(\?.*)?$/, "_" + size + "x$1$2");
+  }
+  var COUNT_SELECTORS = [
+    '.cart-count-bubble span[aria-hidden="true"]',
+    ".cart-count-bubble",
+    ".cart-count",
+    "[data-cart-count]",
+    "#CartCount",
+    '#cart-icon-bubble span[aria-hidden="true"]',
+    "#cart-icon-bubble",
+    ".cart-link__bubble-num"
+  ];
+  var BUBBLE_SELECTORS = [".cart-count-bubble", "#cart-icon-bubble"];
+  function updateCartCount(count) {
+    COUNT_SELECTORS.forEach(function(sel) {
+      document.querySelectorAll(sel).forEach(function(el) {
+        if (el.children.length === 0 || el.matches('[aria-hidden="true"]')) {
+          el.textContent = count;
+        }
+      });
+    });
+    BUBBLE_SELECTORS.forEach(function(sel) {
+      document.querySelectorAll(sel).forEach(function(el) {
+        if (count > 0) {
+          el.removeAttribute("hidden");
+          el.style.display = "";
+        } else {
+          el.setAttribute("hidden", "");
+        }
+      });
+    });
+  }
+  function getContext() {
+    var el = document.getElementById("cartmax-root");
+    if (!el) return { shopId: "", themeId: "", customerId: "", customerTags: [] };
+    var tags = [];
+    try {
+      tags = JSON.parse(decodeURIComponent(el.dataset.customerTags || "[]"));
+    } catch (e2) {
+      tags = [];
+    }
+    var themeId = el.dataset.themeId || window.Shopify && window.Shopify.theme && String(window.Shopify.theme.id) || "";
+    var moneyFormat = el.dataset.moneyFormat || window.Shopify && window.Shopify.money_format || "";
+    return {
+      shopId: el.dataset.shopId || "",
+      themeId,
+      customerId: el.dataset.customerId || "",
+      customerTags: Array.isArray(tags) ? tags : [],
+      moneyFormat
+    };
+  }
+  var FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  function trapFocus(container) {
+    var focusables = container.querySelectorAll(FOCUSABLE);
+    if (focusables.length === 0) return null;
+    var first = focusables[0];
+    var last = focusables[focusables.length - 1];
+    function handler(e2) {
+      if (e2.key === "Tab") {
+        if (e2.shiftKey) {
+          if (document.activeElement === first) {
+            e2.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e2.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    }
+    container.addEventListener("keydown", handler);
+    first.focus();
+    return function() {
+      container.removeEventListener("keydown", handler);
+    };
+  }
+
+  // src/CartDrawer.jsx
+  var CLOSE_DELAY = 300;
+  var DEBOUNCE_DELAY = 500;
+  var REMOVE_ANIM_DELAY = 300;
+  var PROCESSING_TIMEOUT = 1e4;
+  var CartDrawer = class extends C {
+    constructor() {
+      super();
+      this.state = {
+        visible: false,
+        open: false,
+        cart: null,
+        loading: true,
+        updating: {},
+        removing: {},
+        pendingQty: {},
+        evalResult: null,
+        unavailableGifts: []
+      };
+      this.close = this.close.bind(this);
+      this.handleOverlayClick = this.handleOverlayClick.bind(this);
+      this._closeTimer = null;
+      this._focusCleanup = null;
+      this._triggerElement = null;
+      this._drawerRef = null;
+      this._debounceTimers = {};
+      this._processingTimeout = null;
+      this._currency = window.Shopify && window.Shopify.currency && window.Shopify.currency.active || "USD";
+    }
+    componentDidMount() {
+      window.addEventListener("cartmax:cart-changed", (e2) => {
+        if (e2.detail && e2.detail.cart) {
+          var cart = e2.detail.cart;
+          this._currency = cart.currency || this._currency;
+          this.setState({ cart, loading: false });
+          updateCartCount(cart.item_count);
+        } else {
+          this.loadCart();
+        }
+        this.openDrawer();
+      });
+      window.addEventListener("cartmax:eval-result", (e2) => {
+        if (e2.detail) this.setState({ evalResult: e2.detail });
+      });
+      window.addEventListener("cartmax:internal-reload", (e2) => {
+        if (e2.detail && e2.detail.cart) {
+          var newCart = e2.detail.cart;
+          this._currency = newCart.currency || this._currency;
+          var oldItems = this.state.cart && this.state.cart.items || [];
+          var newKeys = {};
+          (newCart.items || []).forEach(function(item) {
+            newKeys[item.key] = true;
+          });
+          var removing = {};
+          oldItems.forEach(function(item) {
+            if (!newKeys[item.key]) {
+              removing[item.key] = true;
+            }
+          });
+          if (Object.keys(removing).length > 0) {
+            this.setState({ removing, updating: {}, pendingQty: {}, loading: false });
+            setTimeout(() => {
+              this.setState({ cart: newCart, removing: {} });
+              updateCartCount(newCart.item_count);
+            }, 300);
+          } else {
+            this.setState({
+              cart: newCart,
+              loading: false,
+              updating: {},
+              removing: {},
+              pendingQty: {}
+            });
+            updateCartCount(newCart.item_count);
+          }
+          this.announce("Cart updated");
+          this._clearProcessingTimeout();
+        }
+      });
+      window.addEventListener("cartmax:gift-unavailable", (e2) => {
+        var variants = e2.detail && e2.detail.variants || [];
+        this.setState({ unavailableGifts: variants });
+      });
+      window.__cartmaxReady = true;
+      if (window.__cartmaxQueue && window.__cartmaxQueue.length > 0) {
+        this.loadCart();
+        this.openDrawer();
+        window.__cartmaxQueue = [];
+      }
+      document.addEventListener("click", (e2) => {
+        var link = e2.target.closest('a[href="/cart"], a[href="/cart/"], [data-cart-icon], #cart-icon-bubble');
+        if (link) {
+          e2.preventDefault();
+          e2.stopPropagation();
+          this._triggerElement = link;
+          this.loadCart();
+          this.openDrawer();
+        }
+      }, true);
+      document.addEventListener("keydown", (e2) => {
+        if (e2.key === "Escape" && this.state.open) this.close();
+      });
+    }
+    // ── Cart data ─────────────────────────────────────────────
+    async loadCart() {
+      if (!this.state.cart) {
+        this.setState({ loading: true });
+      }
+      try {
+        var cart = await fetchCart();
+        this._currency = cart.currency || this._currency;
+        this.setState({ cart, loading: false });
+        updateCartCount(cart.item_count);
+      } catch (err) {
+        this.setState({ loading: false });
+      }
+    }
+    // ── Open / Close ──────────────────────────────────────────
+    openDrawer() {
+      if (this._closeTimer) {
+        clearTimeout(this._closeTimer);
+        this._closeTimer = null;
+      }
+      if (!this._triggerElement) {
+        this._triggerElement = document.activeElement;
+      }
+      this.setState({ visible: true, open: false }, () => {
+        requestAnimationFrame(() => {
+          this.setState({ open: true });
+          requestAnimationFrame(() => {
+            if (this._drawerRef) {
+              this._focusCleanup = trapFocus(this._drawerRef);
+            }
+          });
+        });
+      });
+      document.body.style.overflow = "hidden";
+      this.announce("Cart opened");
+      window.dispatchEvent(new CustomEvent("cartmax:drawer-opened"));
+    }
+    close() {
+      if (this._focusCleanup) {
+        this._focusCleanup();
+        this._focusCleanup = null;
+      }
+      this.setState({ open: false });
+      document.body.style.overflow = "";
+      this._closeTimer = setTimeout(() => {
+        this.setState({ visible: false });
+        this._closeTimer = null;
+      }, CLOSE_DELAY);
+      if (this._triggerElement && this._triggerElement.focus) {
+        this._triggerElement.focus();
+        this._triggerElement = null;
+      }
+      this.announce("Cart closed");
+    }
+    handleOverlayClick() {
+      this.close();
+    }
+    // ── Processing safety timeout ──────────────────────────────
+    _startProcessingTimeout() {
+      this._clearProcessingTimeout();
+      this._processingTimeout = setTimeout(() => {
+        console.warn("[CartMax] Processing timeout \u2014 forcing recovery");
+        this.setState({ updating: {}, removing: {}, pendingQty: {} });
+        this.loadCart();
+      }, PROCESSING_TIMEOUT);
+    }
+    _clearProcessingTimeout() {
+      if (this._processingTimeout) {
+        clearTimeout(this._processingTimeout);
+        this._processingTimeout = null;
+      }
+    }
+    // ── Quantity changes (debounced) ──────────────────────────
+    queueQuantityChange(key, qty) {
+      var pendingQty = Object.assign({}, this.state.pendingQty);
+      pendingQty[key] = qty;
+      this.setState({ pendingQty });
+      if (this._debounceTimers[key]) clearTimeout(this._debounceTimers[key]);
+      this._debounceTimers[key] = setTimeout(() => {
+        delete this._debounceTimers[key];
+        this.flushQuantityChange(key, qty);
+      }, DEBOUNCE_DELAY);
+    }
+    flushQuantityChange(key, qty) {
+      var updating = Object.assign({}, this.state.updating);
+      updating[key] = true;
+      this.setState({ updating });
+      this._startProcessingTimeout();
+      window.dispatchEvent(new CustomEvent("cartmax:cart-action", {
+        detail: { cart: this.state.cart, action: { key, qty } }
+      }));
+      this.announce("Updating cart...");
+    }
+    // ── Remove item (with animation delay) ────────────────────
+    handleRemove(key) {
+      if (this._debounceTimers[key]) {
+        clearTimeout(this._debounceTimers[key]);
+        delete this._debounceTimers[key];
+      }
+      var removing = Object.assign({}, this.state.removing);
+      removing[key] = true;
+      this.setState({ removing });
+      setTimeout(() => {
+        var updating = Object.assign({}, this.state.updating);
+        updating[key] = true;
+        this.setState({ updating });
+        this._startProcessingTimeout();
+        window.dispatchEvent(new CustomEvent("cartmax:cart-action", {
+          detail: { cart: this.state.cart, action: { key, qty: 0 } }
+        }));
+        this.announce("Removing item...");
+      }, REMOVE_ANIM_DELAY);
+    }
+    // ── Accessibility ─────────────────────────────────────────
+    announce(msg) {
+      var el = document.getElementById("cartmax-live-region");
+      if (el) el.textContent = msg;
+    }
+    getDisplayQty(item) {
+      if (this.state.pendingQty.hasOwnProperty(item.key)) {
+        return this.state.pendingQty[item.key];
+      }
+      return item.quantity;
+    }
+    // ── Render: Progress Bar ──────────────────────────────────
+    renderProgressBar() {
+      var result = this.state.evalResult;
+      if (!result || !result.bar || !result.bar.tiers || result.bar.tiers.length === 0) {
+        return null;
+      }
+      var bar = result.bar;
+      var tiers = bar.tiers;
+      var n2 = tiers.length;
+      var pct = Math.min(bar.progress_pct || 0, 100);
+      return /* @__PURE__ */ k("div", { id: "cartmax-progress", className: "cartmax-progress" }, /* @__PURE__ */ k("div", { className: "cartmax-progress-track" }, /* @__PURE__ */ k("div", { className: "cartmax-progress-fill", style: { width: pct + "%" } }, /* @__PURE__ */ k("span", { className: "visually-hidden" }, "Progress fill")), tiers.map((tier, i2) => {
+        var pos = (i2 + 1) / n2 * 100;
+        var cls = "cartmax-milestone";
+        if (tier.state === "active") cls += " cartmax-milestone--active";
+        else if (tier.state === "next") cls += " cartmax-milestone--next";
+        return /* @__PURE__ */ k("div", { class: cls, style: { left: pos + "%" }, key: i2 }, /* @__PURE__ */ k("div", { class: "cartmax-milestone-dot" }), /* @__PURE__ */ k("div", { class: "cartmax-milestone-label" }, (tier.label || "").split("\n+ ")[0]));
+      })), bar.top_message ? /* @__PURE__ */ k("div", { class: "cartmax-progress-msg" }, bar.top_message) : null);
+    }
+    // ── Render: Ribbon ────────────────────────────────────────
+    renderRibbon() {
+      var result = this.state.evalResult;
+      if (!result || !result.ribbon_message) return null;
+      return /* @__PURE__ */ k("div", { id: "cartmax-ribbon", class: "cartmax-ribbon" }, result.ribbon_message);
+    }
+    // ── Render: Line Item ─────────────────────────────────────
+    renderLineItem(item) {
+      var isUpdating = this.state.updating[item.key];
+      var isRemoving = this.state.removing[item.key];
+      var displayQty = this.getDisplayQty(item);
+      var isPending = this.state.pendingQty.hasOwnProperty(item.key);
+      var curr = this._currency;
+      var isFreebie = item.properties && item.properties["_freebie"] === "true" && item.properties["_claimed"] !== "true";
+      var isClaimed = item.properties && item.properties["_claimed"] === "true";
+      var cls = "cartmax-line-item" + (isRemoving ? " cartmax-line-removing" : "") + (isFreebie ? " cartmax-line-freebie" : "");
+      return /* @__PURE__ */ k("div", { class: cls, key: item.key }, /* @__PURE__ */ k("div", { class: "cartmax-line-image" }, item.image ? /* @__PURE__ */ k("img", { src: resizeImage(item.image, 128), alt: item.title, width: "64", height: "64", loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-line-image-placeholder" })), /* @__PURE__ */ k("div", { class: "cartmax-line-details" }, /* @__PURE__ */ k("div", { class: "cartmax-line-title" }, item.product_title), item.variant_title ? /* @__PURE__ */ k("div", { class: "cartmax-line-variant" }, item.variant_title) : null, /* @__PURE__ */ k("div", { class: "cartmax-line-price" }, isFreebie ? /* @__PURE__ */ k("span", { class: "cartmax-line-price-free" }, "FREE") : [
+        item.original_line_price !== item.final_line_price ? /* @__PURE__ */ k("span", { class: "cartmax-line-price-original" }, formatMoney(item.original_line_price, curr)) : null,
+        /* @__PURE__ */ k("span", null, formatMoney(item.final_line_price, curr))
+      ]), !isClaimed && item.line_level_discount_allocations && item.line_level_discount_allocations.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-line-discounts" }, item.line_level_discount_allocations.map((d2) => /* @__PURE__ */ k("span", { class: "cartmax-line-discount-tag", key: d2.discount_application.title }, d2.discount_application.title))) : null, !isFreebie ? /* @__PURE__ */ k("div", { class: "cartmax-line-actions" }, /* @__PURE__ */ k("div", { class: "cartmax-qty-controls" }, /* @__PURE__ */ k(
+        "button",
+        {
+          class: "cartmax-qty-btn",
+          onClick: () => this.queueQuantityChange(item.key, displayQty - 1),
+          disabled: isUpdating || displayQty <= 1,
+          "aria-label": "Decrease quantity"
+        },
+        "\u2212"
+      ), /* @__PURE__ */ k("span", { class: "cartmax-qty-value" + (isPending ? " cartmax-qty-pending" : "") }, displayQty), /* @__PURE__ */ k(
+        "button",
+        {
+          class: "cartmax-qty-btn",
+          onClick: () => this.queueQuantityChange(item.key, displayQty + 1),
+          disabled: isUpdating,
+          "aria-label": "Increase quantity"
+        },
+        "+"
+      )), /* @__PURE__ */ k(
+        "button",
+        {
+          class: "cartmax-remove-btn",
+          onClick: () => this.handleRemove(item.key),
+          disabled: isUpdating || isRemoving,
+          "aria-label": "Remove " + item.product_title
+        },
+        "Remove"
+      )) : null));
+    }
+    // ── Render: Loading skeleton ──────────────────────────────
+    renderLoading() {
+      return /* @__PURE__ */ k("div", { class: "cartmax-loading" }, /* @__PURE__ */ k("div", { class: "cartmax-skeleton" }), /* @__PURE__ */ k("div", { class: "cartmax-skeleton" }), /* @__PURE__ */ k("div", { class: "cartmax-skeleton" }));
+    }
+    // ── Render: Empty state ───────────────────────────────────
+    renderEmpty() {
+      return /* @__PURE__ */ k("div", { class: "cartmax-empty" }, /* @__PURE__ */ k("p", { class: "cartmax-empty-text" }, "Your cart is empty"), /* @__PURE__ */ k("button", { class: "cartmax-continue-btn", onClick: this.close }, "Continue shopping"));
+    }
+    // ── Claim Gifts ────────────────────────────────────────────
+    async handleClaimAdd(variantId, claimId) {
+      var key = "claim_" + variantId;
+      var updating = Object.assign({}, this.state.updating);
+      updating[key] = true;
+      this.setState({ updating });
+      try {
+        await internalFetch("/cart/add.js", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: Number(variantId),
+            quantity: 1,
+            properties: { _freebie: "true", _claimed: "true", _offer_id: claimId }
+          })
+        });
+        var cart = await fetchCart();
+        this._currency = cart.currency || this._currency;
+        this.setState({ cart });
+        updateCartCount(cart.item_count);
+        window.dispatchEvent(new CustomEvent("cartmax:cart-ready", { detail: { cart } }));
+      } catch (err) {
+        console.error("[CartMax] Claim add error:", err);
+      } finally {
+        var newUpdating = Object.assign({}, this.state.updating);
+        delete newUpdating[key];
+        this.setState({ updating: newUpdating });
+      }
+    }
+    async handleClaimRemove(variantId) {
+      var cart = this.state.cart;
+      if (!cart) return;
+      var line = cart.items.find(function(i2) {
+        return String(i2.variant_id) === String(variantId);
+      });
+      if (!line) return;
+      this.handleRemove(line.key);
+    }
+    renderClaimGifts() {
+      var result = this.state.evalResult;
+      if (!result || !result.claim_gifts) return null;
+      var cg = result.claim_gifts;
+      if (!cg.applicable_to_current_page) return null;
+      if (cg.threshold_remaining) return null;
+      var allGifts = cg.gifts || [];
+      if (allGifts.length === 0) return null;
+      var self = this;
+      var cart = this.state.cart;
+      var maxClaims = cg.max_claims || allGifts.length;
+      function isInCart(vid) {
+        if (!cart || !cart.items) return false;
+        return cart.items.some(function(item) {
+          return String(item.variant_id) === String(vid);
+        });
+      }
+      var gifts = allGifts;
+      var cartClaimedCount = 0;
+      if (cart && cart.items) {
+        cart.items.forEach(function(item) {
+          if (item.properties && item.properties["_claimed"] === "true") {
+            cartClaimedCount++;
+          }
+        });
+      }
+      var limitReached = cartClaimedCount >= maxClaims;
+      return /* @__PURE__ */ k("div", { class: "cartmax-claims" }, /* @__PURE__ */ k("div", { class: "cartmax-claims-heading" }, cg.section_heading), /* @__PURE__ */ k("div", { class: "cartmax-claims-scroll" }, gifts.map(function(g2) {
+        var vid = String(g2.variant_id);
+        if (vid.startsWith("gid://")) vid = vid.split("/").pop();
+        var isClaiming = self.state.updating["claim_" + vid];
+        var inCart = g2.in_cart || isInCart(vid);
+        return /* @__PURE__ */ k("div", { class: "cartmax-claim-card" + (inCart ? " cartmax-claim-card--in-cart" : ""), key: vid }, g2.image ? /* @__PURE__ */ k("img", { class: "cartmax-claim-img", src: resizeImage(g2.image, 120), alt: g2.title, loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-claim-img-placeholder" }), /* @__PURE__ */ k("div", { class: "cartmax-claim-info" }, g2.title ? /* @__PURE__ */ k("div", { class: "cartmax-claim-title" }, g2.title) : null, inCart ? /* @__PURE__ */ k(
+          "button",
+          {
+            class: "cartmax-claim-btn cartmax-claim-btn--remove",
+            onClick: function() {
+              self.handleClaimRemove(vid);
+            }
+          },
+          "Remove"
+        ) : /* @__PURE__ */ k(
+          "button",
+          {
+            class: "cartmax-claim-btn cartmax-claim-btn--add",
+            onClick: function() {
+              self.handleClaimAdd(vid, cg._rule_id);
+            },
+            disabled: isClaiming || !g2.available || limitReached
+          },
+          isClaiming ? "Adding..." : !g2.available ? "Unavailable" : limitReached ? "Limit reached" : "Add"
+        )));
+      })));
+    }
+    // ── Coupons ────────────────────────────────────────────────
+    getAppliedCodes() {
+      var cart = this.state.cart;
+      if (!cart) return [];
+      var codes = [];
+      (cart.cart_level_discount_applications || []).forEach(function(d2) {
+        if (d2.title) codes.push(d2.title);
+      });
+      (cart.items || []).forEach(function(item) {
+        (item.line_level_discount_allocations || []).forEach(function(a2) {
+          if (a2.discount_application && a2.discount_application.title) {
+            codes.push(a2.discount_application.title);
+          }
+        });
+      });
+      return codes.filter(function(c2, i2, arr) {
+        return arr.indexOf(c2) === i2;
+      });
+    }
+    async handleCouponApply(code) {
+      if (!code || !code.trim()) return;
+      this.setState({ couponLoading: true, couponError: null });
+      try {
+        var currentCodes = this.getAppliedCodes();
+        var newCode = code.trim();
+        if (!currentCodes.some(function(c2) {
+          return c2.toUpperCase() === newCode.toUpperCase();
+        })) {
+          currentCodes.push(newCode);
+        }
+        var discountPayload = currentCodes.join(",");
+        await cartUpdateAll({ discount: discountPayload });
+        var cart = await fetchCart();
+        var codeUpper = newCode.toUpperCase();
+        var applied = (cart.cart_level_discount_applications || []).some(function(d2) {
+          return d2.title && d2.title.toUpperCase() === codeUpper;
+        });
+        if (!applied) {
+          applied = (cart.items || []).some(function(item) {
+            return (item.line_level_discount_allocations || []).some(function(a2) {
+              return a2.discount_application && a2.discount_application.title && a2.discount_application.title.toUpperCase() === codeUpper;
+            });
+          });
+        }
+        this._currency = cart.currency || this._currency;
+        this.setState({
+          cart,
+          couponLoading: false,
+          couponError: applied ? null : "Invalid or inapplicable code",
+          couponInput: applied ? "" : this.state.couponInput,
+          couponPanelOpen: applied ? false : this.state.couponPanelOpen
+        });
+        updateCartCount(cart.item_count);
+        if (applied) window.dispatchEvent(new CustomEvent("cartmax:cart-action", { detail: { cart } }));
+      } catch (err) {
+        this.setState({ couponLoading: false, couponError: "Failed to apply coupon" });
+      }
+    }
+    async handleCouponRemove(codeToRemove) {
+      this.setState({ couponLoading: true });
+      try {
+        var currentCodes = this.getAppliedCodes();
+        var removeUpper = (codeToRemove || "").toUpperCase();
+        var remaining = currentCodes.filter(function(c2) {
+          return c2.toUpperCase() !== removeUpper;
+        });
+        var discountPayload = remaining.length > 0 ? remaining.join(",") : "";
+        await cartUpdateAll({ discount: discountPayload });
+        var cart = await fetchCart();
+        this._currency = cart.currency || this._currency;
+        this.setState({ cart, couponLoading: false });
+        updateCartCount(cart.item_count);
+        window.dispatchEvent(new CustomEvent("cartmax:cart-action", { detail: { cart } }));
+      } catch (err) {
+        this.setState({ couponLoading: false });
+      }
+    }
+    getAppliedDiscounts() {
+      var cart = this.state.cart;
+      if (!cart) return [];
+      var codes = [];
+      (cart.cart_level_discount_applications || []).forEach(function(d2) {
+        if (d2.title && d2.type === "discount_code") {
+          codes.push({ code: d2.title, amount: d2.total_allocated_amount || 0 });
+        }
+      });
+      return codes;
+    }
+    renderCoupons() {
+      var self = this;
+      var isLoading = this.state.couponLoading;
+      var appliedDiscounts = this.getAppliedDiscounts();
+      var result = this.state.evalResult;
+      var available = result && result.available_coupons || [];
+      var showPanel = this.state.couponPanelOpen;
+      var curr = this._currency;
+      return /* @__PURE__ */ k("div", { class: "cartmax-coupons" }, /* @__PURE__ */ k("div", { class: "cartmax-coupon-input-row" }, /* @__PURE__ */ k(
+        "input",
+        {
+          class: "cartmax-coupon-input",
+          type: "text",
+          placeholder: "Discount code",
+          value: this.state.couponInput || "",
+          onInput: function(e2) {
+            self.setState({ couponInput: e2.target.value, couponError: null });
+          },
+          onKeyDown: function(e2) {
+            if (e2.key === "Enter") self.handleCouponApply(self.state.couponInput);
+          },
+          disabled: isLoading
+        }
+      ), /* @__PURE__ */ k(
+        "button",
+        {
+          class: "cartmax-coupon-apply-btn",
+          onClick: function() {
+            self.handleCouponApply(self.state.couponInput);
+          },
+          disabled: isLoading || !(self.state.couponInput || "").trim()
+        },
+        isLoading ? "..." : "Apply"
+      )), this.state.couponError ? /* @__PURE__ */ k("div", { class: "cartmax-coupon-error" }, this.state.couponError) : null, available.length > 0 && /* @__PURE__ */ k(
+        "button",
+        {
+          class: "cartmax-coupons-viewall",
+          onClick: function() {
+            self.setState({ couponPanelOpen: !showPanel });
+          }
+        },
+        showPanel ? "Hide coupons" : "View all coupons (" + available.length + ")"
+      ), appliedDiscounts.length > 0 && /* @__PURE__ */ k("div", { class: "cartmax-applied-discounts" }, appliedDiscounts.map(function(d2) {
+        return /* @__PURE__ */ k("div", { class: "cartmax-applied-discount", key: d2.code }, /* @__PURE__ */ k("div", { class: "cartmax-applied-discount-info" }, /* @__PURE__ */ k("span", { class: "cartmax-applied-discount-code" }, d2.code)), /* @__PURE__ */ k(
+          "button",
+          {
+            class: "cartmax-applied-discount-remove",
+            onClick: function() {
+              self.handleCouponRemove(d2.code);
+            },
+            disabled: isLoading,
+            "aria-label": "Remove " + d2.code
+          },
+          "\u2715"
+        ));
+      })), /* @__PURE__ */ k("div", { class: "cartmax-coupon-drawer" + (showPanel ? " cartmax-coupon-drawer--open" : "") }, /* @__PURE__ */ k("div", { class: "cartmax-coupon-drawer-header" }, /* @__PURE__ */ k(
+        "button",
+        {
+          class: "cartmax-coupon-drawer-back",
+          onClick: function() {
+            self.setState({ couponPanelOpen: false });
+          },
+          "aria-label": "Back to cart"
+        },
+        "\u2190"
+      ), /* @__PURE__ */ k("span", { class: "cartmax-coupon-drawer-title" }, "Available Coupons")), /* @__PURE__ */ k("div", { class: "cartmax-coupon-drawer-body" }, available.map(function(c2) {
+        return /* @__PURE__ */ k("div", { class: "cartmax-coupon-card" + (c2.applied ? " cartmax-coupon-card--applied" : ""), key: c2.id }, /* @__PURE__ */ k("div", { class: "cartmax-coupon-card-header" }, /* @__PURE__ */ k("span", { class: "cartmax-coupon-card-type" }, c2.type_label), !c2.is_automatic ? /* @__PURE__ */ k("span", { class: "cartmax-coupon-card-code" }, c2.code) : /* @__PURE__ */ k("span", { class: "cartmax-coupon-card-auto" }, "Automatic")), /* @__PURE__ */ k("div", { class: "cartmax-coupon-card-title" }, c2.title), c2.display_message ? /* @__PURE__ */ k("div", { class: "cartmax-coupon-card-msg" }, c2.display_message) : null, c2.applied ? /* @__PURE__ */ k("span", { class: "cartmax-coupon-card-applied" }, "Applied") : !c2.is_automatic ? /* @__PURE__ */ k(
+          "button",
+          {
+            class: "cartmax-coupon-card-btn",
+            onClick: function() {
+              self.handleCouponApply(c2.code);
+            },
+            disabled: isLoading
+          },
+          isLoading ? "Applying..." : "Apply"
+        ) : null);
+      }))));
+    }
+    // ── Render: Upsells ────────────────────────────────────────
+    async handleUpsellAdd(variantId) {
+      var key = "upsell_" + variantId;
+      var updating = Object.assign({}, this.state.updating);
+      updating[key] = true;
+      this.setState({ updating });
+      try {
+        await internalFetch("/cart/add.js", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: Number(variantId), quantity: 1 })
+        });
+        var cart = await fetchCart();
+        this._currency = cart.currency || this._currency;
+        this.setState({ cart });
+        updateCartCount(cart.item_count);
+        window.dispatchEvent(new CustomEvent("cartmax:cart-ready", { detail: { cart } }));
+      } catch (err) {
+        console.error("[CartMax] Upsell add error:", err);
+      } finally {
+        var newUpdating = Object.assign({}, this.state.updating);
+        delete newUpdating[key];
+        this.setState({ updating: newUpdating });
+      }
+    }
+    renderUpsells() {
+      var result = this.state.evalResult;
+      if (!result || !result.upsells || !result.upsells.enabled) return null;
+      var upsells = result.upsells;
+      var products = upsells.products || [];
+      if (products.length === 0) return null;
+      var cart = this.state.cart;
+      var cartVariantIds = (cart && cart.items || []).map(function(i2) {
+        return String(i2.variant_id);
+      });
+      var filtered = products.filter(function(p2) {
+        var vid = String(p2.variant_id);
+        if (vid.startsWith("gid://")) vid = vid.split("/").pop();
+        return cartVariantIds.indexOf(vid) === -1;
+      });
+      if (filtered.length === 0) return null;
+      var curr = this._currency;
+      var self = this;
+      return /* @__PURE__ */ k("div", { class: "cartmax-upsells" }, /* @__PURE__ */ k("div", { class: "cartmax-upsells-heading" }, upsells.heading || "You may also like"), /* @__PURE__ */ k("div", { class: "cartmax-upsells-scroll" }, filtered.map(function(p2) {
+        var vid = String(p2.variant_id);
+        if (vid.startsWith("gid://")) vid = vid.split("/").pop();
+        var isAdding = self.state.updating["upsell_" + vid];
+        return /* @__PURE__ */ k("div", { class: "cartmax-upsell-card", key: p2.product_id }, p2.image_url ? /* @__PURE__ */ k("img", { class: "cartmax-upsell-img", src: resizeImage(p2.image_url, 120), alt: p2.title, loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-upsell-img-placeholder" }), /* @__PURE__ */ k("div", { class: "cartmax-upsell-info" }, /* @__PURE__ */ k("div", { class: "cartmax-upsell-title" }, p2.title), /* @__PURE__ */ k("div", { class: "cartmax-upsell-price" }, p2.compare_at_price ? /* @__PURE__ */ k("span", { class: "cartmax-upsell-compare" }, formatMoney(Number(p2.compare_at_price) * 100, curr)) : null, /* @__PURE__ */ k("span", null, formatMoney(Number(p2.price) * 100, curr))), /* @__PURE__ */ k(
+          "button",
+          {
+            class: "cartmax-upsell-add",
+            onClick: function() {
+              self.handleUpsellAdd(vid);
+            },
+            disabled: isAdding
+          },
+          isAdding ? "Adding..." : "Add"
+        )));
+      })));
+    }
+    // ── Render: Footer (totals + checkout) ────────────────────
+    renderFooter() {
+      var cart = this.state.cart;
+      var curr = this._currency;
+      var hasDiscount = cart.total_discount > 0;
+      return /* @__PURE__ */ k("div", { class: "cartmax-footer" }, /* @__PURE__ */ k("div", { class: "cartmax-totals" }, /* @__PURE__ */ k("div", { class: "cartmax-totals-row" }, /* @__PURE__ */ k("span", null, "Subtotal"), /* @__PURE__ */ k("span", null, formatMoney(cart.items_subtotal_price, curr))), cart.cart_level_discount_applications && cart.cart_level_discount_applications.length > 0 ? cart.cart_level_discount_applications.map((d2) => {
+        var amt = d2.total_allocated_amount || d2.amount || 0;
+        return /* @__PURE__ */ k("div", { class: "cartmax-totals-row cartmax-discount-row", key: d2.title }, /* @__PURE__ */ k("span", null, d2.title || "Discount"), /* @__PURE__ */ k("span", null, "\u2212" + formatMoney(amt, curr)));
+      }) : null, hasDiscount ? /* @__PURE__ */ k("div", { class: "cartmax-totals-row cartmax-discount-row" }, /* @__PURE__ */ k("span", null, "Total Discount"), /* @__PURE__ */ k("span", null, "\u2212" + formatMoney(cart.total_discount, curr))) : null, /* @__PURE__ */ k("div", { class: "cartmax-totals-row cartmax-total-row" }, /* @__PURE__ */ k("span", null, "Total"), /* @__PURE__ */ k("span", null, formatMoney(cart.total_price, curr)))), /* @__PURE__ */ k("a", { class: "cartmax-checkout-btn", href: "/checkout" }, "Checkout"), /* @__PURE__ */ k("button", { class: "cartmax-continue-btn", onClick: this.close }, "Continue shopping"));
+    }
+    // ── Main render ───────────────────────────────────────────
+    render(props, { visible, open, cart, loading }) {
+      var liveRegion = /* @__PURE__ */ k(
+        "div",
+        {
+          id: "cartmax-live-region",
+          "aria-live": "polite",
+          "aria-atomic": "true",
+          style: { position: "absolute", width: "1px", height: "1px", overflow: "hidden", clip: "rect(0,0,0,0)" }
+        }
+      );
+      if (!visible) {
+        return /* @__PURE__ */ k("div", { class: "cartmax-wrapper" }, liveRegion);
+      }
+      var overlayClass = "cartmax-overlay" + (open ? " cartmax-open" : "");
+      var isEmpty = !loading && cart && cart.items && cart.items.length === 0;
+      var hasItems = !loading && cart && cart.items && cart.items.length > 0;
+      var count = cart ? cart.item_count : 0;
+      return /* @__PURE__ */ k("div", { class: "cartmax-wrapper" }, liveRegion, /* @__PURE__ */ k("div", { class: overlayClass, onClick: this.handleOverlayClick }, /* @__PURE__ */ k(
+        "div",
+        {
+          class: "cartmax-drawer",
+          ref: (el) => {
+            this._drawerRef = el;
+          },
+          onClick: (e2) => e2.stopPropagation(),
+          role: "dialog",
+          "aria-modal": "true",
+          "aria-label": "Shopping cart"
+        },
+        /* @__PURE__ */ k("div", { class: "cartmax-header" }, /* @__PURE__ */ k("span", { class: "cartmax-title" }, "Your Cart", count > 0 ? /* @__PURE__ */ k("span", { class: "cartmax-header-count" }, " (" + count + ")") : null), /* @__PURE__ */ k("button", { class: "cartmax-close", onClick: this.close, "aria-label": "Close cart" }, "\u2715")),
+        this.state.unavailableGifts.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-gift-unavailable" }, "A gift product is currently unavailable") : null,
+        hasItems ? this.renderProgressBar() : null,
+        hasItems ? this.renderClaimGifts() : null,
+        loading ? this.renderLoading() : isEmpty ? this.renderEmpty() : hasItems ? /* @__PURE__ */ k("div", { class: "cartmax-body" }, cart.items.map((item) => this.renderLineItem(item))) : null,
+        hasItems ? this.renderCoupons() : null,
+        this.renderUpsells(),
+        hasItems ? this.renderRibbon() : null,
+        hasItems ? this.renderFooter() : null
+      )));
+    }
+  };
+
+  // src/rules.js
+  function normalizeId(id) {
+    var s2 = String(id);
+    return s2.startsWith("gid://") ? s2.split("/").pop() : s2;
+  }
+  function adjustedTotal(items) {
+    var cents = 0;
+    for (var i2 = 0; i2 < items.length; i2++) {
+      if (items[i2].properties && items[i2].properties["_freebie"] === "true") continue;
+      cents += items[i2].line_price || 0;
+    }
+    return cents / 100;
+  }
+  function adjustedQty(items) {
+    var qty = 0;
+    for (var i2 = 0; i2 < items.length; i2++) {
+      if (items[i2].properties && items[i2].properties["_freebie"] === "true") continue;
+      qty += items[i2].quantity || 0;
+    }
+    return qty;
+  }
+  function pageMatch(handles, path) {
+    if (!handles || handles.length === 0) return false;
+    if (handles.indexOf("/") !== -1) return true;
+    var clean = path.split("?")[0];
+    return handles.indexOf(clean) !== -1;
+  }
+  function evaluateTrigger(offer, adjTotal, adjQty) {
+    var t2 = offer.trigger || {};
+    var priceMet = t2.price_threshold && adjTotal >= t2.price_threshold;
+    var qtyMet = t2.quantity_threshold && adjQty >= t2.quantity_threshold;
+    return priceMet || qtyMet;
+  }
+  function evaluateOffers(offers, cart, adjTotal, adjQty, page) {
+    var toAdd = [];
+    var toRemove = [];
+    var triggeredIds = {};
+    for (var i2 = 0; i2 < offers.length; i2++) {
+      var offer = offers[i2];
+      if (!pageMatch(offer.page_handles, page)) continue;
+      var triggered = evaluateTrigger(offer, adjTotal, adjQty);
+      if (triggered) {
+        triggeredIds[offer.id] = true;
+        if (offer.reward && offer.reward.type === "auto_add_gift" && offer.reward.add_mode === "auto") {
+          var giftVids = offer.reward.gift_variants || [];
+          for (var g2 = 0; g2 < giftVids.length; g2++) {
+            var vid = normalizeId(giftVids[g2]);
+            var alreadyIn = (cart.items || []).some(function(li) {
+              return normalizeId(li.variant_id) === vid && li.properties && li.properties["_offer_id"] === offer.id;
+            });
+            if (!alreadyIn) {
+              toAdd.push({
+                variant_id: giftVids[g2],
+                quantity: offer.reward.quantity_per_variant || 1,
+                properties: { _freebie: "true", _offer_id: offer.id }
+              });
+            }
+          }
+        }
+      }
+    }
+    for (var j2 = 0; j2 < (cart.items || []).length; j2++) {
+      var item = cart.items[j2];
+      if (!item.properties || item.properties["_freebie"] !== "true") continue;
+      if (item.properties["_claimed"] === "true") continue;
+      var offerId = item.properties["_offer_id"];
+      if (!offerId) continue;
+      if (!triggeredIds[offerId]) {
+        toRemove.push(item.key);
+      }
+    }
+    return { to_add: toAdd, to_remove: toRemove };
+  }
+  function buildBar(config, adjTotal, adjQty, page, moneyFormat) {
+    if (!config.progress_bar || !config.progress_bar.enabled) return null;
+    var entries = [];
+    for (var i2 = 0; i2 < (config.offers || []).length; i2++) {
+      var offer = config.offers[i2];
+      if (!offer.bar || !offer.bar.show) continue;
+      if (!pageMatch(offer.page_handles, page)) continue;
+      entries.push({
+        threshold: offer.trigger.price_threshold || offer.trigger.quantity_threshold,
+        trigger_type: offer.trigger.price_threshold ? "price" : "quantity",
+        label: offer.bar.label || "",
+        top_message: offer.bar.top_message || null
+      });
+    }
+    if (entries.length === 0) return null;
+    entries.sort(function(a2, b2) {
+      return a2.threshold - b2.threshold;
+    });
+    var mode = entries.some(function(e2) {
+      return e2.trigger_type === "price";
+    }) ? "price" : "quantity";
+    var filtered = entries.filter(function(e2) {
+      return e2.trigger_type === mode;
+    });
+    if (filtered.length === 0) return null;
+    var currentValue = mode === "price" ? adjTotal : adjQty;
+    var segmentWidth = 100 / filtered.length;
+    var progress = 0;
+    var topMessage = null;
+    var tiers = [];
+    for (var t2 = 0; t2 < filtered.length; t2++) {
+      var tier = filtered[t2];
+      var state;
+      if (currentValue >= tier.threshold) {
+        state = "active";
+        progress += segmentWidth;
+      } else if (!topMessage) {
+        state = "next";
+        var remaining = tier.threshold - currentValue;
+        progress += currentValue / tier.threshold * segmentWidth;
+        if (tier.top_message) {
+          var amountStr = remaining.toFixed(2);
+          var formatted = moneyFormat ? moneyFormat.replace(/\{\{\s*amount\s*\}\}/, amountStr).replace(/\{\{\s*amount_no_decimals\s*\}\}/, String(Math.round(remaining))).replace(/\{\{\s*amount_with_comma_separator\s*\}\}/, amountStr.replace(".", ",")) : "$" + amountStr;
+          topMessage = tier.top_message.replace(/\[\[\s*price\s*\]\]/gi, formatted);
+        }
+      } else {
+        state = "inactive";
+      }
+      tiers.push({
+        threshold: tier.threshold,
+        label: tier.label,
+        state
+      });
+    }
+    if (topMessage === null && currentValue >= filtered[filtered.length - 1].threshold) {
+      topMessage = config.progress_bar.all_complete_message || null;
+    }
+    return {
+      enabled: true,
+      mode,
+      progress_pct: Math.min(progress, 100),
+      top_message: topMessage,
+      tiers
+    };
+  }
+  function localEvaluate(cachedConfig, cart) {
+    if (!cachedConfig || !cart) return null;
+    var items = cart.items || [];
+    var adjTotal = adjustedTotal(items);
+    var adjQty = adjustedQty(items);
+    var page = window.location.pathname;
+    var offerResult = evaluateOffers(cachedConfig.offers || [], cart, adjTotal, adjQty, page);
+    var bar = buildBar(cachedConfig, adjTotal, adjQty, page, cachedConfig.money_format || "");
+    var ribbonMessage = null;
+    if (bar && bar.tiers) {
+      for (var i2 = 0; i2 < bar.tiers.length; i2++) {
+        if (bar.tiers[i2].state === "next") {
+          ribbonMessage = bar.tiers[i2].ribbon_message || null;
+          break;
+        }
+      }
+    }
+    return {
+      to_add: offerResult.to_add,
+      to_remove: offerResult.to_remove,
+      bar,
+      ribbon_message: ribbonMessage
+    };
+  }
+
+  // src/evaluate.js
+  var PROXY_URL = "/apps/cartmax/evaluate-cart";
+  var _cachedConfig = null;
+  var _configCacheTime = 0;
+  var CONFIG_CACHE_TTL = 6e4;
+  function isCacheValid() {
+    return _cachedConfig && Date.now() - _configCacheTime < CONFIG_CACHE_TTL;
+  }
+  async function callEvaluate(cart) {
+    var ctx = getContext();
+    if (!ctx.shopId || !ctx.themeId) return null;
+    var res = await fetch(PROXY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cart: {
+          items: cart.items || [],
+          total_price: cart.total_price || 0,
+          item_count: cart.item_count || 0,
+          currency: cart.currency || "",
+          cart_level_discount_applications: cart.cart_level_discount_applications || [],
+          discount_codes: cart.discount_codes || []
+        },
+        page: window.location.pathname,
+        customer: ctx.customerId ? { id: ctx.customerId, tags: ctx.customerTags } : { tags: ctx.customerTags },
+        shop_id: ctx.shopId,
+        theme_id: String(ctx.themeId),
+        money_format: ctx.moneyFormat
+      })
+    });
+    if (!res.ok) {
+      console.error("[CartMax] evaluate-cart failed:", res.status, await res.text());
+      return null;
+    }
+    var result = await res.json();
+    if (result && result._config) {
+      _cachedConfig = result._config;
+      _configCacheTime = Date.now();
+    }
+    return result;
+  }
+  function normalizeVariantId(id) {
+    if (typeof id === "string" && id.startsWith("gid://")) return id.split("/").pop();
+    return id;
+  }
+  function simulateCart(cart, action) {
+    if (!action || !cart || !cart.items) return cart;
+    var items = [];
+    for (var i2 = 0; i2 < cart.items.length; i2++) {
+      var item = cart.items[i2];
+      if (item.key === action.key) {
+        if (action.qty > 0) {
+          var unitPrice = item.quantity > 0 ? Math.round(item.price) : 0;
+          var linePrice = unitPrice * action.qty;
+          items.push(Object.assign({}, item, {
+            quantity: action.qty,
+            line_price: linePrice,
+            final_line_price: linePrice,
+            original_line_price: linePrice
+          }));
+        }
+      } else {
+        items.push(item);
+      }
+    }
+    var totalPrice = 0;
+    var itemCount = 0;
+    for (var j2 = 0; j2 < items.length; j2++) {
+      totalPrice += items[j2].final_line_price || 0;
+      itemCount += items[j2].quantity || 0;
+    }
+    return Object.assign({}, cart, {
+      items,
+      total_price: totalPrice,
+      item_count: itemCount,
+      items_subtotal_price: totalPrice
+    });
+  }
+  var _unavailableGifts = [];
+  var _unavailableLastAttempt = 0;
+  var UNAVAILABLE_RETRY_INTERVAL = 6e4;
+  function isGiftUnavailable(vid) {
+    return _unavailableGifts.indexOf(vid) !== -1;
+  }
+  function markGiftUnavailable(vid) {
+    if (_unavailableGifts.indexOf(vid) === -1) {
+      _unavailableGifts.push(vid);
+    }
+    _unavailableLastAttempt = Date.now();
+  }
+  function shouldRetryUnavailable() {
+    return Date.now() - _unavailableLastAttempt >= UNAVAILABLE_RETRY_INTERVAL;
+  }
+  function clearAvailableGifts(cartItems) {
+    _unavailableGifts = _unavailableGifts.filter(function(vid) {
+      return !(cartItems || []).some(function(item) {
+        return String(item.variant_id) === vid;
+      });
+    });
+  }
+  async function applyResult(result, cart, pendingAction) {
+    if (result.frozen) return null;
+    window.dispatchEvent(new CustomEvent("cartmax:eval-result", { detail: result }));
+    var existingItems = cart.items || [];
+    var updates = {};
+    var hasUpdates = false;
+    if (pendingAction) {
+      updates[pendingAction.key] = pendingAction.qty;
+      hasUpdates = true;
+    }
+    for (var j2 = 0; j2 < (result.to_remove || []).length; j2++) {
+      updates[result.to_remove[j2]] = 0;
+      hasUpdates = true;
+    }
+    var canRetry = shouldRetryUnavailable();
+    var itemsToAdd = [];
+    for (var i2 = 0; i2 < (result.to_add || []).length; i2++) {
+      var item = result.to_add[i2];
+      var offerId = item.properties && item.properties["_offer_id"];
+      var vid = String(normalizeVariantId(item.variant_id));
+      var alreadyIn = existingItems.some(function(li) {
+        return String(li.variant_id) === vid && li.properties && li.properties["_offer_id"] === offerId;
+      });
+      if (alreadyIn) continue;
+      if (isGiftUnavailable(vid) && !canRetry) continue;
+      itemsToAdd.push(item);
+    }
+    var didChange = false;
+    if (hasUpdates) {
+      try {
+        await cartUpdateAll({ updates });
+        didChange = true;
+      } catch (e2) {
+        console.error("[CartMax] cartUpdateAll failed:", e2);
+      }
+    }
+    if (itemsToAdd.length > 0) {
+      var addPayload = itemsToAdd.map(function(item2) {
+        return {
+          id: Number(normalizeVariantId(item2.variant_id)),
+          quantity: item2.quantity || 1,
+          properties: item2.properties || {}
+        };
+      });
+      try {
+        await internalFetch("/cart/add.js", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: addPayload })
+        });
+        didChange = true;
+      } catch (e2) {
+        console.error("[CartMax] gift add failed:", e2);
+      }
+    }
+    if (didChange || hasUpdates) {
+      try {
+        var freshCart = await fetchCart();
+        if (itemsToAdd.length > 0) {
+          for (var k2 = 0; k2 < itemsToAdd.length; k2++) {
+            var addedVid = String(normalizeVariantId(itemsToAdd[k2].variant_id));
+            var inFreshCart = (freshCart.items || []).some(function(li) {
+              return String(li.variant_id) === addedVid;
+            });
+            if (!inFreshCart) {
+              markGiftUnavailable(addedVid);
+              console.warn("[CartMax] Gift variant unavailable:", addedVid);
+            }
+          }
+        }
+        clearAvailableGifts(freshCart.items);
+        window.dispatchEvent(new CustomEvent("cartmax:gift-unavailable", {
+          detail: { variants: _unavailableGifts.slice() }
+        }));
+        window.dispatchEvent(new CustomEvent("cartmax:internal-reload", { detail: { cart: freshCart } }));
+        return freshCart;
+      } catch (e2) {
+      }
+    }
+    return null;
+  }
+  var _lastResult = null;
+  var _evaluating = false;
+  var _pendingCart = null;
+  var _pendingAction = null;
+  async function runEvaluate(cart, action) {
+    if (!cart) return;
+    if (_evaluating) {
+      _pendingCart = cart;
+      _pendingAction = action || null;
+      return;
+    }
+    var ctx = getContext();
+    if (!ctx.shopId || !ctx.themeId) return;
+    var evalCart = action ? simulateCart(cart, action) : cart;
+    if (isCacheValid()) {
+      try {
+        var localResult = localEvaluate(_cachedConfig, evalCart);
+        if (localResult) {
+          window.dispatchEvent(new CustomEvent("cartmax:eval-result", { detail: localResult }));
+        }
+      } catch (e2) {
+      }
+    }
+    _evaluating = true;
+    try {
+      var result = await callEvaluate(evalCart);
+      if (result) {
+        _lastResult = result;
+        await applyResult(result, cart, action || null);
+      }
+    } catch (err) {
+      console.error("[CartMax] Evaluate error:", err);
+    } finally {
+      _evaluating = false;
+    }
+    if (_pendingCart) {
+      var nextCart = _pendingCart;
+      var nextAction = _pendingAction;
+      _pendingCart = null;
+      _pendingAction = null;
+      runEvaluate(nextCart, nextAction);
+    }
+  }
+  window.addEventListener("cartmax:drawer-opened", function() {
+    if (_lastResult) {
+      window.dispatchEvent(new CustomEvent("cartmax:eval-result", { detail: _lastResult }));
+    }
+  });
+  window.addEventListener("cartmax:cart-action", function(e2) {
+    var detail = e2.detail || {};
+    runEvaluate(detail.cart, detail.action);
+  });
+  window.addEventListener("cartmax:cart-changed", function(e2) {
+    runEvaluate(e2.detail && e2.detail.cart);
+  });
+  fetchCart().then(function(cart) {
+    return runEvaluate(cart);
+  }).catch(function() {
+  });
+
+  // src/index.jsx
+  function mount() {
+    var root = document.getElementById("cartmax-root");
+    if (root) R(k(CartDrawer), root);
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", mount);
+  } else {
+    mount();
+  }
+})();

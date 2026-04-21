@@ -1,239 +1,96 @@
-import { useEffect } from "react";
-import { useFetcher } from "react-router";
-import { useAppBridge } from "@shopify/app-bridge-react";
+import { useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
+import { loadConfig, getShopAndTheme } from "../lib/config.server.js";
 
 export const loader = async ({ request }) => {
-  await authenticate.admin(request);
-
-  return null;
-};
-
-export const action = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
-  const color = ["Red", "Orange", "Yellow", "Green"][
-    Math.floor(Math.random() * 4)
-  ];
-  const response = await admin.graphql(
-    `#graphql
-      mutation populateProduct($product: ProductCreateInput!) {
-        productCreate(product: $product) {
-          product {
-            id
-            title
-            handle
-            status
-            variants(first: 10) {
-              edges {
-                node {
-                  id
-                  price
-                  barcode
-                  createdAt
-                }
-              }
-            }
-          }
-        }
-      }`,
-    {
-      variables: {
-        product: {
-          title: `${color} Snowboard`,
-        },
-      },
-    },
-  );
-  const responseJson = await response.json();
-  const product = responseJson.data.productCreate.product;
-  const variantId = product.variants.edges[0].node.id;
-  const variantResponse = await admin.graphql(
-    `#graphql
-    mutation shopifyReactRouterTemplateUpdateVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-      productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-        productVariants {
-          id
-          price
-          barcode
-          createdAt
-        }
-      }
-    }`,
-    {
-      variables: {
-        productId: product.id,
-        variants: [{ id: variantId, price: "100.00" }],
-      },
-    },
-  );
-  const variantResponseJson = await variantResponse.json();
+  const { admin, session } = await authenticate.admin(request);
+  const { shopId, themeId } = await getShopAndTheme(admin, session);
+  const config = await loadConfig(shopId, themeId);
 
   return {
-    product: responseJson.data.productCreate.product,
-    variant: variantResponseJson.data.productVariantsBulkUpdate.productVariants,
+    offersCount: config.offers.filter((o) => o.enabled).length,
+    totalOffers: config.offers.length,
+    couponsCount: config.coupons.filter((c) => c.enabled).length,
+    totalCoupons: config.coupons.length,
+    claimGiftsCount: config.claim_gifts.filter((g) => g.enabled).length,
+    totalClaimGifts: config.claim_gifts.length,
+    progressBarEnabled: config.progress_bar.enabled,
+    milestonesCount: config.progress_bar.visual_milestones.length,
+    bottomRibbonEnabled: config.bottom_ribbon.enabled,
+    upsellsEnabled: config.upsells.enabled,
+    upsellsCount: config.upsells.products.length,
   };
 };
 
-export default function Index() {
-  const fetcher = useFetcher();
-  const shopify = useAppBridge();
-  const isLoading =
-    ["loading", "submitting"].includes(fetcher.state) &&
-    fetcher.formMethod === "POST";
-
-  useEffect(() => {
-    if (fetcher.data?.product?.id) {
-      shopify.toast.show("Product created");
-    }
-  }, [fetcher.data?.product?.id, shopify]);
-  const generateProduct = () => fetcher.submit({}, { method: "POST" });
+export default function Dashboard() {
+  const data = useLoaderData();
 
   return (
-    <s-page heading="Shopify app template">
-      <s-button slot="primary-action" onClick={generateProduct}>
-        Generate a product
-      </s-button>
-
-      <s-section heading="Congrats on creating a new Shopify app 🎉">
-        <s-paragraph>
-          This embedded app template uses{" "}
-          <s-link
-            href="https://shopify.dev/docs/apps/tools/app-bridge"
-            target="_blank"
-          >
-            App Bridge
-          </s-link>{" "}
-          interface examples like an{" "}
-          <s-link href="/app/additional">additional page in the app nav</s-link>
-          , as well as an{" "}
-          <s-link
-            href="https://shopify.dev/docs/api/admin-graphql"
-            target="_blank"
-          >
-            Admin GraphQL
-          </s-link>{" "}
-          mutation demo, to provide a starting point for app development.
-        </s-paragraph>
-      </s-section>
-      <s-section heading="Get started with products">
-        <s-paragraph>
-          Generate a product with GraphQL and get the JSON output for that
-          product. Learn more about the{" "}
-          <s-link
-            href="https://shopify.dev/docs/api/admin-graphql/latest/mutations/productCreate"
-            target="_blank"
-          >
-            productCreate
-          </s-link>{" "}
-          mutation in our API references.
-        </s-paragraph>
-        <s-stack direction="inline" gap="base">
-          <s-button
-            onClick={generateProduct}
-            {...(isLoading ? { loading: true } : {})}
-          >
-            Generate a product
-          </s-button>
-          {fetcher.data?.product && (
-            <s-button
-              onClick={() => {
-                shopify.intents.invoke?.("edit:shopify/Product", {
-                  value: fetcher.data?.product?.id,
-                });
-              }}
-              target="_blank"
-              variant="tertiary"
-            >
-              Edit product
-            </s-button>
-          )}
+    <s-page heading="Cart Max">
+      <s-section heading="Offers">
+        <s-stack direction="inline" align="space-between" block-align="center">
+          <s-paragraph>
+            {data.offersCount} active of {data.totalOffers} total
+          </s-paragraph>
+          <s-link href="/app/offers">Manage</s-link>
         </s-stack>
-        {fetcher.data?.product && (
-          <s-section heading="productCreate mutation">
-            <s-stack direction="block" gap="base">
-              <s-box
-                padding="base"
-                borderWidth="base"
-                borderRadius="base"
-                background="subdued"
-              >
-                <pre style={{ margin: 0 }}>
-                  <code>{JSON.stringify(fetcher.data.product, null, 2)}</code>
-                </pre>
-              </s-box>
-
-              <s-heading>productVariantsBulkUpdate mutation</s-heading>
-              <s-box
-                padding="base"
-                borderWidth="base"
-                borderRadius="base"
-                background="subdued"
-              >
-                <pre style={{ margin: 0 }}>
-                  <code>{JSON.stringify(fetcher.data.variant, null, 2)}</code>
-                </pre>
-              </s-box>
-            </s-stack>
-          </s-section>
-        )}
       </s-section>
 
-      <s-section slot="aside" heading="App template specs">
-        <s-paragraph>
-          <s-text>Framework: </s-text>
-          <s-link href="https://reactrouter.com/" target="_blank">
-            React Router
-          </s-link>
-        </s-paragraph>
-        <s-paragraph>
-          <s-text>Interface: </s-text>
-          <s-link
-            href="https://shopify.dev/docs/api/app-home/using-polaris-components"
-            target="_blank"
-          >
-            Polaris web components
-          </s-link>
-        </s-paragraph>
-        <s-paragraph>
-          <s-text>API: </s-text>
-          <s-link
-            href="https://shopify.dev/docs/api/admin-graphql"
-            target="_blank"
-          >
-            GraphQL
-          </s-link>
-        </s-paragraph>
-        <s-paragraph>
-          <s-text>Database: </s-text>
-          <s-link href="https://www.prisma.io/" target="_blank">
-            Prisma
-          </s-link>
-        </s-paragraph>
+      <s-section heading="Coupons">
+        <s-stack direction="inline" align="space-between" block-align="center">
+          <s-paragraph>
+            {data.couponsCount} active of {data.totalCoupons} total
+          </s-paragraph>
+          <s-link href="/app/coupons">Manage</s-link>
+        </s-stack>
       </s-section>
 
-      <s-section slot="aside" heading="Next steps">
-        <s-unordered-list>
-          <s-list-item>
-            Build an{" "}
-            <s-link
-              href="https://shopify.dev/docs/apps/getting-started/build-app-example"
-              target="_blank"
-            >
-              example app
-            </s-link>
-          </s-list-item>
-          <s-list-item>
-            Explore Shopify&apos;s API with{" "}
-            <s-link
-              href="https://shopify.dev/docs/apps/tools/graphiql-admin-api"
-              target="_blank"
-            >
-              GraphiQL
-            </s-link>
-          </s-list-item>
-        </s-unordered-list>
+      <s-section heading="Claim Gifts">
+        <s-stack direction="inline" align="space-between" block-align="center">
+          <s-paragraph>
+            {data.claimGiftsCount} active of {data.totalClaimGifts} total
+          </s-paragraph>
+          <s-link href="/app/claim-gifts">Manage</s-link>
+        </s-stack>
       </s-section>
+
+      <s-box slot="aside">
+        <s-section heading="Progress Bar">
+          <s-stack direction="block" gap="tight">
+            <s-badge tone={data.progressBarEnabled ? "success" : "warning"}>
+              {data.progressBarEnabled ? "On" : "Off"}
+            </s-badge>
+            <s-paragraph>
+              {data.milestonesCount} visual milestone{data.milestonesCount !== 1 ? "s" : ""}
+            </s-paragraph>
+            <s-link href="/app/progress-bar">Configure</s-link>
+          </s-stack>
+        </s-section>
+
+        <s-section heading="Bottom Ribbon">
+          <s-stack direction="block" gap="tight">
+            <s-badge tone={data.bottomRibbonEnabled ? "success" : "warning"}>
+              {data.bottomRibbonEnabled ? "On" : "Off"}
+            </s-badge>
+            <s-link href="/app/settings">Configure</s-link>
+          </s-stack>
+        </s-section>
+
+        <s-section heading="Upsells">
+          <s-stack direction="block" gap="tight">
+            <s-badge tone={data.upsellsEnabled ? "success" : "warning"}>
+              {data.upsellsEnabled ? "On" : "Off"}
+            </s-badge>
+            {data.upsellsEnabled && (
+              <s-paragraph>
+                {data.upsellsCount} product{data.upsellsCount !== 1 ? "s" : ""}
+              </s-paragraph>
+            )}
+            <s-link href="/app/upsells">Configure</s-link>
+          </s-stack>
+        </s-section>
+      </s-box>
     </s-page>
   );
 }

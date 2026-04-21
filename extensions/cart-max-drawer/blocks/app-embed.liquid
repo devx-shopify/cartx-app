@@ -4,7 +4,24 @@
   Mounts the Preact cart drawer and installs fetch interception.
 {% endcomment %}
 
-<div id="cartmax-root" data-cartmax-enabled="true"></div>
+<div
+  id="cartmax-root"
+  data-cartmax-enabled="true"
+  data-shop-id="{{ shop.permanent_domain }}"
+  data-theme-id="{{ theme.id }}"
+  data-customer-id="{{ customer.id }}"
+  data-customer-tags="{{ customer.tags | json | escape }}"
+  data-money-format="{{ shop.money_format | escape }}"
+></div>
+<script>
+  // theme.id may not render in app embed blocks — set it from window.Shopify.theme
+  (function() {
+    var el = document.getElementById('cartmax-root');
+    if (el && !el.dataset.themeId && window.Shopify && window.Shopify.theme) {
+      el.dataset.themeId = String(window.Shopify.theme.id);
+    }
+  })();
+</script>
 
 {% comment %}
   Inline interception script — must run BEFORE any theme/third-party JS
@@ -112,6 +129,7 @@
 
 {{ 'cartmax.css' | asset_url | stylesheet_tag }}
 <script src="{{ 'cartmax.js' | asset_url }}" defer></script>
+<!-- cache-bust: v2 -->
 
 {% schema %}
 {
