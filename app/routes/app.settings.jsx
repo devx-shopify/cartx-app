@@ -63,7 +63,6 @@ export const action = async ({ request }) => {
   const config = await loadConfig(shopId, themeId);
   const body = await request.json();
 
-  // Milestone actions (standalone)
   if (body._action === "add_milestone") {
     config.progress_bar.visual_milestones.push({
       id: generateId(),
@@ -98,7 +97,6 @@ export const action = async ({ request }) => {
     return { ok: true };
   }
 
-  // Full settings save
   config.progress_bar.enabled = body.progress_bar_enabled;
   config.progress_bar.all_complete_message = body.all_complete_message;
 
@@ -157,6 +155,32 @@ export const action = async ({ request }) => {
   return { ok: true };
 };
 
+function Toggle({ checked, onChange, label }) {
+  return (
+    <label className="cx-toggle">
+      <input type="checkbox" checked={checked} onChange={onChange} />
+      <span className="cx-toggle-track" />
+      {label && <span className="cx-toggle-label">{label}</span>}
+    </label>
+  );
+}
+
+function Field({ label, hint, error, children, optional }) {
+  return (
+    <div className="cx-field">
+      {label && (
+        <label className="cx-label">
+          {label}
+          {optional && <span className="cx-label-optional"> (optional)</span>}
+        </label>
+      )}
+      {children}
+      {hint && <span className="cx-hint">{hint}</span>}
+      {error && <span className="cx-error">{error}</span>}
+    </div>
+  );
+}
+
 function MilestoneForm({ onAdd, submitting }) {
   const [label, setLabel] = useState("");
   const [subLabel, setSubLabel] = useState("");
@@ -182,51 +206,82 @@ function MilestoneForm({ onAdd, submitting }) {
   }
 
   return (
-    <s-section heading="Add milestone">
-      <s-text-field
-        label="Label"
-        value={label}
-        onInput={(e) => setLabel(e.currentTarget.value)}
-        placeholder="Free Shipping"
-      />
-      <s-text-field
-        label="Sub label (optional)"
-        value={subLabel}
-        onInput={(e) => setSubLabel(e.currentTarget.value)}
-      />
-      <s-select
-        label="Trigger type"
-        value={triggerType}
-        onChange={(e) => setTriggerType(e.currentTarget.value)}
-      >
-        <s-option value="price">Price</s-option>
-        <s-option value="quantity">Quantity</s-option>
-      </s-select>
-      <s-text-field
-        label="Threshold"
-        type="number"
-        value={String(threshold)}
-        onInput={(e) => setThreshold(e.currentTarget.value)}
-      />
-      <s-text-field
-        label="Page handles (comma-separated)"
-        value={pageHandles}
-        onInput={(e) => setPageHandles(e.currentTarget.value)}
-      />
-      <s-select
-        label="Audience"
-        value={audience}
-        onChange={(e) => setAudience(e.currentTarget.value)}
-      >
-        <s-option value="all">Everyone</s-option>
-        <s-option value="signed_in">Signed-in customers</s-option>
-        <s-option value="guest">Guests only</s-option>
-        <s-option value="vip_tag">VIP customers</s-option>
-      </s-select>
-      <s-button onClick={handleAdd} {...(submitting ? { loading: true } : {})}>
-        Add milestone
-      </s-button>
-    </s-section>
+    <div className="cx-card">
+      <div className="cx-card-header">
+        <h3 className="cx-card-title">Add milestone</h3>
+      </div>
+      <div className="cx-card-body">
+        <div className="cx-form-section">
+          <div className="cx-form-row">
+            <Field label="Label">
+              <input
+                className="cx-input"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="Free Shipping"
+              />
+            </Field>
+            <Field label="Sub label" optional>
+              <input
+                className="cx-input"
+                value={subLabel}
+                onChange={(e) => setSubLabel(e.target.value)}
+              />
+            </Field>
+          </div>
+          <div className="cx-form-row">
+            <Field label="Trigger type">
+              <select
+                className="cx-input cx-select"
+                value={triggerType}
+                onChange={(e) => setTriggerType(e.target.value)}
+              >
+                <option value="price">Price</option>
+                <option value="quantity">Quantity</option>
+              </select>
+            </Field>
+            <Field label="Threshold">
+              <input
+                className="cx-input"
+                type="number"
+                value={threshold}
+                onChange={(e) => setThreshold(e.target.value)}
+              />
+            </Field>
+          </div>
+          <div className="cx-form-row">
+            <Field label="Page handles" hint="Comma-separated">
+              <input
+                className="cx-input"
+                value={pageHandles}
+                onChange={(e) => setPageHandles(e.target.value)}
+              />
+            </Field>
+            <Field label="Audience">
+              <select
+                className="cx-input cx-select"
+                value={audience}
+                onChange={(e) => setAudience(e.target.value)}
+              >
+                <option value="all">Everyone</option>
+                <option value="signed_in">Signed-in customers</option>
+                <option value="guest">Guests only</option>
+                <option value="vip_tag">VIP customers</option>
+              </select>
+            </Field>
+          </div>
+          <div>
+            <button
+              className="cx-btn cx-btn-secondary"
+              onClick={handleAdd}
+              disabled={submitting}
+            >
+              Add milestone
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -352,235 +407,243 @@ export default function Settings() {
         Save
       </s-button>
 
-      {/* ── Progress Bar ─────────────────────────────── */}
-      <s-section heading="Progress Bar">
-        <s-stack direction="block" gap="base">
-          <s-switch
-            label="Enable progress bar"
-            checked={pbEnabled}
-            onChange={(e) => setPbEnabled(e.currentTarget.checked)}
-          />
-          <s-text-field
-            label="All tiers complete message"
-            value={allCompleteMessage}
-            onInput={(e) => setAllCompleteMessage(e.currentTarget.value)}
-            placeholder="You unlocked all rewards!"
-          />
-        </s-stack>
-      </s-section>
+      <div className="cx-layout">
+        {/* Progress Bar */}
+        <div className="cx-card">
+          <div className="cx-card-header">
+            <h3 className="cx-card-title">Progress Bar</h3>
+            <Toggle
+              checked={pbEnabled}
+              onChange={(e) => setPbEnabled(e.target.checked)}
+            />
+          </div>
+          <div className="cx-card-body">
+            <div className="cx-form-section">
+              <Field label="All tiers complete message">
+                <input
+                  className="cx-input"
+                  value={allCompleteMessage}
+                  onChange={(e) => setAllCompleteMessage(e.target.value)}
+                  placeholder="You unlocked all rewards!"
+                />
+              </Field>
+            </div>
+          </div>
+        </div>
 
-      {data.barSources.length > 0 && (
-        <s-section heading="Bar sources">
-          <s-paragraph color="subdued">
-            These promotions contribute tiers to the progress bar.
-          </s-paragraph>
-          <s-stack direction="block" gap="none">
+        {/* Bar Sources */}
+        {data.barSources.length > 0 && (
+          <div className="cx-card">
+            <div className="cx-card-header">
+              <div>
+                <h3 className="cx-card-title">Bar sources</h3>
+                <p className="cx-card-subtitle">
+                  Promotions contributing tiers to the progress bar
+                </p>
+              </div>
+            </div>
             {data.barSources.map((s, i) => (
-              <span key={i}>
-                {i > 0 && <s-divider />}
-                <s-box padding="base none">
-                  <s-stack
-                    direction="inline"
-                    align="space-between"
-                    block-align="center"
-                  >
-                    <s-paragraph>
-                      <s-text type="strong">{s.source}</s-text> — {s.name}
-                    </s-paragraph>
-                    <s-badge tone="info">
-                      {s.type === "price"
-                        ? `Rs.${s.threshold}`
-                        : `${s.threshold} items`}
-                    </s-badge>
-                  </s-stack>
-                </s-box>
-              </span>
+              <div className="cx-list-item" key={i}>
+                <div className="cx-list-item-info">
+                  <div className="cx-flex cx-items-center cx-gap-sm">
+                    <span className="cx-badge cx-badge-default">{s.source}</span>
+                    <span className="cx-list-item-title">{s.name}</span>
+                  </div>
+                </div>
+                <span className="cx-badge cx-badge-info">
+                  {s.type === "price"
+                    ? `Rs.${s.threshold}`
+                    : `${s.threshold} items`}
+                </span>
+              </div>
             ))}
-          </s-stack>
-        </s-section>
-      )}
-
-      {data.progressBar.visual_milestones.length > 0 && (
-        <s-section heading="Visual milestones">
-          <s-banner tone="info">
-            Milestones are bar-only markers with no reward. Use for things like
-            "Free Shipping" or "VIP Status".
-          </s-banner>
-          <s-stack direction="block" gap="none">
-            {data.progressBar.visual_milestones.map((m, i) => (
-              <span key={m.id}>
-                {i > 0 && <s-divider />}
-                <s-box padding="base none">
-                  <s-stack direction="block" gap="tight">
-                    <s-stack
-                      direction="inline"
-                      align="space-between"
-                      block-align="center"
-                    >
-                      <s-stack
-                        direction="inline"
-                        gap="tight"
-                        block-align="center"
-                      >
-                        <s-text type="strong">{m.label}</s-text>
-                        <s-badge tone={m.enabled ? "success" : "warning"}>
-                          {m.enabled ? "Active" : "Inactive"}
-                        </s-badge>
-                      </s-stack>
-                      <s-badge tone="info">
-                        {m.trigger.type === "price"
-                          ? `Rs.${m.trigger.threshold}`
-                          : `${m.trigger.threshold} items`}
-                      </s-badge>
-                    </s-stack>
-                    {m.sub_label && (
-                      <s-paragraph color="subdued">{m.sub_label}</s-paragraph>
-                    )}
-                    <s-stack direction="inline" gap="tight">
-                      <s-switch
-                        label={m.enabled ? "Enabled" : "Disabled"}
-                        checked={m.enabled}
-                        onChange={() =>
-                          milestoneAction("toggle_milestone", m.id)
-                        }
-                      />
-                      <s-button
-                        tone="critical"
-                        onClick={() => handleDeleteMilestone(m)}
-                      >
-                        Delete
-                      </s-button>
-                    </s-stack>
-                  </s-stack>
-                </s-box>
-              </span>
-            ))}
-          </s-stack>
-        </s-section>
-      )}
-
-      <MilestoneForm onAdd={addMilestone} submitting={submitting} />
-
-      {/* ── Upsells ──────────────────────────────────── */}
-      <s-section heading="Upsells">
-        <s-stack direction="block" gap="base">
-          <s-switch
-            label="Enable upsells in cart drawer"
-            checked={upsellsEnabled}
-            onChange={(e) => setUpsellsEnabled(e.currentTarget.checked)}
-          />
-          <s-text-field
-            label="Section heading"
-            value={upsellsHeading}
-            onInput={(e) => setUpsellsHeading(e.currentTarget.value)}
-            placeholder="You may also like"
-          />
-          <s-checkbox
-            label="Show upsells when cart is empty"
-            checked={showOnEmptyCart}
-            onChange={(e) => setShowOnEmptyCart(e.currentTarget.checked)}
-          />
-        </s-stack>
-      </s-section>
-
-      <s-section heading="Upsell products">
-        <s-paragraph color="subdued">
-          Pick products to recommend in the cart drawer. Products already in the
-          cart are hidden automatically.
-        </s-paragraph>
-
-        <s-button onClick={pickProducts}>
-          {upsellProducts.length > 0 ? "Change products" : "Add products"}
-        </s-button>
-
-        {upsellProducts.length > 0 && (
-          <s-stack direction="block" gap="none">
-            {upsellProducts.map((p, i) => (
-              <span key={p.product_id}>
-                {i > 0 && <s-divider />}
-                <s-box padding="base none">
-                  <s-stack
-                    direction="inline"
-                    align="space-between"
-                    block-align="center"
-                  >
-                    <s-stack
-                      direction="inline"
-                      gap="tight"
-                      block-align="center"
-                    >
-                      {p.image_url && (
-                        <s-thumbnail
-                          src={p.image_url}
-                          alt={p.title}
-                          size="small"
-                        />
-                      )}
-                      <s-stack direction="block" gap="none">
-                        <s-text type="strong">{p.title}</s-text>
-                        <s-paragraph color="subdued">
-                          Rs.{p.price}
-                        </s-paragraph>
-                      </s-stack>
-                    </s-stack>
-                    <s-button
-                      tone="critical"
-                      onClick={() => removeProduct(p.product_id)}
-                    >
-                      Remove
-                    </s-button>
-                  </s-stack>
-                </s-box>
-              </span>
-            ))}
-          </s-stack>
+          </div>
         )}
 
-        {upsellProducts.length > 6 && (
-          <s-banner tone="warning">
-            More than 6 products may feel overwhelming. Consider keeping it
-            focused.
-          </s-banner>
+        {/* Visual Milestones */}
+        {data.progressBar.visual_milestones.length > 0 && (
+          <div className="cx-card">
+            <div className="cx-card-header">
+              <div>
+                <h3 className="cx-card-title">Visual milestones</h3>
+                <p className="cx-card-subtitle">
+                  Bar-only markers with no reward (e.g., "Free Shipping")
+                </p>
+              </div>
+            </div>
+            {data.progressBar.visual_milestones.map((m) => (
+              <div className="cx-list-item" key={m.id}>
+                <div className="cx-list-item-info">
+                  <div className="cx-flex cx-items-center cx-gap-sm">
+                    <span className="cx-list-item-title">{m.label}</span>
+                    <span className={`cx-badge cx-badge-dot ${m.enabled ? "cx-badge-success" : "cx-badge-warning"}`}>
+                      {m.enabled ? "Active" : "Inactive"}
+                    </span>
+                    <span className="cx-badge cx-badge-info">
+                      {m.trigger.type === "price"
+                        ? `Rs.${m.trigger.threshold}`
+                        : `${m.trigger.threshold} items`}
+                    </span>
+                  </div>
+                  {m.sub_label && (
+                    <span className="cx-list-item-desc">{m.sub_label}</span>
+                  )}
+                </div>
+                <div className="cx-list-item-actions">
+                  <Toggle
+                    checked={m.enabled}
+                    onChange={() => milestoneAction("toggle_milestone", m.id)}
+                  />
+                  <button
+                    className="cx-btn cx-btn-danger cx-btn-sm"
+                    onClick={() => handleDeleteMilestone(m)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
-      </s-section>
 
-      {/* ── Bottom Ribbon ────────────────────────────── */}
-      <s-section heading="Bottom Ribbon">
-        <s-stack direction="block" gap="base">
-          <s-switch
-            label="Enable bottom ribbon"
-            checked={ribbonEnabled}
-            onChange={(e) => setRibbonEnabled(e.currentTarget.checked)}
-          />
-          <s-text-field
-            label="Out-of-stock message override"
-            value={oosOverride}
-            onInput={(e) => setOosOverride(e.currentTarget.value)}
-            details="Leave empty to use the default OOS message"
-            placeholder="This item is currently out of stock"
-          />
-        </s-stack>
-      </s-section>
+        <MilestoneForm onAdd={addMilestone} submitting={submitting} />
 
-      {/* ── Behavior ─────────────────────────────────── */}
-      <s-section heading="Behavior">
-        <s-stack direction="block" gap="base">
-          <s-select
-            label="When a customer leaves a page with active offers"
-            value={crossPageBehavior}
-            onChange={(e) => setCrossPageBehavior(e.currentTarget.value)}
-          >
-            <s-option value="silent">Remove silently</s-option>
-            <s-option value="notice">Show a notice</s-option>
-            <s-option value="modal">Show a confirmation modal</s-option>
-          </s-select>
-          <s-paragraph color="subdued">
-            Controls what happens to auto-added gift items when a customer
-            navigates away from the page where the offer was active. Claimed
-            items are never auto-removed.
-          </s-paragraph>
-        </s-stack>
-      </s-section>
+        {/* Upsells */}
+        <div className="cx-card">
+          <div className="cx-card-header">
+            <h3 className="cx-card-title">Upsells</h3>
+            <Toggle
+              checked={upsellsEnabled}
+              onChange={(e) => setUpsellsEnabled(e.target.checked)}
+            />
+          </div>
+          <div className="cx-card-body">
+            <div className="cx-form-section">
+              <Field label="Section heading">
+                <input
+                  className="cx-input"
+                  value={upsellsHeading}
+                  onChange={(e) => setUpsellsHeading(e.target.value)}
+                  placeholder="You may also like"
+                />
+              </Field>
+              <label className="cx-checkbox">
+                <input
+                  type="checkbox"
+                  checked={showOnEmptyCart}
+                  onChange={(e) => setShowOnEmptyCart(e.target.checked)}
+                />
+                Show upsells when cart is empty
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {/* Upsell Products */}
+        <div className="cx-card">
+          <div className="cx-card-header">
+            <div>
+              <h3 className="cx-card-title">Upsell products</h3>
+              <p className="cx-card-subtitle">
+                Products already in the cart are hidden automatically
+              </p>
+            </div>
+            <button className="cx-btn cx-btn-secondary" onClick={pickProducts}>
+              {upsellProducts.length > 0 ? "Change products" : "Add products"}
+            </button>
+          </div>
+          {upsellProducts.length > 0 ? (
+            <div className="cx-card-body">
+              {upsellProducts.map((p) => (
+                <div className="cx-product-row" key={p.product_id}>
+                  {p.image_url ? (
+                    <img className="cx-product-img" src={p.image_url} alt={p.title} />
+                  ) : (
+                    <div className="cx-product-img" />
+                  )}
+                  <div className="cx-product-info">
+                    <div className="cx-product-title">{p.title}</div>
+                    <div className="cx-product-price">Rs.{p.price}</div>
+                  </div>
+                  <button
+                    className="cx-btn cx-btn-ghost cx-btn-sm"
+                    onClick={() => removeProduct(p.product_id)}
+                    title="Remove"
+                  >
+                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+              {upsellProducts.length > 6 && (
+                <div className="cx-banner cx-banner-warning" style={{ marginTop: 12 }}>
+                  More than 6 products may feel overwhelming. Consider keeping it focused.
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="cx-empty" style={{ padding: '32px 20px' }}>
+              <p className="cx-empty-desc">
+                No upsell products selected. Pick products to recommend in the cart drawer.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom Ribbon */}
+        <div className="cx-card">
+          <div className="cx-card-header">
+            <h3 className="cx-card-title">Bottom Ribbon</h3>
+            <Toggle
+              checked={ribbonEnabled}
+              onChange={(e) => setRibbonEnabled(e.target.checked)}
+            />
+          </div>
+          <div className="cx-card-body">
+            <div className="cx-form-section">
+              <Field
+                label="Out-of-stock message override"
+                hint="Leave empty to use the default OOS message"
+              >
+                <input
+                  className="cx-input"
+                  value={oosOverride}
+                  onChange={(e) => setOosOverride(e.target.value)}
+                  placeholder="This item is currently out of stock"
+                />
+              </Field>
+            </div>
+          </div>
+        </div>
+
+        {/* Behavior */}
+        <div className="cx-card">
+          <div className="cx-card-header">
+            <h3 className="cx-card-title">Behavior</h3>
+          </div>
+          <div className="cx-card-body">
+            <div className="cx-form-section">
+              <Field label="When a customer leaves a page with active offers">
+                <select
+                  className="cx-input cx-select"
+                  value={crossPageBehavior}
+                  onChange={(e) => setCrossPageBehavior(e.target.value)}
+                >
+                  <option value="silent">Remove silently</option>
+                  <option value="notice">Show a notice</option>
+                  <option value="modal">Show a confirmation modal</option>
+                </select>
+              </Field>
+              <p className="cx-text-sm cx-text-secondary" style={{ margin: 0 }}>
+                Controls what happens to auto-added gift items when a customer
+                navigates away from the page where the offer was active. Claimed
+                items are never auto-removed.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
     </s-page>
   );
 }

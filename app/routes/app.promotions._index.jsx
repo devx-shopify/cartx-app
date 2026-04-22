@@ -116,10 +116,10 @@ const TYPE_LABELS = {
   "claim-gift": "Claim Gift",
 };
 
-const TYPE_TONES = {
-  offer: "magic",
-  coupon: "info",
-  "claim-gift": "success",
+const TYPE_BADGE_CLASS = {
+  offer: "cx-badge-magic",
+  coupon: "cx-badge-info",
+  "claim-gift": "cx-badge-success",
 };
 
 const TABS = ["all", "offer", "coupon", "claim-gift"];
@@ -129,6 +129,15 @@ const TAB_LABELS = {
   coupon: "Coupons",
   "claim-gift": "Claim Gifts",
 };
+
+function Toggle({ checked, onChange }) {
+  return (
+    <label className="cx-toggle">
+      <input type="checkbox" checked={checked} onChange={onChange} />
+      <span className="cx-toggle-track" />
+    </label>
+  );
+}
 
 export default function PromotionsIndex() {
   const { promotions } = useLoaderData();
@@ -178,115 +187,103 @@ export default function PromotionsIndex() {
         Create promotion
       </s-button>
 
-      {/* Tab filter */}
-      <s-section>
-        <s-stack direction="inline" gap="tight">
+      <div className="cx-layout">
+        {/* Tab filter */}
+        <div className="cx-tabs">
           {TABS.map((tab) => (
-            <s-chip
+            <button
               key={tab}
-              label={`${TAB_LABELS[tab]} (${tabCounts[tab]})`}
-              selected={activeTab === tab}
+              className={`cx-tab ${activeTab === tab ? "cx-tab-active" : ""}`}
               onClick={() => setActiveTab(tab)}
-            />
-          ))}
-        </s-stack>
-      </s-section>
-
-      {/* Promotions list */}
-      {filtered.length === 0 ? (
-        <s-section
-          heading={
-            activeTab === "all"
-              ? "No promotions yet"
-              : `No ${TAB_LABELS[activeTab].toLowerCase()} yet`
-          }
-        >
-          <s-paragraph color="subdued">
-            Create your first promotion to start adding offers, coupons, or
-            claim gifts for your customers.
-          </s-paragraph>
-        </s-section>
-      ) : (
-        <s-section>
-          <s-stack direction="block" gap="none">
-            {filtered.map((promo, i) => (
-              <span key={promo.id}>
-                {i > 0 && <s-divider />}
-                <s-box padding="base">
-                  <s-stack direction="block" gap="tight">
-                    {/* Row 1: Name + badges + edit link */}
-                    <s-stack
-                      direction="inline"
-                      align="space-between"
-                      block-align="center"
-                    >
-                      <s-stack
-                        direction="inline"
-                        gap="tight"
-                        block-align="center"
-                      >
-                        <s-text type="strong">{promo.name}</s-text>
-                        <s-badge tone={promo.enabled ? "success" : "warning"}>
-                          {promo.enabled ? "Active" : "Inactive"}
-                        </s-badge>
-                        <s-badge tone={TYPE_TONES[promo.type]}>
-                          {TYPE_LABELS[promo.type]}
-                        </s-badge>
-                      </s-stack>
-                      <s-link href={`/app/promotions/${promo.id}`}>
-                        Edit
-                      </s-link>
-                    </s-stack>
-
-                    {/* Row 2: Trigger + page badges */}
-                    <s-stack
-                      direction="inline"
-                      gap="tight"
-                      block-align="center"
-                    >
-                      <s-paragraph color="subdued">
-                        {promo.trigger}
-                      </s-paragraph>
-                      {promo.pages.length > 0 &&
-                        promo.pages.map((h) => (
-                          <s-badge key={h} tone="info">
-                            {h}
-                          </s-badge>
-                        ))}
-                    </s-stack>
-
-                    {/* Row 3: Actions */}
-                    <s-stack direction="inline" gap="tight">
-                      <s-switch
-                        label={promo.enabled ? "Enabled" : "Disabled"}
-                        checked={promo.enabled}
-                        onChange={() =>
-                          submitAction("toggle", promo.id, promo.type)
-                        }
-                      />
-                      {promo.type === "offer" && (
-                        <s-button
-                          onClick={() =>
-                            submitAction("duplicate", promo.id, promo.type)
-                          }
-                        >
-                          Duplicate
-                        </s-button>
-                      )}
-                      <s-button
-                        tone="critical"
-                        onClick={() => handleDelete(promo)}
-                      >
-                        Delete
-                      </s-button>
-                    </s-stack>
-                  </s-stack>
-                </s-box>
+            >
+              {TAB_LABELS[tab]}
+              <span style={{ opacity: 0.6, marginLeft: 4 }}>
+                {tabCounts[tab]}
               </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Promotions list */}
+        {filtered.length === 0 ? (
+          <div className="cx-card">
+            <div className="cx-empty">
+              <div className="cx-empty-icon">
+                <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h.008v.008H6V6z" />
+                </svg>
+              </div>
+              <p className="cx-empty-title">
+                {activeTab === "all"
+                  ? "No promotions yet"
+                  : `No ${TAB_LABELS[activeTab].toLowerCase()} yet`}
+              </p>
+              <p className="cx-empty-desc">
+                Create your first promotion to start adding offers, coupons, or
+                claim gifts for your customers.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="cx-card">
+            {filtered.map((promo) => (
+              <div className="cx-list-item" key={promo.id}>
+                <div className="cx-list-item-info">
+                  <div className="cx-flex cx-items-center cx-gap-sm">
+                    <span className="cx-list-item-title">{promo.name}</span>
+                    <span className={`cx-badge cx-badge-dot ${promo.enabled ? "cx-badge-success" : "cx-badge-warning"}`}>
+                      {promo.enabled ? "Active" : "Inactive"}
+                    </span>
+                    <span className={`cx-badge ${TYPE_BADGE_CLASS[promo.type]}`}>
+                      {TYPE_LABELS[promo.type]}
+                    </span>
+                  </div>
+                  <div className="cx-list-item-meta">
+                    <span className="cx-list-item-desc">{promo.trigger}</span>
+                    {promo.pages.length > 0 &&
+                      promo.pages.map((h) => (
+                        <span key={h} className="cx-badge cx-badge-default">
+                          {h}
+                        </span>
+                      ))}
+                  </div>
+                </div>
+                <div className="cx-list-item-actions">
+                  <Toggle
+                    checked={promo.enabled}
+                    onChange={() => submitAction("toggle", promo.id, promo.type)}
+                  />
+                  {promo.type === "offer" && (
+                    <button
+                      className="cx-btn cx-btn-ghost cx-btn-sm"
+                      onClick={() => submitAction("duplicate", promo.id, promo.type)}
+                      title="Duplicate"
+                    >
+                      <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <rect x="9" y="9" width="13" height="13" rx="2" />
+                        <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                      </svg>
+                    </button>
+                  )}
+                  <a
+                    href={`/app/promotions/${promo.id}`}
+                    className="cx-btn cx-btn-secondary cx-btn-sm"
+                  >
+                    Edit
+                  </a>
+                  <button
+                    className="cx-btn cx-btn-danger cx-btn-sm"
+                    onClick={() => handleDelete(promo)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
             ))}
-          </s-stack>
-        </s-section>
-      )}
+          </div>
+        )}
+      </div>
     </s-page>
   );
 }

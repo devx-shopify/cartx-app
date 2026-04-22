@@ -7,8 +7,23 @@ function isFrozenHandle(handle) {
   return FROZEN_PAGE_PREFIXES.some((p) => handle.startsWith(p));
 }
 
+function Field({ label, hint, error, children, optional }) {
+  return (
+    <div className="cx-field">
+      {label && (
+        <label className="cx-label">
+          {label}
+          {optional && <span className="cx-label-optional"> (optional)</span>}
+        </label>
+      )}
+      {children}
+      {hint && <span className="cx-hint">{hint}</span>}
+      {error && <span className="cx-error">{error}</span>}
+    </div>
+  );
+}
+
 export default function CouponForm({ coupon, onSubmit, submitting }) {
-  // Discount data (from picker or existing coupon)
   const [shopifyDiscountId, setShopifyDiscountId] = useState(coupon?.shopify_discount_id ?? "");
   const [code, setCode] = useState(coupon?.code ?? "");
   const [typeLabel, setTypeLabel] = useState(coupon?.type_label ?? "");
@@ -16,14 +31,12 @@ export default function CouponForm({ coupon, onSubmit, submitting }) {
   const [isAutomatic, setIsAutomatic] = useState(coupon?.is_automatic ?? false);
   const [enabled, setEnabled] = useState(coupon?.enabled ?? true);
 
-  // Display settings
   const [displayMessage, setDisplayMessage] = useState(coupon?.display_message ?? "");
   const [audience, setAudience] = useState(coupon?.audience ?? "all");
   const [pageHandles, setPageHandles] = useState(coupon?.page_handles?.join(", ") ?? "/");
 
   const [errors, setErrors] = useState({});
 
-  // Discount picker
   const [pickerOpen, setPickerOpen] = useState(false);
   const discountFetcher = useFetcher();
   const discountsLoading = discountFetcher.state !== "idle";
@@ -78,134 +91,165 @@ export default function CouponForm({ coupon, onSubmit, submitting }) {
   }
 
   return (
-    <s-stack direction="block" gap="loose">
-      {/* Discount selection */}
-      <s-card>
-        <s-stack direction="block" gap="base">
-          <s-text variant="headingSm">Shopify Discount</s-text>
-
-          {hasDiscount && !pickerOpen ? (
-            <s-stack direction="block" gap="tight">
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 14px", background: "#f6f6f7", borderRadius: "8px" }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600 }}>{title}</div>
-                  <div style={{ fontSize: "12px", color: "#6d7175" }}>
-                    {isAutomatic ? "Automatic discount" : code}
+    <div className="cx-layout">
+      {/* Discount Selection */}
+      <div className="cx-card">
+        <div className="cx-card-header">
+          <h3 className="cx-card-title">Shopify Discount</h3>
+        </div>
+        <div className="cx-card-body">
+          <div className="cx-form-section">
+            {hasDiscount && !pickerOpen ? (
+              <>
+                <div className="cx-selected-discount">
+                  <div className="cx-selected-discount-info">
+                    <div className="cx-selected-discount-title">{title}</div>
+                    <div className="cx-selected-discount-meta">
+                      {isAutomatic ? "Automatic discount" : code}
+                    </div>
                   </div>
+                  <span className="cx-badge cx-badge-success">{typeLabel}</span>
                 </div>
-                <s-badge tone="success">{typeLabel}</s-badge>
-              </div>
-              <s-button variant="tertiary" onClick={openPicker}>Change discount</s-button>
-            </s-stack>
-          ) : !pickerOpen ? (
-            <s-stack direction="block" gap="tight">
-              <s-button onClick={openPicker}>Select discount</s-button>
-              {errors.code ? <s-text tone="critical">{errors.code}</s-text> : null}
-            </s-stack>
-          ) : null}
+                <div>
+                  <button className="cx-btn cx-btn-ghost" onClick={openPicker}>
+                    Change discount
+                  </button>
+                </div>
+              </>
+            ) : !pickerOpen ? (
+              <>
+                <button className="cx-btn cx-btn-secondary" onClick={openPicker}>
+                  Select discount
+                </button>
+                {errors.code && <span className="cx-error">{errors.code}</span>}
+              </>
+            ) : null}
 
-          {pickerOpen && (
-            <s-stack direction="block" gap="tight">
-              <s-text-field
-                label="Search"
-                placeholder="Search by title or code..."
-                onInput={(e) => loadDiscounts(e.currentTarget.value)}
-                autoFocus
-              />
-              <div style={{ maxHeight: "300px", overflowY: "auto", border: "1px solid #e3e3e3", borderRadius: "8px" }}>
-                {discountsLoading ? (
-                  <div style={{ padding: "16px", textAlign: "center" }}>
-                    <s-text tone="subdued">Loading...</s-text>
-                  </div>
-                ) : discounts.length === 0 ? (
-                  <div style={{ padding: "16px", textAlign: "center" }}>
-                    <s-text tone="subdued">No discounts found</s-text>
-                  </div>
-                ) : (
-                  discounts.map((d) => (
-                    <div
-                      key={d.id}
-                      onClick={() => selectDiscount(d)}
-                      style={{
-                        padding: "10px 14px",
-                        cursor: "pointer",
-                        borderBottom: "1px solid #f1f1f1",
-                      }}
-                      onMouseOver={(e) => { e.currentTarget.style.background = "#f6f6f7"; }}
-                      onMouseOut={(e) => { e.currentTarget.style.background = ""; }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, fontSize: "13px" }}>
-                            {d.title}
-                          </div>
+            {pickerOpen && (
+              <>
+                <Field label="Search">
+                  <input
+                    className="cx-input"
+                    placeholder="Search by title or code..."
+                    onChange={(e) => loadDiscounts(e.target.value)}
+                    autoFocus
+                  />
+                </Field>
+                <div className="cx-picker-list">
+                  {discountsLoading ? (
+                    <div className="cx-picker-empty">Loading...</div>
+                  ) : discounts.length === 0 ? (
+                    <div className="cx-picker-empty">No discounts found</div>
+                  ) : (
+                    discounts.map((d) => (
+                      <div
+                        key={d.id}
+                        className="cx-picker-item"
+                        onClick={() => selectDiscount(d)}
+                      >
+                        <div className="cx-picker-item-info">
+                          <div className="cx-picker-item-title">{d.title}</div>
                           {d.code && d.code !== d.title && (
-                            <div style={{ fontSize: "12px", color: "#6d7175", fontFamily: "monospace" }}>{d.code}</div>
+                            <div className="cx-picker-item-code">{d.code}</div>
                           )}
-                          <div style={{ fontSize: "11px", color: "#8c9196", marginTop: "2px" }}>
-                            {d.is_automatic ? "Automatic" : "Code"} · {d.status === "ACTIVE" ? "Active" : d.status === "SCHEDULED" ? "Scheduled" : "Expired"}
+                          <div className="cx-picker-item-meta">
+                            {d.is_automatic ? "Automatic" : "Code"} &middot;{" "}
+                            {d.status === "ACTIVE" ? "Active" : d.status === "SCHEDULED" ? "Scheduled" : "Expired"}
                           </div>
                         </div>
-                        <s-badge tone={d.status === "ACTIVE" ? "success" : "attention"}>
+                        <span className={`cx-badge ${d.status === "ACTIVE" ? "cx-badge-success" : "cx-badge-warning"}`}>
                           {d.type_label}
-                        </s-badge>
+                        </span>
                       </div>
-                    </div>
-                  ))
-                )}
-              </div>
-              <s-button variant="tertiary" onClick={() => setPickerOpen(false)}>Cancel</s-button>
-            </s-stack>
-          )}
-        </s-stack>
-      </s-card>
+                    ))
+                  )}
+                </div>
+                <div>
+                  <button className="cx-btn cx-btn-ghost" onClick={() => setPickerOpen(false)}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
 
-      {/* Display settings */}
-      <s-section heading="Display settings">
-        <s-text-field
-          label="Custom message (optional)"
-          value={displayMessage}
-          onInput={(e) => setDisplayMessage(e.currentTarget.value)}
-          placeholder="Use this code for 20% off your order!"
-          details="Shown on the coupon card in the cart drawer"
-        />
-        <s-checkbox
-          label="Enabled"
-          checked={enabled}
-          onChange={(e) => setEnabled(e.currentTarget.checked)}
-        />
-      </s-section>
+      {/* Display Settings */}
+      <div className="cx-card">
+        <div className="cx-card-header">
+          <h3 className="cx-card-title">Display settings</h3>
+        </div>
+        <div className="cx-card-body">
+          <div className="cx-form-section">
+            <Field
+              label="Custom message"
+              optional
+              hint="Shown on the coupon card in the cart drawer"
+            >
+              <input
+                className="cx-input"
+                value={displayMessage}
+                onChange={(e) => setDisplayMessage(e.target.value)}
+                placeholder="Use this code for 20% off your order!"
+              />
+            </Field>
+            <label className="cx-checkbox">
+              <input
+                type="checkbox"
+                checked={enabled}
+                onChange={(e) => setEnabled(e.target.checked)}
+              />
+              Enabled
+            </label>
+          </div>
+        </div>
+      </div>
 
-      <s-section heading="Audience">
-        <s-select
-          label="Who can see this coupon?"
-          value={audience}
-          onChange={(e) => setAudience(e.currentTarget.value)}
+      {/* Targeting */}
+      <div className="cx-card">
+        <div className="cx-card-header">
+          <h3 className="cx-card-title">Targeting</h3>
+        </div>
+        <div className="cx-card-body">
+          <div className="cx-form-section">
+            <Field label="Who can see this coupon?">
+              <select
+                className="cx-input cx-select"
+                value={audience}
+                onChange={(e) => setAudience(e.target.value)}
+              >
+                <option value="all">Everyone</option>
+                <option value="signed_in">Signed-in customers</option>
+                <option value="guest">Guests only</option>
+                <option value="vip_tag">VIP customers</option>
+              </select>
+            </Field>
+            <Field
+              label="Show on pages"
+              hint="Controls where the coupon card appears in the cart drawer"
+              error={errors.pageHandles}
+            >
+              <input
+                className={`cx-input ${errors.pageHandles ? "cx-input-error" : ""}`}
+                value={pageHandles}
+                onChange={(e) => setPageHandles(e.target.value)}
+              />
+            </Field>
+          </div>
+        </div>
+      </div>
+
+      {/* Submit */}
+      <div className="cx-form-actions">
+        <button
+          className="cx-btn cx-btn-primary"
+          onClick={handleSubmit}
+          disabled={submitting}
         >
-          <s-option value="all">Everyone</s-option>
-          <s-option value="signed_in">Signed-in customers</s-option>
-          <s-option value="guest">Guests only</s-option>
-          <s-option value="vip_tag">VIP customers</s-option>
-        </s-select>
-      </s-section>
-
-      <s-section heading="Show on pages">
-        <s-text-field
-          label="Page handles (comma-separated)"
-          value={pageHandles}
-          onInput={(e) => setPageHandles(e.currentTarget.value)}
-          details="Controls where the coupon card appears in the cart drawer"
-          {...(errors.pageHandles ? { error: errors.pageHandles } : {})}
-        />
-      </s-section>
-
-      <s-button
-        variant="primary"
-        onClick={handleSubmit}
-        {...(submitting ? { loading: true } : {})}
-      >
-        Save coupon
-      </s-button>
-    </s-stack>
+          {submitting ? "Saving..." : "Save coupon"}
+        </button>
+      </div>
+    </div>
   );
 }

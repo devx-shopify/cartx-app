@@ -69,6 +69,26 @@ export const action = async ({ request }) => {
   return { ok: true };
 };
 
+const PROMO_BADGE_TONE = {
+  Offer: "cx-badge-magic",
+  Coupon: "cx-badge-info",
+  "Claim Gift": "cx-badge-success",
+};
+
+function Toggle({ checked, onChange, label }) {
+  return (
+    <label className="cx-toggle">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+      />
+      <span className="cx-toggle-track" />
+      {label && <span className="cx-toggle-label">{label}</span>}
+    </label>
+  );
+}
+
 export default function Dashboard() {
   const data = useLoaderData();
   const fetcher = useFetcher();
@@ -100,167 +120,168 @@ export default function Dashboard() {
         Create promotion
       </s-button>
 
-      {/* Onboarding for new merchants */}
-      {!hasPromotions && (
-        <s-section heading="Get started">
-          <s-banner tone="info">
-            Welcome to Cart Max! Set up your cart drawer experience in a few
-            steps.
-          </s-banner>
-          <s-box padding="base">
-            <s-stack direction="block" gap="base">
-              <s-stack direction="inline" gap="tight" block-align="center">
-                <s-badge tone="info">1</s-badge>
-                <s-paragraph>
-                  <s-link href="/app/promotions/new?type=offer">
-                    Create your first offer
-                  </s-link>
-                  {" — add free gifts, BOGO deals, or cart freebies"}
-                </s-paragraph>
-              </s-stack>
-              <s-divider />
-              <s-stack direction="inline" gap="tight" block-align="center">
-                <s-badge tone="info">2</s-badge>
-                <s-paragraph>
-                  <s-link href="/app/settings">Configure settings</s-link>
-                  {" — set up the progress bar, upsells, and ribbon"}
-                </s-paragraph>
-              </s-stack>
-              <s-divider />
-              <s-stack direction="inline" gap="tight" block-align="center">
-                <s-badge tone="info">3</s-badge>
-                <s-paragraph>
-                  Preview your cart drawer on your storefront
-                </s-paragraph>
-              </s-stack>
-            </s-stack>
-          </s-box>
-        </s-section>
-      )}
+      <div className="cx-layout cx-layout-wide">
+        {/* Onboarding */}
+        {!hasPromotions && (
+          <div className="cx-card">
+            <div className="cx-card-header">
+              <h3 className="cx-card-title">Get started with Cart Max</h3>
+            </div>
+            <div className="cx-card-body">
+              <div className="cx-banner cx-banner-info" style={{ marginBottom: 20 }}>
+                <svg className="cx-banner-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 3a1 1 0 110 2 1 1 0 010-2zm2 8H6v-1h1V8H6V7h3v4h1v1z"/>
+                </svg>
+                <span>Welcome! Set up your cart drawer experience in a few simple steps.</span>
+              </div>
+              <div className="cx-steps">
+                <div className="cx-step">
+                  <span className="cx-step-number">1</span>
+                  <div className="cx-step-content">
+                    <div className="cx-step-title">
+                      <a href="/app/promotions/new?type=offer">Create your first offer</a>
+                    </div>
+                    <div className="cx-step-desc">Add free gifts, BOGO deals, or cart freebies</div>
+                  </div>
+                </div>
+                <div className="cx-step">
+                  <span className="cx-step-number">2</span>
+                  <div className="cx-step-content">
+                    <div className="cx-step-title">
+                      <a href="/app/settings">Configure settings</a>
+                    </div>
+                    <div className="cx-step-desc">Set up the progress bar, upsells, and ribbon</div>
+                  </div>
+                </div>
+                <div className="cx-step">
+                  <span className="cx-step-number">3</span>
+                  <div className="cx-step-content">
+                    <div className="cx-step-title">Preview your cart drawer</div>
+                    <div className="cx-step-desc">Open your storefront to see it in action</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
-      {/* Active promotions */}
-      {hasPromotions && (
-        <s-section heading="Active promotions">
-          {hasActivePromotions ? (
-            <s-stack direction="block" gap="none">
-              {data.activePromotions.slice(0, 5).map((promo, i) => (
-                <span key={promo.id}>
-                  {i > 0 && <s-divider />}
-                  <s-box padding="base">
-                    <s-stack
-                      direction="inline"
-                      align="space-between"
-                      block-align="center"
-                    >
-                      <s-stack
-                        direction="inline"
-                        gap="tight"
-                        block-align="center"
-                      >
-                        <s-text type="strong">{promo.name}</s-text>
-                        <s-badge tone="info">{promo.type}</s-badge>
-                      </s-stack>
-                      <s-link href={`/app/promotions/${promo.id}`}>Edit</s-link>
-                    </s-stack>
-                  </s-box>
+        {/* Dashboard grid */}
+        {hasPromotions && (
+          <div className="cx-grid-sidebar">
+            {/* Main content */}
+            <div className="cx-flex-col cx-gap-lg">
+              {/* Stats row */}
+              <div className="cx-grid-3">
+                <div className="cx-stat">
+                  <span className="cx-stat-label">Total</span>
+                  <span className="cx-stat-value">{data.totalPromotions}</span>
+                  <span className="cx-stat-footer">Promotions created</span>
+                </div>
+                <div className="cx-stat">
+                  <span className="cx-stat-label">Active</span>
+                  <span className="cx-stat-value">{data.activePromotions.length}</span>
+                  <span className="cx-stat-footer">Running now</span>
+                </div>
+                <div className="cx-stat">
+                  <span className="cx-stat-label">Milestones</span>
+                  <span className="cx-stat-value">{data.milestonesCount}</span>
+                  <span className="cx-stat-footer">Visual milestones</span>
+                </div>
+              </div>
+
+              {/* Active promotions */}
+              <div className="cx-card">
+                <div className="cx-card-header">
+                  <h3 className="cx-card-title">Active promotions</h3>
+                  <a href="/app/promotions" className="cx-btn-link">
+                    View all ({data.totalPromotions})
+                  </a>
+                </div>
+                {hasActivePromotions ? (
+                  <>
+                    {data.activePromotions.slice(0, 5).map((promo) => (
+                      <div className="cx-list-item" key={promo.id}>
+                        <div className="cx-list-item-info">
+                          <div className="cx-flex cx-items-center cx-gap-sm">
+                            <span className="cx-list-item-title">{promo.name}</span>
+                            <span className={`cx-badge ${PROMO_BADGE_TONE[promo.type]}`}>
+                              {promo.type}
+                            </span>
+                          </div>
+                        </div>
+                        <a href={`/app/promotions/${promo.id}`} className="cx-btn cx-btn-ghost cx-btn-sm">
+                          Edit
+                        </a>
+                      </div>
+                    ))}
+                    {data.activePromotions.length > 5 && (
+                      <div className="cx-card-footer">
+                        <a href="/app/promotions" className="cx-btn-link">
+                          View all {data.activePromotions.length} active promotions
+                        </a>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="cx-empty">
+                    <p className="cx-empty-title">No active promotions</p>
+                    <p className="cx-empty-desc">
+                      Enable an existing promotion or create a new one.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Sidebar */}
+            <div className="cx-flex-col cx-gap-base">
+              <div className="cx-feature">
+                <div className="cx-feature-header">
+                  <span className="cx-feature-title">Progress Bar</span>
+                  <Toggle
+                    checked={data.progressBarEnabled}
+                    onChange={() => handleToggle("toggle_progress_bar")}
+                  />
+                </div>
+                <span className="cx-feature-meta">
+                  {data.milestonesCount} visual milestone{data.milestonesCount !== 1 ? "s" : ""}
                 </span>
-              ))}
-              {data.activePromotions.length > 5 && (
-                <>
-                  <s-divider />
-                  <s-box padding="base">
-                    <s-link href="/app/promotions">
-                      View all {data.activePromotions.length} active promotions
-                    </s-link>
-                  </s-box>
-                </>
-              )}
-            </s-stack>
-          ) : (
-            <s-paragraph color="subdued">
-              No active promotions.{" "}
-              <s-link href="/app/promotions">Manage promotions</s-link>
-            </s-paragraph>
-          )}
-          <s-box padding="base none none">
-            <s-link href="/app/promotions">
-              All promotions ({data.totalPromotions})
-            </s-link>
-          </s-box>
-        </s-section>
-      )}
+                <a href="/app/settings" className="cx-btn-link">Configure</a>
+              </div>
 
-      {/* Feature toggle cards */}
-      <s-box slot="aside">
-        <s-section heading="Progress Bar">
-          <s-stack direction="block" gap="tight">
-            <s-stack
-              direction="inline"
-              align="space-between"
-              block-align="center"
-            >
-              <s-paragraph color="subdued">
-                {data.milestonesCount} visual milestone
-                {data.milestonesCount !== 1 ? "s" : ""}
-              </s-paragraph>
-              <s-switch
-                label="Enable progress bar"
-                labelAccessibilityVisibility="hidden"
-                checked={data.progressBarEnabled}
-                onChange={() => handleToggle("toggle_progress_bar")}
-              />
-            </s-stack>
-            <s-link href="/app/settings">Configure</s-link>
-          </s-stack>
-        </s-section>
+              <div className="cx-feature">
+                <div className="cx-feature-header">
+                  <span className="cx-feature-title">Upsells</span>
+                  <Toggle
+                    checked={data.upsellsEnabled}
+                    onChange={() => handleToggle("toggle_upsells")}
+                  />
+                </div>
+                <span className="cx-feature-meta">
+                  {data.upsellsEnabled
+                    ? `${data.upsellsCount} product${data.upsellsCount !== 1 ? "s" : ""}`
+                    : "Disabled"}
+                </span>
+                <a href="/app/settings" className="cx-btn-link">Configure</a>
+              </div>
 
-        <s-section heading="Upsells">
-          <s-stack direction="block" gap="tight">
-            <s-stack
-              direction="inline"
-              align="space-between"
-              block-align="center"
-            >
-              {data.upsellsEnabled ? (
-                <s-paragraph color="subdued">
-                  {data.upsellsCount} product
-                  {data.upsellsCount !== 1 ? "s" : ""}
-                </s-paragraph>
-              ) : (
-                <s-paragraph color="subdued">Disabled</s-paragraph>
-              )}
-              <s-switch
-                label="Enable upsells"
-                labelAccessibilityVisibility="hidden"
-                checked={data.upsellsEnabled}
-                onChange={() => handleToggle("toggle_upsells")}
-              />
-            </s-stack>
-            <s-link href="/app/settings">Configure</s-link>
-          </s-stack>
-        </s-section>
-
-        <s-section heading="Bottom Ribbon">
-          <s-stack direction="block" gap="tight">
-            <s-stack
-              direction="inline"
-              align="space-between"
-              block-align="center"
-            >
-              <s-paragraph color="subdued">
-                {data.bottomRibbonEnabled ? "Enabled" : "Disabled"}
-              </s-paragraph>
-              <s-switch
-                label="Enable bottom ribbon"
-                labelAccessibilityVisibility="hidden"
-                checked={data.bottomRibbonEnabled}
-                onChange={() => handleToggle("toggle_ribbon")}
-              />
-            </s-stack>
-            <s-link href="/app/settings">Configure</s-link>
-          </s-stack>
-        </s-section>
-      </s-box>
+              <div className="cx-feature">
+                <div className="cx-feature-header">
+                  <span className="cx-feature-title">Bottom Ribbon</span>
+                  <Toggle
+                    checked={data.bottomRibbonEnabled}
+                    onChange={() => handleToggle("toggle_ribbon")}
+                  />
+                </div>
+                <span className="cx-feature-meta">
+                  {data.bottomRibbonEnabled ? "Enabled" : "Disabled"}
+                </span>
+                <a href="/app/settings" className="cx-btn-link">Configure</a>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </s-page>
   );
 }

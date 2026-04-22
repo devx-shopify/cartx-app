@@ -7,6 +7,22 @@ function isFrozenHandle(handle) {
   return FROZEN_PAGE_PREFIXES.some((p) => handle.startsWith(p));
 }
 
+function Field({ label, hint, error, children, optional }) {
+  return (
+    <div className="cx-field">
+      {label && (
+        <label className="cx-label">
+          {label}
+          {optional && <span className="cx-label-optional"> (optional)</span>}
+        </label>
+      )}
+      {children}
+      {hint && <span className="cx-hint">{hint}</span>}
+      {error && <span className="cx-error">{error}</span>}
+    </div>
+  );
+}
+
 export default function ClaimGiftForm({ claimGift, onSubmit, submitting }) {
   const shopify = useAppBridge();
 
@@ -123,153 +139,224 @@ export default function ClaimGiftForm({ claimGift, onSubmit, submitting }) {
   }
 
   return (
-    <s-stack direction="block" gap="loose">
-      <s-section heading="Basic info">
-        <s-text-field
-          label="Name"
-          value={name}
-          onInput={(e) => setName(e.currentTarget.value)}
-          details="Internal label, not shown to customers"
-          {...(errors.name ? { error: errors.name } : {})}
-        />
-        <s-text-field
-          label="Section heading"
-          value={sectionHeading}
-          onInput={(e) => setSectionHeading(e.currentTarget.value)}
-          placeholder="Add freebies at Rs.1"
-          details="Shown above the claim section in the cart drawer"
-          {...(errors.sectionHeading ? { error: errors.sectionHeading } : {})}
-        />
-        <s-checkbox
-          label="Enabled"
-          checked={enabled}
-          onChange={(e) => setEnabled(e.currentTarget.checked)}
-        />
-      </s-section>
+    <div className="cx-layout">
+      {/* Basic Info */}
+      <div className="cx-card">
+        <div className="cx-card-header">
+          <h3 className="cx-card-title">Basic info</h3>
+        </div>
+        <div className="cx-card-body">
+          <div className="cx-form-section">
+            <Field label="Name" hint="Internal label, not shown to customers" error={errors.name}>
+              <input
+                className={`cx-input ${errors.name ? "cx-input-error" : ""}`}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </Field>
+            <Field
+              label="Section heading"
+              hint="Shown above the claim section in the cart drawer"
+              error={errors.sectionHeading}
+            >
+              <input
+                className={`cx-input ${errors.sectionHeading ? "cx-input-error" : ""}`}
+                value={sectionHeading}
+                onChange={(e) => setSectionHeading(e.target.value)}
+                placeholder="Add freebies at Rs.1"
+              />
+            </Field>
+            <label className="cx-checkbox">
+              <input
+                type="checkbox"
+                checked={enabled}
+                onChange={(e) => setEnabled(e.target.checked)}
+              />
+              Enabled
+            </label>
+          </div>
+        </div>
+      </div>
 
-      <s-section heading="Trigger">
-        <s-select
-          label="Threshold type"
-          value={triggerType}
-          onChange={(e) => setTriggerType(e.currentTarget.value)}
-        >
-          <s-option value="price">Price</s-option>
-          <s-option value="quantity">Quantity</s-option>
-        </s-select>
+      {/* Trigger */}
+      <div className="cx-card">
+        <div className="cx-card-header">
+          <h3 className="cx-card-title">Trigger</h3>
+        </div>
+        <div className="cx-card-body">
+          <div className="cx-form-section">
+            <div className="cx-form-row">
+              <Field label="Threshold type">
+                <select
+                  className="cx-input cx-select"
+                  value={triggerType}
+                  onChange={(e) => setTriggerType(e.target.value)}
+                >
+                  <option value="price">Price</option>
+                  <option value="quantity">Quantity</option>
+                </select>
+              </Field>
+              <Field
+                label={triggerType === "price" ? "Minimum cart total" : "Minimum items"}
+                error={errors.threshold}
+              >
+                <input
+                  className={`cx-input ${errors.threshold ? "cx-input-error" : ""}`}
+                  type="number"
+                  value={String(threshold)}
+                  onChange={(e) => setThreshold(e.target.value)}
+                />
+              </Field>
+            </div>
+          </div>
+        </div>
+      </div>
 
-        {triggerType === "price" && (
-          <s-text-field
-            label="Minimum cart total"
-            type="number"
-            value={String(threshold)}
-            onInput={(e) => setThreshold(e.currentTarget.value)}
-            {...(errors.threshold ? { error: errors.threshold } : {})}
-          />
-        )}
+      {/* Claimable Products */}
+      <div className="cx-card">
+        <div className="cx-card-header">
+          <h3 className="cx-card-title">Claimable products</h3>
+        </div>
+        <div className="cx-card-body">
+          <div className="cx-form-section">
+            <div className="cx-flex cx-items-center cx-gap-md">
+              <button className="cx-btn cx-btn-secondary" onClick={pickClaimableProducts}>
+                Select products
+              </button>
+              {claimableVariants.length > 0 && (
+                <span className="cx-badge cx-badge-success">
+                  {claimableVariants.length} variant(s) selected
+                </span>
+              )}
+            </div>
+            <p className="cx-text-sm cx-text-secondary" style={{ margin: 0 }}>
+              Customers can pick from these products once threshold is met.
+              Out-of-stock products are hidden automatically.
+            </p>
+            {errors.variants && (
+              <div className="cx-banner cx-banner-danger">{errors.variants}</div>
+            )}
+            <Field
+              label="Max gifts a customer can claim"
+              hint="Leave empty to allow claiming all products"
+            >
+              <input
+                className="cx-input"
+                type="number"
+                value={String(maxClaims)}
+                onChange={(e) => setMaxClaims(e.target.value)}
+                placeholder={String(claimableVariants.length || 1)}
+              />
+            </Field>
+          </div>
+        </div>
+      </div>
 
-        {triggerType === "quantity" && (
-          <s-text-field
-            label="Minimum items"
-            type="number"
-            value={String(threshold)}
-            onInput={(e) => setThreshold(e.currentTarget.value)}
-            {...(errors.threshold ? { error: errors.threshold } : {})}
-          />
-        )}
-      </s-section>
-
-      <s-section heading="Claimable products">
-        <s-button onClick={pickClaimableProducts}>Select products</s-button>
-        {claimableVariants.length > 0 && (
-          <s-paragraph>
-            {claimableVariants.length} variant(s) selected
-          </s-paragraph>
-        )}
-        <s-paragraph>
-          Customers can pick from these products once threshold is met.
-          Out-of-stock products are hidden automatically.
-        </s-paragraph>
-        {errors.variants && (
-          <s-banner tone="critical">{errors.variants}</s-banner>
-        )}
-        <s-text-field
-          label="Max gifts a customer can claim"
-          type="number"
-          value={String(maxClaims)}
-          onInput={(e) => setMaxClaims(e.currentTarget.value)}
-          details="Leave empty to allow claiming all products"
-          placeholder={String(claimableVariants.length || 1)}
-        />
-      </s-section>
-
-      <s-section heading="Progress Bar">
-        <s-checkbox
-          label="Show on progress bar"
-          checked={barShow}
-          onChange={(e) => setBarShow(e.currentTarget.checked)}
-        />
+      {/* Progress Bar */}
+      <div className="cx-card">
+        <div className="cx-card-header">
+          <h3 className="cx-card-title">Progress Bar</h3>
+          <label className="cx-checkbox">
+            <input
+              type="checkbox"
+              checked={barShow}
+              onChange={(e) => setBarShow(e.target.checked)}
+            />
+            Show on progress bar
+          </label>
+        </div>
         {barShow && (
-          <s-stack direction="block" gap="tight">
-            <s-text-field
-              label="Bar label"
-              value={barLabel}
-              onInput={(e) => setBarLabel(e.currentTarget.value)}
-              {...(errors.barLabel ? { error: errors.barLabel } : {})}
-            />
-            <s-text-field
-              label="Sub label (optional)"
-              value={barSubLabel}
-              onInput={(e) => setBarSubLabel(e.currentTarget.value)}
-            />
-            <s-text-field
-              label="Locked message"
-              value={barLockedMessage}
-              onInput={(e) => setBarLockedMessage(e.currentTarget.value)}
-            />
-            <s-text-field
-              label="Unlocked message"
-              value={barUnlockedMessage}
-              onInput={(e) => setBarUnlockedMessage(e.currentTarget.value)}
-            />
-          </s-stack>
+          <div className="cx-card-body">
+            <div className="cx-form-section">
+              <Field label="Bar label" error={errors.barLabel}>
+                <input
+                  className={`cx-input ${errors.barLabel ? "cx-input-error" : ""}`}
+                  value={barLabel}
+                  onChange={(e) => setBarLabel(e.target.value)}
+                />
+              </Field>
+              <Field label="Sub label" optional>
+                <input
+                  className="cx-input"
+                  value={barSubLabel}
+                  onChange={(e) => setBarSubLabel(e.target.value)}
+                />
+              </Field>
+              <div className="cx-form-row">
+                <Field label="Locked message" optional>
+                  <input
+                    className="cx-input"
+                    value={barLockedMessage}
+                    onChange={(e) => setBarLockedMessage(e.target.value)}
+                  />
+                </Field>
+                <Field label="Unlocked message" optional>
+                  <input
+                    className="cx-input"
+                    value={barUnlockedMessage}
+                    onChange={(e) => setBarUnlockedMessage(e.target.value)}
+                  />
+                </Field>
+              </div>
+            </div>
+          </div>
         )}
-        <s-banner tone="info">
-          Bar tier is hidden on pages where this claim gift isn't displayed.
-        </s-banner>
-      </s-section>
+        {!barShow && (
+          <div className="cx-card-body">
+            <div className="cx-banner cx-banner-info">
+              <svg className="cx-banner-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 3a1 1 0 110 2 1 1 0 010-2zm2 8H6v-1h1V8H6V7h3v4h1v1z"/>
+              </svg>
+              <span>Bar tier is hidden on pages where this claim gift isn't displayed.</span>
+            </div>
+          </div>
+        )}
+      </div>
 
-      <s-section heading="Audience">
-        <s-select
-          label="Who can see this claim gift?"
-          value={audience}
-          onChange={(e) => setAudience(e.currentTarget.value)}
+      {/* Targeting */}
+      <div className="cx-card">
+        <div className="cx-card-header">
+          <h3 className="cx-card-title">Targeting</h3>
+        </div>
+        <div className="cx-card-body">
+          <div className="cx-form-section">
+            <Field label="Who can see this claim gift?">
+              <select
+                className="cx-input cx-select"
+                value={audience}
+                onChange={(e) => setAudience(e.target.value)}
+              >
+                <option value="all">Everyone</option>
+                <option value="signed_in">Signed-in customers</option>
+                <option value="guest">Guests only</option>
+                <option value="vip_tag">VIP customers</option>
+              </select>
+            </Field>
+            <Field
+              label="Active on pages"
+              hint="Controls where the claim section appears. Claimed items persist across pages."
+              error={errors.pageHandles}
+            >
+              <input
+                className={`cx-input ${errors.pageHandles ? "cx-input-error" : ""}`}
+                value={pageHandles}
+                onChange={(e) => setPageHandles(e.target.value)}
+              />
+            </Field>
+          </div>
+        </div>
+      </div>
+
+      {/* Submit */}
+      <div className="cx-form-actions">
+        <button
+          className="cx-btn cx-btn-primary"
+          onClick={handleSubmit}
+          disabled={submitting}
         >
-          <s-option value="all">Everyone</s-option>
-          <s-option value="signed_in">Signed-in customers</s-option>
-          <s-option value="guest">Guests only</s-option>
-          <s-option value="vip_tag">VIP customers</s-option>
-        </s-select>
-      </s-section>
-
-      <s-section heading="Active on pages">
-        <s-text-field
-          label="Page handles (comma-separated)"
-          value={pageHandles}
-          onInput={(e) => setPageHandles(e.currentTarget.value)}
-          {...(errors.pageHandles ? { error: errors.pageHandles } : {})}
-        />
-        <s-paragraph>
-          Controls where the claim section appears. Claimed items persist across pages.
-        </s-paragraph>
-      </s-section>
-
-      <s-button
-        variant="primary"
-        onClick={handleSubmit}
-        {...(submitting ? { loading: true } : {})}
-      >
-        Save claim gift
-      </s-button>
-    </s-stack>
+          {submitting ? "Saving..." : "Save claim gift"}
+        </button>
+      </div>
+    </div>
   );
 }
