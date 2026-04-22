@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { FROZEN_PAGES, FROZEN_PAGE_PREFIXES } from "../lib/constants.js";
+import VariantList, { extractVariantData } from "./VariantList.jsx";
 
 function isFrozenHandle(handle) {
   if (FROZEN_PAGES.includes(handle)) return true;
@@ -23,7 +24,26 @@ function Field({ label, hint, error, children, optional }) {
   );
 }
 
-export default function OfferForm({ offer, onSubmit, submitting }) {
+/** Build initial display data for variant IDs from a preloaded map */
+function buildVariantDisplay(ids, dataMap) {
+  if (!ids || !dataMap) return [];
+  return ids.map((vid) => {
+    const d = dataMap[vid] || {};
+    return {
+      variant_id: vid,
+      title: d.title || vid,
+      variant_title: null,
+      image: d.image || "",
+    };
+  });
+}
+
+export default function OfferForm({
+  offer,
+  variantDataMap,
+  onSubmit,
+  submitting,
+}) {
   const shopify = useAppBridge();
 
   const [name, setName] = useState(offer?.name ?? "");
@@ -34,6 +54,9 @@ export default function OfferForm({ offer, onSubmit, submitting }) {
   );
   const [productVariantIds, setProductVariantIds] = useState(
     offer?.source?.product_variant_ids ?? []
+  );
+  const [productVariantDisplay, setProductVariantDisplay] = useState(
+    () => buildVariantDisplay(offer?.source?.product_variant_ids, variantDataMap)
   );
   const [collectionId, setCollectionId] = useState(
     offer?.source?.collection_id ?? ""
@@ -52,6 +75,9 @@ export default function OfferForm({ offer, onSubmit, submitting }) {
   const [giftVariants, setGiftVariants] = useState(
     offer?.reward?.gift_variants ?? []
   );
+  const [giftVariantDisplay, setGiftVariantDisplay] = useState(
+    () => buildVariantDisplay(offer?.reward?.gift_variants, variantDataMap)
+  );
   const [quantityPerVariant, setQuantityPerVariant] = useState(
     offer?.reward?.quantity_per_variant ?? 1
   );
@@ -61,6 +87,9 @@ export default function OfferForm({ offer, onSubmit, submitting }) {
   );
   const [bundleVariants, setBundleVariants] = useState(
     offer?.reward?.bundle_variants ?? []
+  );
+  const [bundleVariantDisplay, setBundleVariantDisplay] = useState(
+    () => buildVariantDisplay(offer?.reward?.bundle_variants, variantDataMap)
   );
 
   const [barShow, setBarShow] = useState(offer?.bar?.show ?? false);
@@ -92,8 +121,10 @@ export default function OfferForm({ offer, onSubmit, submitting }) {
       action: "select",
     });
     if (selection) {
-      const ids = selection.flatMap((p) => p.variants.map((v) => v.id));
+      const display = extractVariantData(selection);
+      const ids = display.map((v) => v.variant_id);
       setProductVariantIds(ids);
+      setProductVariantDisplay(display);
     }
   }
 
@@ -115,8 +146,10 @@ export default function OfferForm({ offer, onSubmit, submitting }) {
       action: "select",
     });
     if (selection) {
-      const ids = selection.flatMap((p) => p.variants.map((v) => v.id));
+      const display = extractVariantData(selection);
+      const ids = display.map((v) => v.variant_id);
       setGiftVariants(ids);
+      setGiftVariantDisplay(display);
     }
   }
 
@@ -127,9 +160,26 @@ export default function OfferForm({ offer, onSubmit, submitting }) {
       action: "select",
     });
     if (selection) {
-      const ids = selection.flatMap((p) => p.variants.map((v) => v.id));
+      const display = extractVariantData(selection);
+      const ids = display.map((v) => v.variant_id);
       setBundleVariants(ids);
+      setBundleVariantDisplay(display);
     }
+  }
+
+  function removeSourceVariant(vid) {
+    setProductVariantIds(productVariantIds.filter((id) => id !== vid));
+    setProductVariantDisplay(productVariantDisplay.filter((v) => v.variant_id !== vid));
+  }
+
+  function removeGiftVariant(vid) {
+    setGiftVariants(giftVariants.filter((id) => id !== vid));
+    setGiftVariantDisplay(giftVariantDisplay.filter((v) => v.variant_id !== vid));
+  }
+
+  function removeBundleVariant(vid) {
+    setBundleVariants(bundleVariants.filter((id) => id !== vid));
+    setBundleVariantDisplay(bundleVariantDisplay.filter((v) => v.variant_id !== vid));
   }
 
   function validate() {
@@ -267,16 +317,22 @@ export default function OfferForm({ offer, onSubmit, submitting }) {
             </Field>
 
             {sourceType === "product" && (
-              <div className="cx-flex cx-items-center cx-gap-md">
-                <button className="cx-btn cx-btn-secondary" onClick={pickProducts}>
-                  Select products
-                </button>
-                {productVariantIds.length > 0 && (
-                  <span className="cx-text-sm cx-text-secondary">
-                    {productVariantIds.length} variant(s) selected
-                  </span>
-                )}
-              </div>
+              <>
+                <div className="cx-flex cx-items-center cx-gap-md">
+                  <button className="cx-btn cx-btn-secondary" onClick={pickProducts}>
+                    {productVariantIds.length > 0 ? "Change products" : "Select products"}
+                  </button>
+                  {productVariantIds.length > 0 && (
+                    <span className="cx-variant-count">
+                      <span className="cx-variant-count-num">{productVariantIds.length}</span> variant(s)
+                    </span>
+                  )}
+                </div>
+                <VariantList
+                  variants={productVariantDisplay}
+                  onRemove={removeSourceVariant}
+                />
+              </>
             )}
 
             {sourceType === "collection" && (
@@ -357,14 +413,18 @@ export default function OfferForm({ offer, onSubmit, submitting }) {
               <>
                 <div className="cx-flex cx-items-center cx-gap-md">
                   <button className="cx-btn cx-btn-secondary" onClick={pickGiftVariants}>
-                    Select gift products
+                    {giftVariants.length > 0 ? "Change gift products" : "Select gift products"}
                   </button>
                   {giftVariants.length > 0 && (
-                    <span className="cx-badge cx-badge-success">
-                      {giftVariants.length} variant(s) selected
+                    <span className="cx-variant-count">
+                      <span className="cx-variant-count-num">{giftVariants.length}</span> variant(s)
                     </span>
                   )}
                 </div>
+                <VariantList
+                  variants={giftVariantDisplay}
+                  onRemove={removeGiftVariant}
+                />
                 <div className="cx-form-row">
                   <Field label="Quantity per variant">
                     <input
@@ -400,14 +460,18 @@ export default function OfferForm({ offer, onSubmit, submitting }) {
               <>
                 <div className="cx-flex cx-items-center cx-gap-md">
                   <button className="cx-btn cx-btn-secondary" onClick={pickBundleVariants}>
-                    Select bundle products
+                    {bundleVariants.length > 0 ? "Change bundle products" : "Select bundle products"}
                   </button>
                   {bundleVariants.length > 0 && (
-                    <span className="cx-badge cx-badge-success">
-                      {bundleVariants.length} variant(s) selected
+                    <span className="cx-variant-count">
+                      <span className="cx-variant-count-num">{bundleVariants.length}</span> variant(s)
                     </span>
                   )}
                 </div>
+                <VariantList
+                  variants={bundleVariantDisplay}
+                  onRemove={removeBundleVariant}
+                />
                 <Field label="Min offer quantity">
                   <input
                     className="cx-input"
@@ -486,7 +550,7 @@ export default function OfferForm({ offer, onSubmit, submitting }) {
         </div>
       )}
 
-      {/* Audience & Pages */}
+      {/* Targeting */}
       <div className="cx-card">
         <div className="cx-card-header">
           <h3 className="cx-card-title">Targeting</h3>

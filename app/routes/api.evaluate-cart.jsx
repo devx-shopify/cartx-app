@@ -3,7 +3,7 @@ import { loadConfig } from '../lib/config.server.js'
 import { adjustedTotal, adjustedQty, isFrozenPage } from '../lib/helpers.server.js'
 import { evaluateOffers } from '../lib/evaluate/triggers.server.js'
 import { buildBar, getRibbonFromBar } from '../lib/evaluate/bar.server.js'
-import { detectAppliedCoupons, resolveEligibility } from '../lib/evaluate/coupons.server.js'
+import { resolveAvailableCoupons } from '../lib/evaluate/coupons.server.js'
 import { resolveClaimGifts } from '../lib/evaluate/claims.server.js'
 
 const CORS_HEADERS = {
@@ -94,18 +94,13 @@ export const action = async ({ request }) => {
   const { ribbon_message, ribbon_code } = getRibbonFromBar(bar)
 
   // 7. Coupons
-  const appliedCodes = (cart.cart_level_discount_applications || [])
-    .map((d) => d.title)
-    .filter(Boolean)
-  const appliedCoupons = detectAppliedCoupons(cart, config.coupons)
-  const availableCoupons = resolveEligibility(
+  const availableCoupons = resolveAvailableCoupons(
     config.coupons,
-    adjTotal,
-    adjQty,
-    appliedCodes,
+    cart,
     page,
     customer
   )
+  const appliedCoupons = availableCoupons.filter((c) => c.applied)
   const totalSavings = cart.total_discount || 0
 
   // 8. Claim gifts

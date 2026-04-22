@@ -7,6 +7,7 @@ import {
   loadConfig,
   saveConfig,
   getShopAndTheme,
+  getThemeFromRequest,
 } from "../lib/config.server.js";
 import { fetchVariantData, enrichVariantData } from "../lib/graphql.server.js";
 import OfferForm from "../components/OfferForm.jsx";
@@ -15,24 +16,42 @@ import ClaimGiftForm from "../components/ClaimGiftForm.jsx";
 
 export const loader = async ({ request, params }) => {
   const { admin, session } = await authenticate.admin(request);
-  const { shopId, themeId } = await getShopAndTheme(admin, session);
+  const preferred = getThemeFromRequest(request);
+  const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
 
   const offer = config.offers.find((o) => o.id === params.id);
-  if (offer) return { type: "offer", data: offer };
+  if (offer) {
+    // Resolve variant display data for the offer
+    const allVariantIds = [
+      ...(offer.source?.product_variant_ids || []),
+      ...(offer.reward?.gift_variants || []),
+      ...(offer.reward?.bundle_variants || []),
+    ];
+    const variantDataMap = await fetchVariantData(admin, allVariantIds);
+    return { type: "offer", data: offer, variantDataMap };
+  }
 
   const coupon = config.coupons.find((c) => c.id === params.id);
-  if (coupon) return { type: "coupon", data: coupon };
+  if (coupon) return { type: "coupon", data: coupon, variantDataMap: {} };
 
   const claimGift = config.claim_gifts.find((g) => g.id === params.id);
-  if (claimGift) return { type: "claim-gift", data: claimGift };
+  if (claimGift) {
+    // claimable_variant_data is already enriched, but resolve fresh data too
+    const variantDataMap = await fetchVariantData(
+      admin,
+      claimGift.claimable_variants || []
+    );
+    return { type: "claim-gift", data: claimGift, variantDataMap };
+  }
 
   throw new Response("Promotion not found", { status: 404 });
 };
 
 export const action = async ({ request, params }) => {
   const { admin, session } = await authenticate.admin(request);
-  const { shopId, themeId } = await getShopAndTheme(admin, session);
+  const preferred = getThemeFromRequest(request);
+  const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
   const body = await request.json();
   const type = body._type;
@@ -76,7 +95,7 @@ const TYPE_HEADINGS = {
 };
 
 export default function EditPromotion() {
-  const { type, data } = useLoaderData();
+  const { type, data, variantDataMap } = useLoaderData();
   const fetcher = useFetcher();
   const navigate = useNavigate();
   const shopify = useAppBridge();
@@ -109,6 +128,7 @@ export default function EditPromotion() {
       {type === "offer" && (
         <OfferForm
           offer={data}
+          variantDataMap={variantDataMap}
           onSubmit={handleSubmit}
           submitting={submitting}
         />
@@ -123,6 +143,7 @@ export default function EditPromotion() {
       {type === "claim-gift" && (
         <ClaimGiftForm
           claimGift={data}
+          variantDataMap={variantDataMap}
           onSubmit={handleSubmit}
           submitting={submitting}
         />

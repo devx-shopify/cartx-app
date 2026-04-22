@@ -1,4 +1,4 @@
-import { useLoaderData, useFetcher } from "react-router";
+import { useLoaderData, useFetcher, Link } from "react-router";
 import { useEffect } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -7,11 +7,13 @@ import {
   loadConfig,
   saveConfig,
   getShopAndTheme,
+  getThemeFromRequest,
 } from "../lib/config.server.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
-  const { shopId, themeId } = await getShopAndTheme(admin, session);
+  const preferred = getThemeFromRequest(request);
+  const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
 
   const activePromotions = [];
@@ -53,7 +55,8 @@ export const loader = async ({ request }) => {
 
 export const action = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
-  const { shopId, themeId } = await getShopAndTheme(admin, session);
+  const preferred = getThemeFromRequest(request);
+  const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
   const body = await request.json();
 
@@ -139,7 +142,7 @@ export default function Dashboard() {
                   <span className="cx-step-number">1</span>
                   <div className="cx-step-content">
                     <div className="cx-step-title">
-                      <a href="/app/promotions/new?type=offer">Create your first offer</a>
+                      <Link to="/app/promotions/new?type=offer">Create your first offer</Link>
                     </div>
                     <div className="cx-step-desc">Add free gifts, BOGO deals, or cart freebies</div>
                   </div>
@@ -148,7 +151,7 @@ export default function Dashboard() {
                   <span className="cx-step-number">2</span>
                   <div className="cx-step-content">
                     <div className="cx-step-title">
-                      <a href="/app/settings">Configure settings</a>
+                      <Link to="/app/settings">Configure settings</Link>
                     </div>
                     <div className="cx-step-desc">Set up the progress bar, upsells, and ribbon</div>
                   </div>
@@ -193,9 +196,9 @@ export default function Dashboard() {
               <div className="cx-card">
                 <div className="cx-card-header">
                   <h3 className="cx-card-title">Active promotions</h3>
-                  <a href="/app/promotions" className="cx-btn-link">
+                  <Link to="/app/promotions" className="cx-btn-link">
                     View all ({data.totalPromotions})
-                  </a>
+                  </Link>
                 </div>
                 {hasActivePromotions ? (
                   <>
@@ -209,16 +212,16 @@ export default function Dashboard() {
                             </span>
                           </div>
                         </div>
-                        <a href={`/app/promotions/${promo.id}`} className="cx-btn cx-btn-ghost cx-btn-sm">
+                        <Link to={`/app/promotions/${promo.id}`} className="cx-btn cx-btn-ghost cx-btn-sm">
                           Edit
-                        </a>
+                        </Link>
                       </div>
                     ))}
                     {data.activePromotions.length > 5 && (
                       <div className="cx-card-footer">
-                        <a href="/app/promotions" className="cx-btn-link">
+                        <Link to="/app/promotions" className="cx-btn-link">
                           View all {data.activePromotions.length} active promotions
-                        </a>
+                        </Link>
                       </div>
                     )}
                   </>
@@ -246,7 +249,7 @@ export default function Dashboard() {
                 <span className="cx-feature-meta">
                   {data.milestonesCount} visual milestone{data.milestonesCount !== 1 ? "s" : ""}
                 </span>
-                <a href="/app/settings" className="cx-btn-link">Configure</a>
+                <Link to="/app/settings" className="cx-btn-link">Configure</Link>
               </div>
 
               <div className="cx-feature">
@@ -262,7 +265,7 @@ export default function Dashboard() {
                     ? `${data.upsellsCount} product${data.upsellsCount !== 1 ? "s" : ""}`
                     : "Disabled"}
                 </span>
-                <a href="/app/settings" className="cx-btn-link">Configure</a>
+                <Link to="/app/settings" className="cx-btn-link">Configure</Link>
               </div>
 
               <div className="cx-feature">
@@ -276,7 +279,7 @@ export default function Dashboard() {
                 <span className="cx-feature-meta">
                   {data.bottomRibbonEnabled ? "Enabled" : "Disabled"}
                 </span>
-                <a href="/app/settings" className="cx-btn-link">Configure</a>
+                <Link to="/app/settings" className="cx-btn-link">Configure</Link>
               </div>
             </div>
           </div>

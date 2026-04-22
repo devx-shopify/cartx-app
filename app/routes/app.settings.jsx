@@ -7,12 +7,14 @@ import {
   loadConfig,
   saveConfig,
   getShopAndTheme,
+  getThemeFromRequest,
 } from "../lib/config.server.js";
 import { generateId } from "../lib/helpers.server.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
-  const { shopId, themeId } = await getShopAndTheme(admin, session);
+  const preferred = getThemeFromRequest(request);
+  const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
 
   const barSources = [];
@@ -59,7 +61,8 @@ export const loader = async ({ request }) => {
 
 export const action = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
-  const { shopId, themeId } = await getShopAndTheme(admin, session);
+  const preferred = getThemeFromRequest(request);
+  const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
   const body = await request.json();
 

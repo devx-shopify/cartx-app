@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLoaderData, useFetcher } from "react-router";
+import { useLoaderData, useFetcher, Link } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
@@ -7,11 +7,13 @@ import {
   loadConfig,
   saveConfig,
   getShopAndTheme,
+  getThemeFromRequest,
 } from "../lib/config.server.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
-  const { shopId, themeId } = await getShopAndTheme(admin, session);
+  const preferred = getThemeFromRequest(request);
+  const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
 
   const promotions = [];
@@ -69,7 +71,8 @@ function triggerSummary(offer) {
 
 export const action = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
-  const { shopId, themeId } = await getShopAndTheme(admin, session);
+  const preferred = getThemeFromRequest(request);
+  const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
   const body = await request.json();
   const { intent, id, type } = body;
@@ -266,12 +269,12 @@ export default function PromotionsIndex() {
                       </svg>
                     </button>
                   )}
-                  <a
-                    href={`/app/promotions/${promo.id}`}
+                  <Link
+                    to={`/app/promotions/${promo.id}`}
                     className="cx-btn cx-btn-secondary cx-btn-sm"
                   >
                     Edit
-                  </a>
+                  </Link>
                   <button
                     className="cx-btn cx-btn-danger cx-btn-sm"
                     onClick={() => handleDelete(promo)}

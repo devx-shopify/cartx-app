@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { FROZEN_PAGES, FROZEN_PAGE_PREFIXES } from "../lib/constants.js";
+import VariantList, { extractVariantData } from "./VariantList.jsx";
 
 function isFrozenHandle(handle) {
   if (FROZEN_PAGES.includes(handle)) return true;
@@ -23,7 +24,38 @@ function Field({ label, hint, error, children, optional }) {
   );
 }
 
-export default function ClaimGiftForm({ claimGift, onSubmit, submitting }) {
+/** Build initial display data from the variant data map or existing claimable_variant_data */
+function buildInitialDisplay(claimGift, variantDataMap) {
+  // Prefer the enriched data stored on the claim gift
+  if (claimGift?.claimable_variant_data?.length) {
+    return claimGift.claimable_variant_data.map((d) => ({
+      variant_id: d.variant_id,
+      title: d.title || d.variant_id,
+      variant_title: null,
+      image: d.image || "",
+    }));
+  }
+  // Fall back to resolved map from the loader
+  if (claimGift?.claimable_variants && variantDataMap) {
+    return claimGift.claimable_variants.map((vid) => {
+      const d = variantDataMap[vid] || {};
+      return {
+        variant_id: vid,
+        title: d.title || vid,
+        variant_title: null,
+        image: d.image || "",
+      };
+    });
+  }
+  return [];
+}
+
+export default function ClaimGiftForm({
+  claimGift,
+  variantDataMap,
+  onSubmit,
+  submitting,
+}) {
   const shopify = useAppBridge();
 
   const [name, setName] = useState(claimGift?.name ?? "");
@@ -41,6 +73,9 @@ export default function ClaimGiftForm({ claimGift, onSubmit, submitting }) {
 
   const [claimableVariants, setClaimableVariants] = useState(
     claimGift?.claimable_variants ?? []
+  );
+  const [claimableDisplay, setClaimableDisplay] = useState(
+    () => buildInitialDisplay(claimGift, variantDataMap)
   );
   const [maxClaims, setMaxClaims] = useState(
     claimGift?.max_claims ?? ""
@@ -72,9 +107,16 @@ export default function ClaimGiftForm({ claimGift, onSubmit, submitting }) {
       action: "select",
     });
     if (selection) {
-      const ids = selection.flatMap((p) => p.variants.map((v) => v.id));
+      const display = extractVariantData(selection);
+      const ids = display.map((v) => v.variant_id);
       setClaimableVariants(ids);
+      setClaimableDisplay(display);
     }
+  }
+
+  function removeClaimableVariant(vid) {
+    setClaimableVariants(claimableVariants.filter((id) => id !== vid));
+    setClaimableDisplay(claimableDisplay.filter((v) => v.variant_id !== vid));
   }
 
   function validate() {
@@ -221,14 +263,18 @@ export default function ClaimGiftForm({ claimGift, onSubmit, submitting }) {
           <div className="cx-form-section">
             <div className="cx-flex cx-items-center cx-gap-md">
               <button className="cx-btn cx-btn-secondary" onClick={pickClaimableProducts}>
-                Select products
+                {claimableVariants.length > 0 ? "Change products" : "Select products"}
               </button>
               {claimableVariants.length > 0 && (
-                <span className="cx-badge cx-badge-success">
-                  {claimableVariants.length} variant(s) selected
+                <span className="cx-variant-count">
+                  <span className="cx-variant-count-num">{claimableVariants.length}</span> variant(s)
                 </span>
               )}
             </div>
+            <VariantList
+              variants={claimableDisplay}
+              onRemove={removeClaimableVariant}
+            />
             <p className="cx-text-sm cx-text-secondary" style={{ margin: 0 }}>
               Customers can pick from these products once threshold is met.
               Out-of-stock products are hidden automatically.

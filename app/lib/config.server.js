@@ -110,9 +110,15 @@ export async function saveConfig(shopId, themeId, config) {
   invalidateCache(shopId, normalizedThemeId)
 }
 
-/** Fetch shopId + themeId from an authenticated admin session */
-export async function getShopAndTheme(admin, session) {
+/** Fetch shopId + themeId from an authenticated admin session.
+ *  If `preferredThemeId` is provided (e.g. from a cookie), use it instead of auto-detecting. */
+export async function getShopAndTheme(admin, session, preferredThemeId) {
   const shopId = session.shop
+
+  if (preferredThemeId) {
+    return { shopId, themeId: normalizeThemeId(preferredThemeId) || preferredThemeId }
+  }
+
   try {
     const themeRes = await admin.graphql(
       `#graphql
@@ -128,6 +134,49 @@ export async function getShopAndTheme(admin, session) {
     console.error('[CartMax] getShopAndTheme error:', err)
     return { shopId, themeId: 'default' }
   }
+}
+
+/** Fetch all themes for the shop */
+export async function getAllThemes(admin) {
+  try {
+    const res = await admin.graphql(
+      `#graphql
+        query {
+          themes(first: 50) {
+            nodes {
+              id
+              name
+              role
+            }
+          }
+        }`
+    )
+    const json = await res.json()
+    return (json.data?.themes?.nodes ?? []).map((t) => ({
+      id: t.id.startsWith('gid://') ? t.id.split('/').pop() : t.id,
+      gid: t.id,
+      name: t.name,
+      role: t.role,
+    }))
+  } catch (err) {
+    console.error('[CartMax] getAllThemes error:', err)
+    return []
+  }
+}
+
+/** Read theme preference from request cookie */
+export function getThemeFromRequest(request) {
+  const cookie = request.headers.get('Cookie') || ''
+  const match = cookie.match(/cartmax-theme=([^;]+)/)
+  return match ? decodeURIComponent(match[1]) : null
+}
+
+/** Create a Set-Cookie header for theme preference */
+export function makeThemeCookie(themeId) {
+  if (!themeId) {
+    return 'cartmax-theme=; Path=/; Max-Age=0; SameSite=Lax'
+  }
+  return `cartmax-theme=${encodeURIComponent(themeId)}; Path=/; Max-Age=31536000; SameSite=Lax`
 }
 
 export async function patchConfig(shopId, themeId, path, value) {
