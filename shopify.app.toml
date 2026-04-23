@@ -2,7 +2,7 @@
 
 client_id = "3021118f1f808e0497865a902802d352"
 name = "Cart Max"
-application_url = "https://merrilee-nonanarchic-dextrosinistrally.ngrok-free.dev:3000"
+application_url = "https://repave-sitter-snazzy.ngrok-free.dev"
 embedded = true
 
 [build]
@@ -24,9 +24,9 @@ api_version = "2026-07"
 scopes = "read_themes,read_products,write_products,read_discounts,write_discounts,read_customers"
 
 [auth]
-redirect_urls = [ "https://merrilee-nonanarchic-dextrosinistrally.ngrok-free.dev:3000/auth/callback" ]
+redirect_urls = [ "https://repave-sitter-snazzy.ngrok-free.dev/auth/callback" ]
 
 [app_proxy]
-url = "https://merrilee-nonanarchic-dextrosinistrally.ngrok-free.dev:3000/proxy"
+url = "https://repave-sitter-snazzy.ngrok-free.dev/proxy"
 subpath = "cartmax"
 prefix = "apps"

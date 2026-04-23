@@ -286,6 +286,7 @@ export default class CartDrawer extends Component {
 
     return (
       <div id="cartmax-progress" className="cartmax-progress">
+        {bar.top_message ? <div class="cartmax-progress-msg">{bar.top_message}</div> : null}
         <div className="cartmax-progress-track">
           <div className="cartmax-progress-fill" style={{ width: pct + '%' }} ><span className='visually-hidden'>Progress fill</span></div>
           {tiers.map((tier, i) => {
@@ -303,7 +304,6 @@ export default class CartDrawer extends Component {
             );
           })}
         </div>
-        {bar.top_message ? <div class="cartmax-progress-msg">{bar.top_message}</div> : null}
       </div>
     );
   }
