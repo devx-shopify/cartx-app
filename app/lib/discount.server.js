@@ -1,0 +1,342 @@
+import prisma from "../db.server.js";
+
+const DISCOUNT_STORE_KEY = "__freebie_discount__";
+const DISCOUNT_TITLE = "Cart Max Free Gift";
+const FUNCTION_HANDLE = "cart-max-freebie-discount";
+const METAFIELD_NAMESPACE = "$app:cart-max-freebie-discount";
+const METAFIELD_KEY = "function-configuration";
+
+// ── Helpers ──────────────────────────────────────────────
+
+async function loadDiscountRecord(shopId) {
+  const record = await prisma.themeConfig.findUnique({
+    where: { shopId_themeId: { shopId, themeId: DISCOUNT_STORE_KEY } },
+  });
+  return record ? JSON.parse(record.config) : null;
+}
+
+async function saveDiscountRecord(shopId, data) {
+  const config = JSON.stringify(data);
+  await prisma.themeConfig.upsert({
+    where: { shopId_themeId: { shopId, themeId: DISCOUNT_STORE_KEY } },
+    create: { shopId, themeId: DISCOUNT_STORE_KEY, config },
+    update: { config },
+  });
+}
+
+async function deleteDiscountRecord(shopId) {
+  await prisma.themeConfig
+    .delete({
+      where: { shopId_themeId: { shopId, themeId: DISCOUNT_STORE_KEY } },
+    })
+    .catch(() => {});
+}
+
+/**
+ * Find our Shopify Function by its handle.
+ * Returns the function GID or null.
+ */
+async function findFunction(admin) {
+  const res = await admin.graphql(
+    `#graphql
+    query {
+      shopifyFunctions(first: 25) {
+        nodes {
+          id
+          title
+          apiType
+          app { handle }
+        }
+      }
+    }`
+  );
+  const json = await res.json();
+  const functions = json.data?.shopifyFunctions?.nodes ?? [];
+  return (
+    functions.find(
+      (f) => f.title === FUNCTION_HANDLE || f.title === "cart-max-freebie-discount"
+    ) ?? null
+  );
+}
+
+// ── Public API ───────────────────────────────────────────
+
+/**
+ * Build the metafield JSON config from stored rules.
+ */
+export function buildFunctionConfig(rules, defaultRule) {
+  return JSON.stringify({
+    rules: rules ?? [],
+    default_rule: defaultRule ?? {
+      type: "percentage",
+      value: 100,
+      message: "Free Gift",
+      max_cap: null,
+    },
+  });
+}
+
+/**
+ * Idempotent: create the automatic app discount if it doesn't exist.
+ * Stores the discount GID in the DB for later management.
+ */
+export async function ensureFreebieDiscount(admin, shopId, functionConfig) {
+  // Check if we already have a discount stored
+  const existing = await loadDiscountRecord(shopId);
+  if (existing?.discountId) {
+    // Verify it still exists in Shopify
+    const status = await verifyDiscount(admin, existing.discountId);
+    if (status) {
+      // Update metafield config if provided
+      if (functionConfig != null) {
+        await updateDiscountMetafield(
+          admin,
+          existing.discountId,
+          functionConfig
+        );
+        await saveDiscountRecord(shopId, {
+          ...existing,
+          functionConfig,
+        });
+      }
+      return { discountId: existing.discountId, created: false };
+    }
+    // Discount was deleted externally — recreate
+    await deleteDiscountRecord(shopId);
+  }
+
+  // Find the function
+  const fn = await findFunction(admin);
+  if (!fn) {
+    throw new Error(
+      "Cart Max Freebie Discount function not found. Deploy the app first with `shopify app deploy`."
+    );
+  }
+
+  const metafieldValue =
+    functionConfig ?? buildFunctionConfig(null, null);
+
+  const res = await admin.graphql(
+    `#graphql
+    mutation createDiscount($discount: DiscountAutomaticAppInput!) {
+      discountAutomaticAppCreate(automaticAppDiscount: $discount) {
+        automaticAppDiscount {
+          discountId
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }`,
+    {
+      variables: {
+        discount: {
+          title: DISCOUNT_TITLE,
+          functionId: fn.id,
+          startsAt: new Date().toISOString(),
+          combinesWith: {
+            orderDiscounts: true,
+            productDiscounts: true,
+            shippingDiscounts: true,
+          },
+          metafields: [
+            {
+              namespace: METAFIELD_NAMESPACE,
+              key: METAFIELD_KEY,
+              type: "json",
+              value: metafieldValue,
+            },
+          ],
+        },
+      },
+    }
+  );
+
+  const json = await res.json();
+  const errors = json.data?.discountAutomaticAppCreate?.userErrors ?? [];
+  if (errors.length > 0) {
+    throw new Error(
+      "Failed to create discount: " + errors.map((e) => e.message).join(", ")
+    );
+  }
+
+  const discountId =
+    json.data?.discountAutomaticAppCreate?.automaticAppDiscount?.discountId;
+
+  await saveDiscountRecord(shopId, {
+    discountId,
+    functionConfig: metafieldValue,
+    createdAt: new Date().toISOString(),
+  });
+
+  return { discountId, created: true };
+}
+
+/**
+ * Verify a discount still exists in Shopify. Returns status or null.
+ */
+async function verifyDiscount(admin, discountId) {
+  try {
+    const gid = discountId.startsWith("gid://")
+      ? discountId
+      : `gid://shopify/DiscountNode/${discountId}`;
+
+    const res = await admin.graphql(
+      `#graphql
+      query checkDiscount($id: ID!) {
+        discountNode(id: $id) {
+          id
+          discount {
+            ... on DiscountAutomaticApp {
+              status
+              title
+            }
+          }
+        }
+      }`,
+      { variables: { id: gid } }
+    );
+    const json = await res.json();
+    const node = json.data?.discountNode;
+    if (!node) return null;
+    return node.discount?.status ?? "ACTIVE";
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Update the metafield on an existing discount.
+ */
+async function updateDiscountMetafield(admin, discountId, functionConfig) {
+  const gid = discountId.startsWith("gid://")
+    ? discountId
+    : `gid://shopify/DiscountAutomaticNode/${discountId}`;
+
+  // Get the metafield id first
+  const metaRes = await admin.graphql(
+    `#graphql
+    query getDiscountMeta($id: ID!) {
+      discountNode(id: $id) {
+        metafield(namespace: "${METAFIELD_NAMESPACE}", key: "${METAFIELD_KEY}") {
+          id
+        }
+      }
+    }`,
+    { variables: { id: gid } }
+  );
+  const metaJson = await metaRes.json();
+  const metafieldId = metaJson.data?.discountNode?.metafield?.id;
+
+  if (metafieldId) {
+    await admin.graphql(
+      `#graphql
+      mutation updateMetafield($metafields: [MetafieldsSetInput!]!) {
+        metafieldsSet(metafields: $metafields) {
+          metafields { id }
+          userErrors { field message }
+        }
+      }`,
+      {
+        variables: {
+          metafields: [
+            {
+              ownerId: gid,
+              namespace: METAFIELD_NAMESPACE,
+              key: METAFIELD_KEY,
+              type: "json",
+              value: functionConfig,
+            },
+          ],
+        },
+      }
+    );
+  }
+}
+
+/**
+ * Get the freebie discount status for this shop.
+ */
+export async function getFreebieDiscountStatus(admin, shopId) {
+  const record = await loadDiscountRecord(shopId);
+  if (!record?.discountId) {
+    return { active: false, discountId: null, functionConfig: null };
+  }
+
+  const status = await verifyDiscount(admin, record.discountId);
+  if (!status) {
+    // Discount was deleted externally
+    await deleteDiscountRecord(shopId);
+    return { active: false, discountId: null, functionConfig: null };
+  }
+
+  // Parse the stored config to return rules
+  let parsedConfig = null;
+  try {
+    parsedConfig = JSON.parse(record.functionConfig ?? "{}");
+  } catch {
+    parsedConfig = {};
+  }
+
+  return {
+    active: status === "ACTIVE",
+    status,
+    discountId: record.discountId,
+    functionConfig: parsedConfig,
+  };
+}
+
+/**
+ * Deactivate and delete the freebie discount.
+ */
+export async function deleteFreebieDiscount(admin, shopId) {
+  const record = await loadDiscountRecord(shopId);
+  if (!record?.discountId) return { ok: true };
+
+  const gid = record.discountId.startsWith("gid://")
+    ? record.discountId
+    : `gid://shopify/DiscountAutomaticNode/${record.discountId}`;
+
+  try {
+    await admin.graphql(
+      `#graphql
+      mutation deleteDiscount($id: ID!) {
+        discountAutomaticDelete(id: $id) {
+          deletedAutomaticDiscountId
+          userErrors { field message }
+        }
+      }`,
+      { variables: { id: gid } }
+    );
+  } catch {
+    // Discount may already be deleted
+  }
+
+  await deleteDiscountRecord(shopId);
+  return { ok: true };
+}
+
+/**
+ * Update just the function config (rules) on an existing discount.
+ */
+export async function updateFreebieDiscountConfig(
+  admin,
+  shopId,
+  rules,
+  defaultRule
+) {
+  const record = await loadDiscountRecord(shopId);
+  if (!record?.discountId) {
+    throw new Error("No active discount function. Activate it first.");
+  }
+
+  const functionConfig = buildFunctionConfig(rules, defaultRule);
+  await updateDiscountMetafield(admin, record.discountId, functionConfig);
+  await saveDiscountRecord(shopId, {
+    ...record,
+    functionConfig,
+  });
+
+  return { ok: true };
+}

@@ -164,19 +164,32 @@ export async function getAllThemes(admin) {
   }
 }
 
-/** Read theme preference from request cookie */
-export function getThemeFromRequest(request) {
-  const cookie = request.headers.get('Cookie') || ''
-  const match = cookie.match(/cartmax-theme=([^;]+)/)
-  return match ? decodeURIComponent(match[1]) : null
+const PREFERENCE_KEY = '__preference__'
+
+/** Read the shop's selected theme from the DB */
+export async function getSelectedTheme(shopId) {
+  try {
+    const record = await prisma.themeConfig.findUnique({
+      where: { shopId_themeId: { shopId, themeId: PREFERENCE_KEY } },
+    })
+    if (record) {
+      const data = JSON.parse(record.config)
+      return data.selectedThemeId || null
+    }
+  } catch (err) {
+    console.error('[CartMax] getSelectedTheme error:', err)
+  }
+  return null
 }
 
-/** Create a Set-Cookie header for theme preference */
-export function makeThemeCookie(themeId) {
-  if (!themeId) {
-    return 'cartmax-theme=; Path=/; Max-Age=0; SameSite=Lax'
-  }
-  return `cartmax-theme=${encodeURIComponent(themeId)}; Path=/; Max-Age=31536000; SameSite=Lax`
+/** Save the shop's selected theme to the DB */
+export async function setSelectedTheme(shopId, themeId) {
+  const config = JSON.stringify({ selectedThemeId: themeId || null })
+  await prisma.themeConfig.upsert({
+    where: { shopId_themeId: { shopId, themeId: PREFERENCE_KEY } },
+    create: { shopId, themeId: PREFERENCE_KEY, config },
+    update: { config },
+  })
 }
 
 export async function patchConfig(shopId, themeId, path, value) {

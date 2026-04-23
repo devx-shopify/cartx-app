@@ -7,13 +7,13 @@ import {
   loadConfig,
   saveConfig,
   getShopAndTheme,
-  getThemeFromRequest,
+  getSelectedTheme,
 } from "../lib/config.server.js";
 import { generateId } from "../lib/helpers.server.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
-  const preferred = getThemeFromRequest(request);
+  const preferred = await getSelectedTheme(session.shop);
   const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
 
@@ -61,7 +61,7 @@ export const loader = async ({ request }) => {
 
 export const action = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
-  const preferred = getThemeFromRequest(request);
+  const preferred = await getSelectedTheme(session.shop);
   const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
   const body = await request.json();

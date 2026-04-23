@@ -1,0 +1,31 @@
+query RunInput {
+  cart {
+    lines {
+      id
+      quantity
+      cost {
+        amountPerQuantity {
+          amount
+          currencyCode
+        }
+      }
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          id
+        }
+      }
+      attribute(key: "_freebie") {
+        value
+      }
+      offerIdAttr: attribute(key: "_offer_id") {
+        value
+      }
+    }
+  }
+  discountNode {
+    metafield(namespace: "$app:cart-max-freebie-discount", key: "function-configuration") {
+      value
+    }
+  }
+}

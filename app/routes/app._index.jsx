@@ -7,12 +7,13 @@ import {
   loadConfig,
   saveConfig,
   getShopAndTheme,
-  getThemeFromRequest,
+  getSelectedTheme,
 } from "../lib/config.server.js";
+import { getFreebieDiscountStatus } from "../lib/discount.server.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
-  const preferred = getThemeFromRequest(request);
+  const preferred = await getSelectedTheme(session.shop);
   const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
 
@@ -41,6 +42,14 @@ export const loader = async ({ request }) => {
     }
   }
 
+  let discountFunctionActive = false;
+  try {
+    const dfStatus = await getFreebieDiscountStatus(admin, session.shop);
+    discountFunctionActive = dfStatus.active;
+  } catch {
+    // Function may not be deployed yet
+  }
+
   return {
     totalPromotions:
       config.offers.length + config.coupons.length + config.claim_gifts.length,
@@ -50,12 +59,13 @@ export const loader = async ({ request }) => {
     upsellsCount: config.upsells.products.length,
     bottomRibbonEnabled: config.bottom_ribbon.enabled,
     milestonesCount: config.progress_bar.visual_milestones.length,
+    discountFunctionActive,
   };
 };
 
 export const action = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
-  const preferred = getThemeFromRequest(request);
+  const preferred = await getSelectedTheme(session.shop);
   const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
   const body = await request.json();
@@ -280,6 +290,21 @@ export default function Dashboard() {
                   {data.bottomRibbonEnabled ? "Enabled" : "Disabled"}
                 </span>
                 <Link to="/app/settings" className="cx-btn-link">Configure</Link>
+              </div>
+
+              <div className="cx-feature">
+                <div className="cx-feature-header">
+                  <span className="cx-feature-title">Gift Discount</span>
+                  <span className={`cx-badge cx-badge-dot ${data.discountFunctionActive ? "cx-badge-success" : "cx-badge-warning"}`}>
+                    {data.discountFunctionActive ? "Active" : "Inactive"}
+                  </span>
+                </div>
+                <span className="cx-feature-meta">
+                  {data.discountFunctionActive
+                    ? "Auto-discounts gifts at checkout"
+                    : "Not configured"}
+                </span>
+                <Link to="/app/promotions?tab=discount-function" className="cx-btn-link">Configure</Link>
               </div>
             </div>
           </div>

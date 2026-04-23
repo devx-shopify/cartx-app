@@ -1,20 +1,20 @@
-import { Outlet, useLoaderData, useRouteError, useFetcher } from "react-router";
+import { Outlet, useLoaderData, useRouteError, useFetcher, useRevalidator } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { authenticate } from "../shopify.server";
 import {
   getAllThemes,
-  getThemeFromRequest,
-  makeThemeCookie,
+  getSelectedTheme,
+  setSelectedTheme,
 } from "../lib/config.server.js";
 import "../styles/app.css";
 
 export const loader = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
+  const shopId = session.shop;
   const themes = await getAllThemes(admin);
-  const selectedThemeId = getThemeFromRequest(request);
+  const selectedThemeId = await getSelectedTheme(shopId);
 
-  // If no cookie is set, default to the MAIN theme
   const mainTheme = themes.find((t) => t.role === "MAIN");
   const activeThemeId = selectedThemeId || mainTheme?.id || "default";
 
@@ -28,17 +28,12 @@ export const loader = async ({ request }) => {
 };
 
 export const action = async ({ request }) => {
-  await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
   const body = await request.json();
 
   if (body._action === "set_theme") {
-    const cookie = makeThemeCookie(body.theme_id || null);
-    return new Response(JSON.stringify({ ok: true }), {
-      headers: {
-        "Content-Type": "application/json",
-        "Set-Cookie": cookie,
-      },
-    });
+    await setSelectedTheme(session.shop, body.theme_id || null);
+    return { ok: true, themeId: body.theme_id };
   }
 
   return { ok: false };
@@ -53,23 +48,21 @@ const ROLE_LABELS = {
 
 function ThemeSwitcher({ themes, activeThemeId, mainThemeId }) {
   const fetcher = useFetcher();
+  const revalidator = useRevalidator();
 
   function handleChange(e) {
     const themeId = e.target.value;
+    const saveId = themeId === mainThemeId ? "" : themeId;
     fetcher.submit(
-      JSON.stringify({
-        _action: "set_theme",
-        theme_id: themeId === mainThemeId ? "" : themeId,
-      }),
+      JSON.stringify({ _action: "set_theme", theme_id: saveId }),
       { method: "POST", encType: "application/json" }
     );
-    // Reload the page to reflect the new theme config
-    setTimeout(() => window.location.reload(), 200);
+    // Revalidate all loaders after saving so child routes re-fetch with new theme
+    setTimeout(() => revalidator.revalidate(), 300);
   }
 
   if (themes.length <= 1) return null;
 
-  const activeTheme = themes.find((t) => t.id === activeThemeId);
   const isMain = activeThemeId === mainThemeId;
 
   return (
@@ -92,7 +85,7 @@ function ThemeSwitcher({ themes, activeThemeId, mainThemeId }) {
             ))}
           </select>
         </div>
-        {!isMain && activeTheme && (
+        {!isMain && (
           <span className="cx-badge cx-badge-warning" style={{ fontSize: 10 }}>
             Draft
           </span>
@@ -122,7 +115,6 @@ export default function App() {
   );
 }
 
-// Shopify needs React Router to catch some thrown responses, so that their headers are included in the response.
 export function ErrorBoundary() {
   return boundary.error(useRouteError());
 }

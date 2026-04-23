@@ -7,7 +7,7 @@ import {
   loadConfig,
   saveConfig,
   getShopAndTheme,
-  getThemeFromRequest,
+  getSelectedTheme,
 } from "../lib/config.server.js";
 import { fetchVariantData, enrichVariantData } from "../lib/graphql.server.js";
 import OfferForm from "../components/OfferForm.jsx";
@@ -16,7 +16,7 @@ import ClaimGiftForm from "../components/ClaimGiftForm.jsx";
 
 export const loader = async ({ request, params }) => {
   const { admin, session } = await authenticate.admin(request);
-  const preferred = getThemeFromRequest(request);
+  const preferred = await getSelectedTheme(session.shop);
   const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
 
@@ -50,7 +50,7 @@ export const loader = async ({ request, params }) => {
 
 export const action = async ({ request, params }) => {
   const { admin, session } = await authenticate.admin(request);
-  const preferred = getThemeFromRequest(request);
+  const preferred = await getSelectedTheme(session.shop);
   const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
   const body = await request.json();

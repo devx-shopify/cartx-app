@@ -1,0 +1,21 @@
+api_version = "2026-04"
+
+[[extensions]]
+name = "t:name"
+handle = "cart-max-freebie-discount"
+type = "function"
+uid = "42f6a238-29e5-9b95-2564-2fcc247e6e0967398575"
+description = "t:description"
+
+  [[extensions.targeting]]
+  target = "purchase.product-discount.run"
+  input_query = "src/run.graphql"
+  export = "run"
+
+  [extensions.build]
+  command = ""
+  path = "dist/function.wasm"
+
+  [extensions.ui.paths]
+  create = "/app/promotions?tab=discount-function"
+  details = "/app/promotions?tab=discount-function"

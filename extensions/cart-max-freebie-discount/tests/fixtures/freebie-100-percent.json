@@ -1,0 +1,74 @@
+{
+  "payload": {
+    "export": "run",
+    "target": "purchase.product-discount.run",
+    "input": {
+      "cart": {
+        "lines": [
+          {
+            "id": "gid://shopify/CartLine/1",
+            "quantity": 1,
+            "cost": {
+              "amountPerQuantity": {
+                "amount": "49.99",
+                "currencyCode": "INR"
+              }
+            },
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "id": "gid://shopify/ProductVariant/111"
+            },
+            "attribute": null,
+            "offerIdAttr": null
+          },
+          {
+            "id": "gid://shopify/CartLine/2",
+            "quantity": 1,
+            "cost": {
+              "amountPerQuantity": {
+                "amount": "19.99",
+                "currencyCode": "INR"
+              }
+            },
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "id": "gid://shopify/ProductVariant/222"
+            },
+            "attribute": {
+              "value": "true"
+            },
+            "offerIdAttr": {
+              "value": "offer-abc"
+            }
+          }
+        ]
+      },
+      "discountNode": {
+        "metafield": {
+          "value": "{\"rules\":[],\"default_rule\":{\"type\":\"percentage\",\"value\":100,\"message\":\"Free Gift\",\"max_cap\":null}}"
+        }
+      }
+    },
+    "output": {
+      "discountApplicationStrategy": "FIRST",
+      "discounts": [
+        {
+          "message": "Free Gift",
+          "value": {
+            "percentage": {
+              "value": "100"
+            }
+          },
+          "targets": [
+            {
+              "productVariant": {
+                "id": "gid://shopify/ProductVariant/222",
+                "quantity": 1
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
