@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { FROZEN_PAGES, FROZEN_PAGE_PREFIXES } from "../lib/constants.js";
 import VariantList, { extractVariantData } from "./VariantList.jsx";
+import StepForm from "./StepForm.jsx";
 
 function isFrozenHandle(handle) {
   if (FROZEN_PAGES.includes(handle)) return true;
@@ -269,8 +270,8 @@ export default function OfferForm({
     onSubmit(data);
   }
 
-  return (
-    <div className="cx-layout">
+  const stepDetails = (
+    <>
       {/* Offer Details */}
       <div className="cx-card">
         <div className="cx-card-header">
@@ -348,7 +349,11 @@ export default function OfferForm({
           </div>
         </div>
       </div>
+    </>
+  );
 
+  const stepRules = (
+    <>
       {/* Trigger */}
       {!isProductSource && (
         <div className="cx-card">
@@ -489,7 +494,11 @@ export default function OfferForm({
           </div>
         </div>
       </div>
+    </>
+  );
 
+  const stepDisplay = (
+    <>
       {/* Progress Bar */}
       {!isProductSource && (
         <div className="cx-card">
@@ -590,17 +599,21 @@ export default function OfferForm({
           </div>
         </div>
       </div>
+    </>
+  );
 
-      {/* Submit */}
-      <div className="cx-form-actions">
-        <button
-          className="cx-btn cx-btn-primary"
-          onClick={handleSubmit}
-          disabled={submitting}
-        >
-          {submitting ? "Saving..." : "Save offer"}
-        </button>
-      </div>
+  return (
+    <div className="cx-layout">
+      <StepForm
+        steps={[
+          { label: "Details", content: stepDetails },
+          { label: "Rules", content: stepRules },
+          { label: "Display & Targeting", content: stepDisplay },
+        ]}
+        onSubmit={handleSubmit}
+        submitting={submitting}
+        submitLabel="Save offer"
+      />
     </div>
   );
 }

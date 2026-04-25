@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLoaderData, useFetcher } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
+import useConfirm from "../components/useConfirm.jsx";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
@@ -293,6 +294,7 @@ export default function Settings() {
   const fetcher = useFetcher();
   const shopify = useAppBridge();
   const submitting = fetcher.state !== "idle";
+  const [confirmFn, confirmModal] = useConfirm();
 
   const [pbEnabled, setPbEnabled] = useState(data.progressBar.enabled);
   const [allCompleteMessage, setAllCompleteMessage] = useState(
@@ -388,15 +390,14 @@ export default function Settings() {
   }
 
   async function handleDeleteMilestone(milestone) {
-    const confirmed = await shopify.modal.confirm({
+    const yes = await confirmFn({
       title: "Delete milestone",
       message: `Are you sure you want to delete "${milestone.label}"? This action cannot be undone.`,
-      primaryAction: { content: "Delete", destructive: true },
-      secondaryAction: { content: "Cancel" },
+      confirmLabel: "Delete",
+      destructive: true,
     });
-    if (confirmed) {
-      milestoneAction("delete_milestone", milestone.id);
-    }
+    if (!yes) return;
+    milestoneAction("delete_milestone", milestone.id);
   }
 
   return (
@@ -647,6 +648,7 @@ export default function Settings() {
           </div>
         </div>
       </div>
+      {confirmModal}
     </s-page>
   );
 }

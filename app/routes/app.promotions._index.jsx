@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
-import { useLoaderData, useFetcher, Link, useSearchParams } from "react-router";
+import { useLoaderData, useFetcher, Link, useSearchParams, useOutletContext } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
+import { ThemeSwitcher } from "./app.jsx";
+import useConfirm from "../components/useConfirm.jsx";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
@@ -247,7 +249,7 @@ const DISCOUNT_TYPES = [
   { value: "fixed_price", label: "Fixed price" },
 ];
 
-function DiscountFunctionPanel({ discountFunction, fetcher, shopify }) {
+function DiscountFunctionPanel({ discountFunction, fetcher, confirm }) {
   const isActive = discountFunction.active;
   const config = discountFunction.functionConfig ?? {};
   const rules = config.rules ?? [];
@@ -296,16 +298,13 @@ function DiscountFunctionPanel({ discountFunction, fetcher, shopify }) {
   }
 
   async function handleDeactivate() {
-    const confirmed = await shopify.modal.confirm({
+    const yes = await confirm({
       title: "Deactivate discount function",
-      message:
-        "This will remove the automatic discount from Shopify. Gift items will no longer be discounted at checkout. Are you sure?",
-      primaryAction: { content: "Deactivate", destructive: true },
-      secondaryAction: { content: "Cancel" },
+      message: "This will remove the automatic discount from Shopify. Gift items will no longer be discounted at checkout.",
+      confirmLabel: "Deactivate",
+      destructive: true,
     });
-    if (confirmed) {
-      submitFn({ intent: "deactivate" });
-    }
+    if (yes) submitFn({ intent: "deactivate" });
   }
 
   function handleUpdateDefault() {
@@ -341,15 +340,13 @@ function DiscountFunctionPanel({ discountFunction, fetcher, shopify }) {
   }
 
   async function handleDeleteRule(offerId) {
-    const confirmed = await shopify.modal.confirm({
+    const yes = await confirm({
       title: "Delete rule",
       message: `Remove the discount rule for offer "${offerId}"?`,
-      primaryAction: { content: "Delete", destructive: true },
-      secondaryAction: { content: "Cancel" },
+      confirmLabel: "Delete",
+      destructive: true,
     });
-    if (confirmed) {
-      submitFn({ intent: "delete_rule", rule_offer_id: offerId });
-    }
+    if (yes) submitFn({ intent: "delete_rule", rule_offer_id: offerId });
   }
 
   return (
@@ -661,6 +658,8 @@ export default function PromotionsIndex() {
   const fetcher = useFetcher();
   const shopify = useAppBridge();
   const [searchParams] = useSearchParams();
+  const { themes, activeThemeId, mainThemeId } = useOutletContext();
+  const [confirmFn, confirmModal] = useConfirm();
 
   const initialTab = searchParams.get("tab") || "all";
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -689,15 +688,13 @@ export default function PromotionsIndex() {
   }
 
   async function handleDelete(promo) {
-    const confirmed = await shopify.modal.confirm({
+    const yes = await confirmFn({
       title: `Delete ${TYPE_LABELS[promo.type].toLowerCase()}`,
       message: `Are you sure you want to delete "${promo.name}"? This action cannot be undone.`,
-      primaryAction: { content: "Delete", destructive: true },
-      secondaryAction: { content: "Cancel" },
+      confirmLabel: "Delete",
+      destructive: true,
     });
-    if (confirmed) {
-      submitAction("delete", promo.id, promo.type);
-    }
+    if (yes) submitAction("delete", promo.id, promo.type);
   }
 
   const tabCounts = {};
@@ -714,15 +711,16 @@ export default function PromotionsIndex() {
 
   return (
     <s-page heading="Promotions">
-      <s-button
-        slot="primary-action"
-        variant="primary"
-        href="/app/promotions/new?type=offer"
-      >
-        Create promotion
-      </s-button>
-
       <div className="cx-layout">
+        <div className="cx-page-actions">
+          <ThemeSwitcher themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
+          <Link to="/app/promotions/new?type=offer" className="cx-btn cx-btn-primary">
+            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Create promotion
+          </Link>
+        </div>
         {/* Tab filter */}
         <div className="cx-tabs">
           {TABS.map((tab) => (
@@ -744,7 +742,7 @@ export default function PromotionsIndex() {
           <DiscountFunctionPanel
             discountFunction={discountFunction}
             fetcher={fetcher}
-            shopify={shopify}
+            confirm={confirmFn}
           />
         )}
 
@@ -869,6 +867,7 @@ export default function PromotionsIndex() {
           </>
         )}
       </div>
+      {confirmModal}
     </s-page>
   );
 }

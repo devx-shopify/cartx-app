@@ -1,6 +1,7 @@
-import { useLoaderData, useFetcher, Link } from "react-router";
+import { useLoaderData, useFetcher, Link, useOutletContext } from "react-router";
 import { useEffect } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
+import { ThemeSwitcher } from "./app.jsx";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
@@ -106,6 +107,7 @@ export default function Dashboard() {
   const data = useLoaderData();
   const fetcher = useFetcher();
   const shopify = useAppBridge();
+  const { themes, activeThemeId, mainThemeId } = useOutletContext();
 
   useEffect(() => {
     if (fetcher.data?.ok) {
@@ -125,15 +127,16 @@ export default function Dashboard() {
 
   return (
     <s-page heading="Cart Max">
-      <s-button
-        slot="primary-action"
-        variant="primary"
-        href="/app/promotions/new?type=offer"
-      >
-        Create promotion
-      </s-button>
-
       <div className="cx-layout cx-layout-wide">
+        <div className="cx-page-actions">
+          <ThemeSwitcher themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
+          <Link to="/app/promotions/new?type=offer" className="cx-btn cx-btn-primary">
+            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Create promotion
+          </Link>
+        </div>
         {/* Onboarding */}
         {!hasPromotions && (
           <div className="cx-card">

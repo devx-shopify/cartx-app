@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { useFetcher } from "react-router";
 import { FROZEN_PAGES, FROZEN_PAGE_PREFIXES } from "../lib/constants.js";
+import StepForm from "./StepForm.jsx";
 
 function isFrozenHandle(handle) {
   if (FROZEN_PAGES.includes(handle)) return true;
@@ -90,91 +91,92 @@ export default function CouponForm({ coupon, onSubmit, submitting }) {
     });
   }
 
-  return (
-    <div className="cx-layout">
-      {/* Discount Selection */}
-      <div className="cx-card">
-        <div className="cx-card-header">
-          <h3 className="cx-card-title">Shopify Discount</h3>
-        </div>
-        <div className="cx-card-body">
-          <div className="cx-form-section">
-            {hasDiscount && !pickerOpen ? (
-              <>
-                <div className="cx-selected-discount">
-                  <div className="cx-selected-discount-info">
-                    <div className="cx-selected-discount-title">{title}</div>
-                    <div className="cx-selected-discount-meta">
-                      {isAutomatic ? "Automatic discount" : code}
-                    </div>
+  const stepDiscount = (
+    <div className="cx-card">
+      <div className="cx-card-header">
+        <h3 className="cx-card-title">Shopify Discount</h3>
+      </div>
+      <div className="cx-card-body">
+        <div className="cx-form-section">
+          {hasDiscount && !pickerOpen ? (
+            <>
+              <div className="cx-selected-discount">
+                <div className="cx-selected-discount-info">
+                  <div className="cx-selected-discount-title">{title}</div>
+                  <div className="cx-selected-discount-meta">
+                    {isAutomatic ? "Automatic discount" : code}
                   </div>
-                  <span className="cx-badge cx-badge-success">{typeLabel}</span>
                 </div>
-                <div>
-                  <button className="cx-btn cx-btn-ghost" onClick={openPicker}>
-                    Change discount
-                  </button>
-                </div>
-              </>
-            ) : !pickerOpen ? (
-              <>
-                <button className="cx-btn cx-btn-secondary" onClick={openPicker}>
-                  Select discount
+                <span className="cx-badge cx-badge-success">{typeLabel}</span>
+              </div>
+              <div>
+                <button className="cx-btn cx-btn-ghost" onClick={openPicker}>
+                  Change discount
                 </button>
-                {errors.code && <span className="cx-error">{errors.code}</span>}
-              </>
-            ) : null}
+              </div>
+            </>
+          ) : !pickerOpen ? (
+            <>
+              <button className="cx-btn cx-btn-secondary" onClick={openPicker}>
+                Select discount
+              </button>
+              {errors.code && <span className="cx-error">{errors.code}</span>}
+            </>
+          ) : null}
 
-            {pickerOpen && (
-              <>
-                <Field label="Search">
-                  <input
-                    className="cx-input"
-                    placeholder="Search by title or code..."
-                    onChange={(e) => loadDiscounts(e.target.value)}
-                    autoFocus
-                  />
-                </Field>
-                <div className="cx-picker-list">
-                  {discountsLoading ? (
-                    <div className="cx-picker-empty">Loading...</div>
-                  ) : discounts.length === 0 ? (
-                    <div className="cx-picker-empty">No discounts found</div>
-                  ) : (
-                    discounts.map((d) => (
-                      <div
-                        key={d.id}
-                        className="cx-picker-item"
-                        onClick={() => selectDiscount(d)}
-                      >
-                        <div className="cx-picker-item-info">
-                          <div className="cx-picker-item-title">{d.title}</div>
-                          {d.code && d.code !== d.title && (
-                            <div className="cx-picker-item-code">{d.code}</div>
-                          )}
-                          <div className="cx-picker-item-meta">
-                            {d.is_automatic ? "Automatic" : "Code"} &middot;{" "}
-                            {d.status === "ACTIVE" ? "Active" : d.status === "SCHEDULED" ? "Scheduled" : "Expired"}
-                          </div>
+          {pickerOpen && (
+            <>
+              <Field label="Search">
+                <input
+                  className="cx-input"
+                  placeholder="Search by title or code..."
+                  onChange={(e) => loadDiscounts(e.target.value)}
+                  autoFocus
+                />
+              </Field>
+              <div className="cx-picker-list">
+                {discountsLoading ? (
+                  <div className="cx-picker-empty">Loading...</div>
+                ) : discounts.length === 0 ? (
+                  <div className="cx-picker-empty">No discounts found</div>
+                ) : (
+                  discounts.map((d) => (
+                    <div
+                      key={d.id}
+                      className="cx-picker-item"
+                      onClick={() => selectDiscount(d)}
+                    >
+                      <div className="cx-picker-item-info">
+                        <div className="cx-picker-item-title">{d.title}</div>
+                        {d.code && d.code !== d.title && (
+                          <div className="cx-picker-item-code">{d.code}</div>
+                        )}
+                        <div className="cx-picker-item-meta">
+                          {d.is_automatic ? "Automatic" : "Code"} &middot;{" "}
+                          {d.status === "ACTIVE" ? "Active" : d.status === "SCHEDULED" ? "Scheduled" : "Expired"}
                         </div>
-                        <span className={`cx-badge ${d.status === "ACTIVE" ? "cx-badge-success" : "cx-badge-warning"}`}>
-                          {d.type_label}
-                        </span>
                       </div>
-                    ))
-                  )}
-                </div>
-                <div>
-                  <button className="cx-btn cx-btn-ghost" onClick={() => setPickerOpen(false)}>
-                    Cancel
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+                      <span className={`cx-badge ${d.status === "ACTIVE" ? "cx-badge-success" : "cx-badge-warning"}`}>
+                        {d.type_label}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div>
+                <button className="cx-btn cx-btn-ghost" onClick={() => setPickerOpen(false)}>
+                  Cancel
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
+    </div>
+  );
 
+  const stepDisplayTarget = (
+    <>
       {/* Display Settings */}
       <div className="cx-card">
         <div className="cx-card-header">
@@ -239,17 +241,20 @@ export default function CouponForm({ coupon, onSubmit, submitting }) {
           </div>
         </div>
       </div>
+    </>
+  );
 
-      {/* Submit */}
-      <div className="cx-form-actions">
-        <button
-          className="cx-btn cx-btn-primary"
-          onClick={handleSubmit}
-          disabled={submitting}
-        >
-          {submitting ? "Saving..." : "Save coupon"}
-        </button>
-      </div>
+  return (
+    <div className="cx-layout">
+      <StepForm
+        steps={[
+          { label: "Discount", content: stepDiscount },
+          { label: "Display & Targeting", content: stepDisplayTarget },
+        ]}
+        onSubmit={handleSubmit}
+        submitting={submitting}
+        submitLabel="Save coupon"
+      />
     </div>
   );
 }

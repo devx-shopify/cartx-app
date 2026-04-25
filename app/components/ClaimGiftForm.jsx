@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { FROZEN_PAGES, FROZEN_PAGE_PREFIXES } from "../lib/constants.js";
 import VariantList, { extractVariantData } from "./VariantList.jsx";
+import StepForm from "./StepForm.jsx";
 
 function isFrozenHandle(handle) {
   if (FROZEN_PAGES.includes(handle)) return true;
@@ -180,8 +181,8 @@ export default function ClaimGiftForm({
     onSubmit(data);
   }
 
-  return (
-    <div className="cx-layout">
+  const stepDetails = (
+    <>
       {/* Basic Info */}
       <div className="cx-card">
         <div className="cx-card-header">
@@ -253,51 +254,56 @@ export default function ClaimGiftForm({
           </div>
         </div>
       </div>
+    </>
+  );
 
-      {/* Claimable Products */}
-      <div className="cx-card">
-        <div className="cx-card-header">
-          <h3 className="cx-card-title">Claimable products</h3>
-        </div>
-        <div className="cx-card-body">
-          <div className="cx-form-section">
-            <div className="cx-flex cx-items-center cx-gap-md">
-              <button className="cx-btn cx-btn-secondary" onClick={pickClaimableProducts}>
-                {claimableVariants.length > 0 ? "Change products" : "Select products"}
-              </button>
-              {claimableVariants.length > 0 && (
-                <span className="cx-variant-count">
-                  <span className="cx-variant-count-num">{claimableVariants.length}</span> variant(s)
-                </span>
-              )}
-            </div>
-            <VariantList
-              variants={claimableDisplay}
-              onRemove={removeClaimableVariant}
-            />
-            <p className="cx-text-sm cx-text-secondary" style={{ margin: 0 }}>
-              Customers can pick from these products once threshold is met.
-              Out-of-stock products are hidden automatically.
-            </p>
-            {errors.variants && (
-              <div className="cx-banner cx-banner-danger">{errors.variants}</div>
+  const stepProducts = (
+    <div className="cx-card">
+      <div className="cx-card-header">
+        <h3 className="cx-card-title">Claimable products</h3>
+      </div>
+      <div className="cx-card-body">
+        <div className="cx-form-section">
+          <div className="cx-flex cx-items-center cx-gap-md">
+            <button className="cx-btn cx-btn-secondary" onClick={pickClaimableProducts}>
+              {claimableVariants.length > 0 ? "Change products" : "Select products"}
+            </button>
+            {claimableVariants.length > 0 && (
+              <span className="cx-variant-count">
+                <span className="cx-variant-count-num">{claimableVariants.length}</span> variant(s)
+              </span>
             )}
-            <Field
-              label="Max gifts a customer can claim"
-              hint="Leave empty to allow claiming all products"
-            >
-              <input
-                className="cx-input"
-                type="number"
-                value={String(maxClaims)}
-                onChange={(e) => setMaxClaims(e.target.value)}
-                placeholder={String(claimableVariants.length || 1)}
-              />
-            </Field>
           </div>
+          <VariantList
+            variants={claimableDisplay}
+            onRemove={removeClaimableVariant}
+          />
+          <p className="cx-text-sm cx-text-secondary" style={{ margin: 0 }}>
+            Customers can pick from these products once threshold is met.
+            Out-of-stock products are hidden automatically.
+          </p>
+          {errors.variants && (
+            <div className="cx-banner cx-banner-danger">{errors.variants}</div>
+          )}
+          <Field
+            label="Max gifts a customer can claim"
+            hint="Leave empty to allow claiming all products"
+          >
+            <input
+              className="cx-input"
+              type="number"
+              value={String(maxClaims)}
+              onChange={(e) => setMaxClaims(e.target.value)}
+              placeholder={String(claimableVariants.length || 1)}
+            />
+          </Field>
         </div>
       </div>
+    </div>
+  );
 
+  const stepDisplay = (
+    <>
       {/* Progress Bar */}
       <div className="cx-card">
         <div className="cx-card-header">
@@ -392,17 +398,21 @@ export default function ClaimGiftForm({
           </div>
         </div>
       </div>
+    </>
+  );
 
-      {/* Submit */}
-      <div className="cx-form-actions">
-        <button
-          className="cx-btn cx-btn-primary"
-          onClick={handleSubmit}
-          disabled={submitting}
-        >
-          {submitting ? "Saving..." : "Save claim gift"}
-        </button>
-      </div>
+  return (
+    <div className="cx-layout">
+      <StepForm
+        steps={[
+          { label: "Details", content: stepDetails },
+          { label: "Products", content: stepProducts },
+          { label: "Display & Targeting", content: stepDisplay },
+        ]}
+        onSubmit={handleSubmit}
+        submitting={submitting}
+        submitLabel="Save claim gift"
+      />
     </div>
   );
 }
