@@ -286,6 +286,7 @@ export default class CartDrawer extends Component {
 
     return (
       <div id="cartmax-progress" className="cartmax-progress">
+        {bar.top_message ? <div class="cartmax-progress-msg">{bar.top_message}</div> : null}
         <div className="cartmax-progress-track">
           <div className="cartmax-progress-fill" style={{ width: pct + '%' }} ><span className='visually-hidden'>Progress fill</span></div>
           {tiers.map((tier, i) => {
@@ -303,7 +304,6 @@ export default class CartDrawer extends Component {
             );
           })}
         </div>
-        {bar.top_message ? <div class="cartmax-progress-msg">{bar.top_message}</div> : null}
       </div>
     );
   }
@@ -416,7 +416,9 @@ export default class CartDrawer extends Component {
   renderEmpty() {
     return (
       <div class="cartmax-empty">
+        <div class="cartmax-empty-icon">🛍️</div>
         <p class="cartmax-empty-text">Your cart is empty</p>
+        <p class="cartmax-empty-subtitle">Looks like you haven't added anything yet</p>
         <button class="cartmax-continue-btn" onClick={this.close}>Continue shopping</button>
       </div>
     );
@@ -504,6 +506,7 @@ export default class CartDrawer extends Component {
     return (
       <div class="cartmax-claims">
         <div class="cartmax-claims-heading">{cg.section_heading}</div>
+        {limitReached ? <div class="cartmax-claims-locked">You have reached the maximum number of gifts you can claim</div> : null}
         <div class="cartmax-claims-scroll">
           {gifts.map(function (g) {
             var vid = String(g.variant_id);
