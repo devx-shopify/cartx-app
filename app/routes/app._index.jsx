@@ -1,5 +1,5 @@
-import { useLoaderData, useFetcher, Link, useOutletContext } from "react-router";
-import { useEffect } from "react";
+import { useLoaderData, useFetcher, useOutletContext, useNavigate } from "react-router";
+import { useEffect, useState } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { ThemeSwitcher } from "./app.jsx";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -11,6 +11,7 @@ import {
   getSelectedTheme,
 } from "../lib/config.server.js";
 import { getFreebieDiscountStatus } from "../lib/discount.server.js";
+import { getOnboarding, skipOnboarding, markStep } from "../lib/onboarding.server.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -20,27 +21,13 @@ export const loader = async ({ request }) => {
 
   const activePromotions = [];
   for (const offer of config.offers) {
-    if (offer.enabled) {
-      activePromotions.push({ name: offer.name, type: "Offer", id: offer.id });
-    }
+    if (offer.enabled) activePromotions.push({ name: offer.name, type: "Offer", id: offer.id });
   }
   for (const coupon of config.coupons) {
-    if (coupon.enabled) {
-      activePromotions.push({
-        name: coupon.is_automatic ? coupon.title : coupon.code,
-        type: "Coupon",
-        id: coupon.id,
-      });
-    }
+    if (coupon.enabled) activePromotions.push({ name: coupon.is_automatic ? coupon.title : coupon.code, type: "Coupon", id: coupon.id });
   }
   for (const gift of config.claim_gifts) {
-    if (gift.enabled) {
-      activePromotions.push({
-        name: gift.name,
-        type: "Claim Gift",
-        id: gift.id,
-      });
-    }
+    if (gift.enabled) activePromotions.push({ name: gift.name, type: "Claim Gift", id: gift.id });
   }
 
   let discountFunctionActive = false;
@@ -51,9 +38,10 @@ export const loader = async ({ request }) => {
     // Function may not be deployed yet
   }
 
+  const onboarding = await getOnboarding(session.shop);
+
   return {
-    totalPromotions:
-      config.offers.length + config.coupons.length + config.claim_gifts.length,
+    totalPromotions: config.offers.length + config.coupons.length + config.claim_gifts.length,
     activePromotions,
     progressBarEnabled: config.progress_bar.enabled,
     upsellsEnabled: config.upsells.enabled,
@@ -61,6 +49,8 @@ export const loader = async ({ request }) => {
     bottomRibbonEnabled: config.bottom_ribbon.enabled,
     milestonesCount: config.progress_bar.visual_milestones.length,
     discountFunctionActive,
+    onboarding,
+    shopDomain: session.shop,
   };
 };
 
@@ -71,48 +61,206 @@ export const action = async ({ request }) => {
   const config = await loadConfig(shopId, themeId);
   const body = await request.json();
 
-  if (body._action === "toggle_progress_bar") {
-    config.progress_bar.enabled = !config.progress_bar.enabled;
-  } else if (body._action === "toggle_upsells") {
-    config.upsells.enabled = !config.upsells.enabled;
-  } else if (body._action === "toggle_ribbon") {
-    config.bottom_ribbon.enabled = !config.bottom_ribbon.enabled;
+  if (body._action === "skip_onboarding") {
+    await skipOnboarding(session.shop);
+    return { ok: true };
   }
+
+  if (body._action === "mark_step") {
+    await markStep(session.shop, body.step);
+    return { ok: true };
+  }
+
+  if (body._action === "toggle_progress_bar") config.progress_bar.enabled = !config.progress_bar.enabled;
+  else if (body._action === "toggle_upsells") config.upsells.enabled = !config.upsells.enabled;
+  else if (body._action === "toggle_ribbon") config.bottom_ribbon.enabled = !config.bottom_ribbon.enabled;
 
   await saveConfig(shopId, themeId, config);
   return { ok: true };
 };
 
-const PROMO_BADGE_TONE = {
-  Offer: "cx-badge-magic",
-  Coupon: "cx-badge-info",
-  "Claim Gift": "cx-badge-success",
-};
+/* ── Setup Guide ──────────────────────────────────────────── */
 
-function Toggle({ checked, onChange, label }) {
+const SETUP_STEPS = [
+  {
+    key: "offer_created",
+    title: "Create your first promotion",
+    description: "Add a free gift offer, BOGO deal, or spend-threshold reward to start increasing your average order value.",
+    buttonLabel: "Create promotion",
+    type: "navigate",
+    href: "/app/promotions/new?type=offer",
+  },
+  {
+    key: "settings_configured",
+    title: "Configure your settings",
+    description: "Set up the progress bar milestones, upsell products, and the bottom ribbon to customize the cart drawer experience.",
+    buttonLabel: "Open settings",
+    type: "navigate",
+    href: "/app/settings",
+  },
+  {
+    key: "app_enabled",
+    title: "Enable the app on your theme",
+    description: "Open the theme editor, find cartx in the App embeds section, and toggle it on. This activates the cart drawer on your storefront.",
+    buttonLabel: "Open theme editor",
+    type: "theme_editor",
+  },
+  {
+    key: "previewed",
+    title: "Preview your cart drawer",
+    description: "Visit your storefront to see how the cart drawer looks and works for your customers.",
+    buttonLabel: "Preview store",
+    type: "preview",
+  },
+];
+
+function SetupGuide({ steps, completedCount, totalSteps, previewUrl, navigate, submitAction, shopDomain }) {
+  const [expandedStep, setExpandedStep] = useState(() => {
+    const firstIncomplete = SETUP_STEPS.find((s) => !steps[s.key]);
+    return firstIncomplete?.key || SETUP_STEPS[0].key;
+  });
+  const [collapsed, setCollapsed] = useState(false);
+
   return (
-    <label className="cx-toggle">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onChange}
-      />
-      <span className="cx-toggle-track" />
-      {label && <span className="cx-toggle-label">{label}</span>}
-    </label>
+    <s-section padding="none">
+      {/* Header */}
+      <s-box padding="base">
+        <s-stack direction="inline" justifyContent="space-between" alignItems="center">
+          <s-stack direction="inline" gap="small" alignItems="center">
+            <s-button
+              variant="tertiary"
+              accessibilityLabel={collapsed ? "Expand setup guide" : "Collapse setup guide"}
+              onClick={() => setCollapsed(!collapsed)}
+              icon={collapsed ? "chevron-end" : "chevron-down"}
+            />
+            <s-stack direction="block" gap="extra-small">
+              <s-text fontWeight="bold">Setup guide</s-text>
+              <s-text color="subdued">{completedCount} of {totalSteps} tasks complete</s-text>
+            </s-stack>
+          </s-stack>
+          <s-button variant="tertiary" onClick={() => submitAction("skip_onboarding")}>
+            Dismiss
+          </s-button>
+        </s-stack>
+      </s-box>
+
+      {/* Progress */}
+      {!collapsed && (
+        <s-box paddingInline="base" paddingBlockEnd="small">
+          <div style={{
+            display: "flex", gap: 6,
+          }}>
+            {SETUP_STEPS.map((step) => (
+              <div key={step.key} style={{
+                flex: 1, height: 4, borderRadius: 2,
+                background: steps[step.key]
+                  ? "var(--s-color-bg-fill-success, #29845a)"
+                  : "var(--s-color-bg-surface-secondary, #e3e3e3)",
+                transition: "background 0.3s ease",
+              }} />
+            ))}
+          </div>
+        </s-box>
+      )}
+
+      {/* Steps */}
+      {!collapsed && (
+        <s-box paddingInline="small" paddingBlockEnd="small">
+          <s-stack direction="block" gap="none">
+            {SETUP_STEPS.map((step) => {
+              const done = steps[step.key];
+              const isExpanded = expandedStep === step.key;
+
+              return (
+                <div key={step.key}>
+                  {/* Step row — always visible */}
+                  <s-box
+                    padding="small"
+                    borderRadius="base"
+                    background={isExpanded ? "bg-surface-secondary" : undefined}
+                  >
+                    <s-stack direction="block" gap="small">
+                      {/* Clickable header */}
+                      <s-clickable onClick={() => setExpandedStep(isExpanded ? null : step.key)}>
+                        <s-stack direction="inline" gap="small" alignItems="center">
+                          {/* Circle indicator */}
+                          {done ? (
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
+                              <circle cx="10" cy="10" r="10" fill="var(--s-color-bg-fill-success, #29845a)" />
+                              <path d="M14.5 7 8.5 13 5.5 10" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          ) : isExpanded ? (
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
+                              <circle cx="10" cy="10" r="9" stroke="var(--s-color-border-brand, #2c6ecb)" strokeWidth="2" strokeDasharray="4 2" />
+                            </svg>
+                          ) : (
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
+                              <circle cx="10" cy="10" r="9" stroke="var(--s-color-border, #c9cccf)" strokeWidth="1.5" />
+                            </svg>
+                          )}
+                          <s-text
+                            fontWeight={isExpanded ? "semibold" : "regular"}
+                            color={done ? "subdued" : undefined}
+                          >
+                            {step.title}
+                          </s-text>
+                        </s-stack>
+                      </s-clickable>
+
+                      {/* Expanded content */}
+                      {isExpanded && !done && (
+                        <s-box paddingInlineStart="700">
+                          <s-stack direction="block" gap="300">
+                            <s-text color="subdued">{step.description}</s-text>
+                            <s-stack direction="inline" gap="small">
+                              <s-button
+                                variant="primary"
+                                onClick={() => {
+                                  if (step.type === "navigate") {
+                                    navigate(step.href);
+                                  } else if (step.type === "theme_editor") {
+                                    const editorUrl = `https://${shopDomain}/admin/themes/current/editor?context=apps`;
+                                    open(editorUrl, "_top");
+                                    submitAction("mark_step", step.key);
+                                  } else if (step.type === "preview") {
+                                    if (previewUrl) open(previewUrl, "_blank");
+                                    submitAction("mark_step", step.key);
+                                  }
+                                }}
+                              >
+                                {step.buttonLabel}
+                              </s-button>
+                            </s-stack>
+                          </s-stack>
+                        </s-box>
+                      )}
+                    </s-stack>
+                  </s-box>
+                </div>
+              );
+            })}
+          </s-stack>
+        </s-box>
+      )}
+    </s-section>
   );
 }
+
+const PROMO_BADGE_TONE = {
+  Offer: "info",
+  Coupon: "info",
+  "Claim Gift": "success",
+};
 
 export default function Dashboard() {
   const data = useLoaderData();
   const fetcher = useFetcher();
   const shopify = useAppBridge();
-  const { themes, activeThemeId, mainThemeId } = useOutletContext();
+  const { themes, activeThemeId, mainThemeId, planData } = useOutletContext();
+  const navigate = useNavigate();
 
   useEffect(() => {
-    if (fetcher.data?.ok) {
-      shopify.toast.show("Updated");
-    }
+    if (fetcher.data?.ok) shopify.toast.show("Updated");
   }, [fetcher.data, shopify]);
 
   function handleToggle(actionName) {
@@ -122,197 +270,176 @@ export default function Dashboard() {
     });
   }
 
-  const hasPromotions = data.totalPromotions > 0;
+  function submitAction(actionName, stepKey) {
+    const payload = { _action: actionName };
+    if (stepKey) payload.step = stepKey;
+    fetcher.submit(JSON.stringify(payload), {
+      method: "POST",
+      encType: "application/json",
+    });
+  }
+
+  const { onboarding } = data;
+  const showWizard = !onboarding.completed;
+  const steps = onboarding.steps;
+  const completedCount = Object.values(steps).filter(Boolean).length;
+  const totalSteps = Object.keys(steps).length;
   const hasActivePromotions = data.activePromotions.length > 0;
 
+  // Build storefront preview URL
+  const storeHandle = data.shopDomain?.replace(".myshopify.com", "");
+  const previewUrl = storeHandle ? `https://${data.shopDomain}?cartx_preview=true` : null;
+
   return (
-    <s-page heading="Cart Max">
-      <div className="cx-layout cx-layout-wide">
-        <div className="cx-page-actions">
-          <ThemeSwitcher themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
-          <Link to="/app/promotions/new?type=offer" className="cx-btn cx-btn-primary">
-            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-            Create promotion
-          </Link>
-        </div>
-        {/* Onboarding */}
-        {!hasPromotions && (
-          <div className="cx-card">
-            <div className="cx-card-header">
-              <h3 className="cx-card-title">Get started with Cart Max</h3>
-            </div>
-            <div className="cx-card-body">
-              <div className="cx-banner cx-banner-info" style={{ marginBottom: 20 }}>
-                <svg className="cx-banner-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 3a1 1 0 110 2 1 1 0 010-2zm2 8H6v-1h1V8H6V7h3v4h1v1z"/>
-                </svg>
-                <span>Welcome! Set up your cart drawer experience in a few simple steps.</span>
-              </div>
-              <div className="cx-steps">
-                <div className="cx-step">
-                  <span className="cx-step-number">1</span>
-                  <div className="cx-step-content">
-                    <div className="cx-step-title">
-                      <Link to="/app/promotions/new?type=offer">Create your first offer</Link>
-                    </div>
-                    <div className="cx-step-desc">Add free gifts, BOGO deals, or cart freebies</div>
-                  </div>
-                </div>
-                <div className="cx-step">
-                  <span className="cx-step-number">2</span>
-                  <div className="cx-step-content">
-                    <div className="cx-step-title">
-                      <Link to="/app/settings">Configure settings</Link>
-                    </div>
-                    <div className="cx-step-desc">Set up the progress bar, upsells, and ribbon</div>
-                  </div>
-                </div>
-                <div className="cx-step">
-                  <span className="cx-step-number">3</span>
-                  <div className="cx-step-content">
-                    <div className="cx-step-title">Preview your cart drawer</div>
-                    <div className="cx-step-desc">Open your storefront to see it in action</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+    <s-page heading="cartx">
+      <s-button slot="primary-action" variant="primary" onClick={() => navigate("/app/promotions/new?type=offer")}>
+        Create promotion
+      </s-button>
+
+      <s-stack direction="block" gap="600">
+        {/* Theme switcher row — Max only */}
+        {planData?.features?.theme_switcher && (
+          <s-stack direction="inline" justifyContent="end">
+            <ThemeSwitcher themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
+          </s-stack>
         )}
 
-        {/* Dashboard grid */}
-        {hasPromotions && (
-          <div className="cx-grid-sidebar">
-            {/* Main content */}
-            <div className="cx-flex-col cx-gap-lg">
-              {/* Stats row */}
-              <div className="cx-grid-3">
-                <div className="cx-stat">
-                  <span className="cx-stat-label">Total</span>
-                  <span className="cx-stat-value">{data.totalPromotions}</span>
-                  <span className="cx-stat-footer">Promotions created</span>
-                </div>
-                <div className="cx-stat">
-                  <span className="cx-stat-label">Active</span>
-                  <span className="cx-stat-value">{data.activePromotions.length}</span>
-                  <span className="cx-stat-footer">Running now</span>
-                </div>
-                <div className="cx-stat">
-                  <span className="cx-stat-label">Milestones</span>
-                  <span className="cx-stat-value">{data.milestonesCount}</span>
-                  <span className="cx-stat-footer">Visual milestones</span>
-                </div>
-              </div>
+        {/* Onboarding setup guide */}
+        {showWizard && (
+          <SetupGuide
+            steps={steps}
+            completedCount={completedCount}
+            totalSteps={totalSteps}
+            previewUrl={previewUrl}
+            navigate={navigate}
+            submitAction={submitAction}
+            shopDomain={data.shopDomain}
+          />
+        )}
 
+        {/* Dashboard */}
+        {!showWizard && (
+          <>
+            {/* Stats row */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 16 }}>
+              {[
+                { label: "Total", value: data.totalPromotions, footer: "Promotions" },
+                { label: "Active", value: data.activePromotions.length, footer: "Running now" },
+                { label: "Milestones", value: data.milestonesCount, footer: "Visual milestones" },
+                { label: "Upsells", value: data.upsellsCount, footer: data.upsellsEnabled ? "Enabled" : "Disabled" },
+              ].map((stat) => (
+                <s-section key={stat.label} padding="400">
+                  <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", color: "#6d7175" }}>{stat.label}</div>
+                  <div style={{ fontSize: 28, fontWeight: 600, margin: "6px 0 4px" }}>{stat.value}</div>
+                  <div style={{ fontSize: 12, color: "#6d7175" }}>{stat.footer}</div>
+                </s-section>
+              ))}
+            </div>
+
+            {/* Main grid — use CSS grid directly for align-start */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 20, alignItems: "start" }}>
               {/* Active promotions */}
-              <div className="cx-card">
-                <div className="cx-card-header">
-                  <h3 className="cx-card-title">Active promotions</h3>
-                  <Link to="/app/promotions" className="cx-btn-link">
-                    View all ({data.totalPromotions})
-                  </Link>
+              <s-section padding="none">
+                <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--s-color-border, #e3e3e3)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <s-text fontWeight="bold">Active promotions</s-text>
+                    <s-button variant="tertiary" onClick={() => navigate("/app/promotions")}>View all</s-button>
+                  </div>
                 </div>
                 {hasActivePromotions ? (
                   <>
-                    {data.activePromotions.slice(0, 5).map((promo) => (
-                      <div className="cx-list-item" key={promo.id}>
-                        <div className="cx-list-item-info">
-                          <div className="cx-flex cx-items-center cx-gap-sm">
-                            <span className="cx-list-item-title">{promo.name}</span>
-                            <span className={`cx-badge ${PROMO_BADGE_TONE[promo.type]}`}>
-                              {promo.type}
-                            </span>
-                          </div>
+                    {data.activePromotions.slice(0, 5).map((promo, i) => (
+                      <div
+                        key={promo.id}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          padding: "14px 20px",
+                          borderBottom: i < Math.min(data.activePromotions.length, 5) - 1 ? "1px solid var(--s-color-border, #e3e3e3)" : "none",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span
+                            style={{ fontWeight: 600, fontSize: 14, cursor: "pointer" }}
+                            onMouseEnter={(e) => { e.currentTarget.style.textDecoration = "underline"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.textDecoration = "none"; }}
+                            onClick={() => navigate(`/app/promotions/${promo.id}`)}
+                          >{promo.name}</span>
+                          <s-badge tone={PROMO_BADGE_TONE[promo.type]}>{promo.type}</s-badge>
                         </div>
-                        <Link to={`/app/promotions/${promo.id}`} className="cx-btn cx-btn-ghost cx-btn-sm">
-                          Edit
-                        </Link>
+                        <s-badge tone="success">Active</s-badge>
                       </div>
                     ))}
                     {data.activePromotions.length > 5 && (
-                      <div className="cx-card-footer">
-                        <Link to="/app/promotions" className="cx-btn-link">
-                          View all {data.activePromotions.length} active promotions
-                        </Link>
+                      <div style={{ textAlign: "center", padding: "14px 20px", borderTop: "1px solid var(--s-color-border, #e3e3e3)" }}>
+                        <s-button variant="tertiary" onClick={() => navigate("/app/promotions")}>
+                          View all {data.activePromotions.length} promotions
+                        </s-button>
                       </div>
                     )}
                   </>
                 ) : (
-                  <div className="cx-empty">
-                    <p className="cx-empty-title">No active promotions</p>
-                    <p className="cx-empty-desc">
-                      Enable an existing promotion or create a new one.
-                    </p>
+                  <div style={{ textAlign: "center", padding: "40px 20px" }}>
+                    <s-stack direction="block" gap="200" alignItems="center">
+                      <s-text fontWeight="semibold">No active promotions</s-text>
+                      <s-text color="subdued">Enable an existing promotion or create a new one.</s-text>
+                      <div style={{ marginTop: 8 }}>
+                        <s-button variant="primary" onClick={() => navigate("/app/promotions/new?type=offer")}>Create promotion</s-button>
+                      </div>
+                    </s-stack>
                   </div>
                 )}
+              </s-section>
+
+              {/* Sidebar — feature toggles */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {[
+                  { title: "Progress Bar", enabled: data.progressBarEnabled, action: "toggle_progress_bar", meta: `${data.milestonesCount} visual milestone${data.milestonesCount !== 1 ? "s" : ""}` },
+                  { title: "Upsells", enabled: data.upsellsEnabled, action: "toggle_upsells", meta: data.upsellsEnabled ? `${data.upsellsCount} product${data.upsellsCount !== 1 ? "s" : ""}` : "Disabled" },
+                  { title: "Bottom Ribbon", enabled: data.bottomRibbonEnabled, action: "toggle_ribbon", meta: data.bottomRibbonEnabled ? "Enabled" : "Disabled" },
+                ].map((feature) => (
+                  <s-section key={feature.title} padding="400">
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={{ fontWeight: 600, fontSize: 14 }}>{feature.title}</span>
+                      <s-switch
+                        label={feature.title}
+                        labelAccessibilityVisibility="hidden"
+                        checked={feature.enabled}
+                        onChange={() => handleToggle(feature.action)}
+                      />
+                    </div>
+                    <div style={{ fontSize: 13, color: "#6d7175", marginBottom: 10 }}>{feature.meta}</div>
+                    <s-button variant="tertiary" onClick={() => navigate("/app/settings")}>Configure</s-button>
+                  </s-section>
+                ))}
+
+                <s-section padding="400">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                    <span style={{ fontWeight: 600, fontSize: 14 }}>Gift Discount</span>
+                    {planData?.features?.discount_function ? (
+                      <s-badge tone={data.discountFunctionActive ? "success" : "warning"}>
+                        {data.discountFunctionActive ? "Active" : "Inactive"}
+                      </s-badge>
+                    ) : (
+                      <s-badge tone="warning">Basic</s-badge>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 13, color: "#6d7175", marginBottom: 10 }}>
+                    {planData?.features?.discount_function
+                      ? (data.discountFunctionActive ? "Auto-discounts gifts at checkout" : "Not configured")
+                      : "Upgrade to Basic to auto-discount gift items"
+                    }
+                  </div>
+                  {planData?.features?.discount_function ? (
+                    <s-button variant="tertiary" onClick={() => navigate("/app/promotions?tab=discount-function")}>Configure</s-button>
+                  ) : (
+                    <s-button variant="tertiary" onClick={() => navigate("/app/billing")}>Upgrade</s-button>
+                  )}
+                </s-section>
               </div>
             </div>
-
-            {/* Sidebar */}
-            <div className="cx-flex-col cx-gap-base">
-              <div className="cx-feature">
-                <div className="cx-feature-header">
-                  <span className="cx-feature-title">Progress Bar</span>
-                  <Toggle
-                    checked={data.progressBarEnabled}
-                    onChange={() => handleToggle("toggle_progress_bar")}
-                  />
-                </div>
-                <span className="cx-feature-meta">
-                  {data.milestonesCount} visual milestone{data.milestonesCount !== 1 ? "s" : ""}
-                </span>
-                <Link to="/app/settings" className="cx-btn-link">Configure</Link>
-              </div>
-
-              <div className="cx-feature">
-                <div className="cx-feature-header">
-                  <span className="cx-feature-title">Upsells</span>
-                  <Toggle
-                    checked={data.upsellsEnabled}
-                    onChange={() => handleToggle("toggle_upsells")}
-                  />
-                </div>
-                <span className="cx-feature-meta">
-                  {data.upsellsEnabled
-                    ? `${data.upsellsCount} product${data.upsellsCount !== 1 ? "s" : ""}`
-                    : "Disabled"}
-                </span>
-                <Link to="/app/settings" className="cx-btn-link">Configure</Link>
-              </div>
-
-              <div className="cx-feature">
-                <div className="cx-feature-header">
-                  <span className="cx-feature-title">Bottom Ribbon</span>
-                  <Toggle
-                    checked={data.bottomRibbonEnabled}
-                    onChange={() => handleToggle("toggle_ribbon")}
-                  />
-                </div>
-                <span className="cx-feature-meta">
-                  {data.bottomRibbonEnabled ? "Enabled" : "Disabled"}
-                </span>
-                <Link to="/app/settings" className="cx-btn-link">Configure</Link>
-              </div>
-
-              <div className="cx-feature">
-                <div className="cx-feature-header">
-                  <span className="cx-feature-title">Gift Discount</span>
-                  <span className={`cx-badge cx-badge-dot ${data.discountFunctionActive ? "cx-badge-success" : "cx-badge-warning"}`}>
-                    {data.discountFunctionActive ? "Active" : "Inactive"}
-                  </span>
-                </div>
-                <span className="cx-feature-meta">
-                  {data.discountFunctionActive
-                    ? "Auto-discounts gifts at checkout"
-                    : "Not configured"}
-                </span>
-                <Link to="/app/promotions?tab=discount-function" className="cx-btn-link">Configure</Link>
-              </div>
-            </div>
-          </div>
+          </>
         )}
-      </div>
+      </s-stack>
     </s-page>
   );
 }

@@ -1,5 +1,6 @@
-import { createHmac } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import { EvaluateCartRequestSchema } from "../lib/schemas.js";
+import { checkRateLimit } from "../lib/rate-limit.server.js";
 import { loadConfig } from "../lib/config.server.js";
 import { adjustedTotal, adjustedQty, isFrozenPage } from "../lib/helpers.server.js";
 import { evaluateOffers } from "../lib/evaluate/triggers.server.js";
@@ -24,7 +25,14 @@ function verifyProxyHmac(requestUrl) {
   pairs.sort();
   const message = pairs.join("");
   const computed = createHmac("sha256", secret).update(message).digest("hex");
-  return computed === signature;
+  try {
+    return timingSafeEqual(
+      Buffer.from(computed, "hex"),
+      Buffer.from(signature, "hex")
+    );
+  } catch {
+    return false;
+  }
 }
 
 // GET — Shopify proxy health check
@@ -47,6 +55,13 @@ export const action = async ({ request }) => {
   // shop comes from Shopify-signed query param — trust it
   const url = new URL(request.url);
   const shopId = url.searchParams.get("shop") || body.shop_id;
+
+  if (shopId) {
+    const rateResult = checkRateLimit(shopId);
+    if (!rateResult.allowed) {
+      return Response.json({ error: "Rate limit exceeded" }, { status: 429 });
+    }
+  }
   const themeId = body.theme_id;
 
   if (!shopId || !themeId) {
@@ -87,7 +102,7 @@ export const action = async ({ request }) => {
   try {
     config = await loadConfig(shopId, themeId);
   } catch (err) {
-    console.error('[CartMax] loadConfig error:', err);
+    console.error('[cartx] loadConfig error:', err);
     return Response.json({ error: "Config load failed" }, { status: 500 });
   }
 
@@ -103,8 +118,28 @@ export const action = async ({ request }) => {
     availableCoupons = resolveAvailableCoupons(config.coupons || [], cart, page, customer);
     claimGifts = resolveClaimGifts(config.claim_gifts || [], cart, adjTotal, adjQty, page, customer);
   } catch (err) {
-    console.error('[CartMax] Evaluate pipeline error:', err);
+    console.error('[cartx] Evaluate pipeline error:', err);
     return Response.json({ error: "Evaluation failed", message: err.message }, { status: 500 });
+  }
+
+  // Remove claimed items whose threshold is no longer met
+  const claimRemovals = [];
+  for (const item of cartItems) {
+    if (
+      item.properties?.['_claimed'] !== 'true' &&
+      item.properties?.['_cartmax_claim'] !== 'true'
+    ) continue;
+    const claimId = item.properties?.['_offer_id'];
+    if (!claimId) continue;
+    const rule = (config.claim_gifts || []).find((g) => g.id === claimId && g.enabled);
+    if (!rule) {
+      claimRemovals.push(item.key);
+      continue;
+    }
+    const currentValue = rule.trigger.type === 'price' ? adjTotal : adjQty;
+    if (currentValue < rule.trigger.threshold) {
+      claimRemovals.push(item.key);
+    }
   }
 
   const oosMessage =
@@ -129,13 +164,14 @@ export const action = async ({ request }) => {
   return Response.json({
     frozen: false,
     to_add: offerResult.to_add,
-    to_remove: offerResult.to_remove,
+    to_remove: [...(offerResult.to_remove || []), ...claimRemovals],
     bar,
     ribbon_message,
     oos_message: oosMessage,
     available_coupons: availableCoupons,
     claim_gifts: claimGifts,
     _config: clientConfig,
+    drawer: config.drawer,
     upsells: config.upsells?.enabled ? {
       enabled: true,
       heading: config.upsells.heading,

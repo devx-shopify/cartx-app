@@ -11,7 +11,8 @@ function isClaimedInCart(cart, variantId, claimId) {
   return cart.items.some(
     (item) =>
       normalizeId(item.variant_id) === vid &&
-      item.properties?.[LINE_PROPS.CLAIMED] === 'true' &&
+      (item.properties?.[LINE_PROPS.CARTMAX_CLAIM] === 'true' ||
+       item.properties?.[LINE_PROPS.CLAIMED] === 'true') &&
       item.properties?.[LINE_PROPS.OFFER_ID] === claimId
   )
 }

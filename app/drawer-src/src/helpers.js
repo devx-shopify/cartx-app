@@ -1,5 +1,5 @@
 // =============================================================
-// Cart Max — Shared Helpers
+// cartx — Shared Helpers
 // =============================================================
 
 // ── Internal fetch (bypasses cart interceptor) ──────────────
@@ -114,6 +114,65 @@ export function getContext() {
     customerTags: Array.isArray(tags) ? tags : [],
     moneyFormat: moneyFormat,
   };
+}
+
+// ── Drawer settings → CSS custom properties ─────────────────
+
+var RADIUS_MAP = { none: '0', small: '4px', medium: '10px', large: '12px', pill: '999px' };
+var HEADING_SIZE_MAP = { small: '14px', medium: '16px', large: '18px' };
+var BODY_SIZE_MAP = { small: '12px', medium: '13px', large: '14px' };
+var IMG_SIZE_MAP = { small: '56px', medium: '72px', large: '96px' };
+var DENSITY_MAP = { compact: '8px', comfortable: '14px', spacious: '20px' };
+
+export function applyDrawerSettings(settings) {
+  if (!settings) return;
+  var root = document.getElementById('cartmax-root');
+  if (!root) return;
+  var s = root.style;
+
+  // Colors
+  var c = settings.colors;
+  if (c) {
+    if (c.primary) s.setProperty('--cartmax-primary', c.primary);
+    if (c.primary_text) s.setProperty('--cartmax-primary-text', c.primary_text);
+    if (c.background) s.setProperty('--cartmax-bg', c.background);
+    if (c.text) s.setProperty('--cartmax-text', c.text);
+    if (c.secondary_text) s.setProperty('--cartmax-text-secondary', c.secondary_text);
+    if (c.border) s.setProperty('--cartmax-border', c.border);
+    if (c.accent) s.setProperty('--cartmax-accent', c.accent);
+    if (c.overlay_opacity != null) s.setProperty('--cartmax-overlay-opacity', c.overlay_opacity);
+  }
+
+  // Shape
+  var sh = settings.shape;
+  if (sh) {
+    if (sh.border_radius && RADIUS_MAP[sh.border_radius]) {
+      s.setProperty('--cartmax-radius', RADIUS_MAP[sh.border_radius]);
+    }
+  }
+
+  // Typography
+  var t = settings.typography;
+  if (t) {
+    if (t.heading_size && HEADING_SIZE_MAP[t.heading_size]) {
+      s.setProperty('--cartmax-heading-size', HEADING_SIZE_MAP[t.heading_size]);
+    }
+    if (t.body_size && BODY_SIZE_MAP[t.body_size]) {
+      s.setProperty('--cartmax-body-size', BODY_SIZE_MAP[t.body_size]);
+    }
+  }
+
+  // Layout
+  var l = settings.layout;
+  if (l) {
+    if (l.drawer_width) s.setProperty('--cartmax-width', l.drawer_width + 'px');
+    if (l.image_size && IMG_SIZE_MAP[l.image_size]) {
+      s.setProperty('--cartmax-img-size', IMG_SIZE_MAP[l.image_size]);
+    }
+    if (l.density && DENSITY_MAP[l.density]) {
+      s.setProperty('--cartmax-density-padding', DENSITY_MAP[l.density]);
+    }
+  }
 }
 
 // ── Focus trap for accessibility ────────────────────────────

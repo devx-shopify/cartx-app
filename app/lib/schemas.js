@@ -128,6 +128,73 @@ export const EvaluateCartRequestSchema = z.object({
   money_format: z.string().optional(),
 })
 
+export const DrawerConfigSchema = z.object({
+  colors: z.object({
+    primary: z.string().default('#1a1a1a'),
+    primary_text: z.string().default('#ffffff'),
+    background: z.string().default('#ffffff'),
+    text: z.string().default('#1a1a1a'),
+    secondary_text: z.string().default('#9ca3af'),
+    border: z.string().default('#f0f0f0'),
+    accent: z.string().default('#16a34a'),
+    overlay_opacity: z.number().min(0).max(1).default(0.45),
+  }).default({}),
+  shape: z.object({
+    border_radius: z.enum(['none', 'small', 'medium', 'large', 'pill']).default('medium'),
+    button_style: z.enum(['solid', 'outline']).default('solid'),
+  }).default({}),
+  typography: z.object({
+    heading_size: z.enum(['small', 'medium', 'large']).default('medium'),
+    body_size: z.enum(['small', 'medium', 'large']).default('medium'),
+    font_source: z.enum(['theme', 'custom']).default('theme'),
+    custom_font_url: z.string().default(''),
+  }).default({}),
+  text: z.object({
+    cart_title: z.string().default('Your Cart'),
+    empty_title: z.string().default('Your cart is empty'),
+    empty_subtitle: z.string().default("Looks like you haven't added anything yet"),
+    empty_button: z.string().default('Continue shopping'),
+    checkout_button: z.string().default('Checkout'),
+    continue_shopping: z.string().default('Continue shopping'),
+    continue_shopping_url: z.string().default(''),
+    coupon_placeholder: z.string().default('Discount code'),
+    total_label: z.string().default('Total'),
+    subtotal_label: z.string().default('Subtotal'),
+  }).default({}),
+  layout: z.object({
+    drawer_width: z.number().min(320).max(560).default(420),
+    drawer_position: z.enum(['right', 'left']).default('right'),
+    image_style: z.enum(['square', 'rounded', 'circle']).default('rounded'),
+    image_size: z.enum(['small', 'medium', 'large']).default('medium'),
+    density: z.enum(['compact', 'comfortable', 'spacious']).default('comfortable'),
+    qty_style: z.enum(['bordered', 'minimal']).default('bordered'),
+    show_variant_title: z.boolean().default(true),
+    show_vendor: z.boolean().default(false),
+  }).default({}),
+  sections: z.object({
+    show_coupons: z.boolean().default(true),
+    show_upsells: z.boolean().default(true),
+    show_progress_bar: z.boolean().default(true),
+    show_ribbon: z.boolean().default(true),
+    show_claim_gifts: z.boolean().default(true),
+    order: z.array(z.string()).default([
+      'progress_bar', 'claim_gifts', 'line_items', 'coupons', 'upsells', 'ribbon',
+    ]),
+  }).default({}),
+  behavior: z.object({
+    auto_open_on_add: z.boolean().default(true),
+    animation_style: z.enum(['slide', 'fade', 'none']).default('slide'),
+    animation_speed: z.enum(['fast', 'normal', 'slow']).default('normal'),
+    close_on_overlay_click: z.boolean().default(true),
+    close_on_esc: z.boolean().default(true),
+    confetti: z.boolean().default(true),
+    confetti_lottie_url: z.string().default(''),
+  }).default({}),
+  advanced: z.object({
+    custom_css: z.string().default(''),
+  }).default({}),
+}).default({})
+
 export const ConfigSchema = z.object({
   offers: z.array(OfferSchema),
   coupons: z.array(CouponSchema),
@@ -149,4 +216,5 @@ export const ConfigSchema = z.object({
     show_on_empty_cart: z.boolean().optional(),
     products: z.array(UpsellProductSchema),
   }),
+  drawer: DrawerConfigSchema,
 })

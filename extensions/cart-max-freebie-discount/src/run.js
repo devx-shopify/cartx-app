@@ -8,32 +8,17 @@ import { DiscountApplicationStrategy } from "../generated/api";
 
 /** @type {FunctionRunResult} */
 const EMPTY_DISCOUNT = {
-  discountApplicationStrategy: DiscountApplicationStrategy.First,
+  discountApplicationStrategy: DiscountApplicationStrategy.All,
   discounts: [],
 };
 
-const DEFAULT_RULE = {
-  type: "percentage",
-  value: 100,
-  message: "Free Gift",
-  max_cap: null,
-};
-
 /**
- * Shopify Product Discount Function for Cart Max free gifts.
+ * Shopify Product Discount Function for cartx.
  *
- * Reads metafield config for per-offer discount rules.
- * Falls back to 100% off for any line with `_freebie: "true"`.
- *
- * Metafield config shape:
- * {
- *   "rules": [
- *     { "offer_id": "abc", "type": "percentage", "value": 100, "message": "Free Gift", "max_cap": null },
- *     { "offer_id": "def", "type": "fixed_amount", "value": 5.00, "message": "$5 off", "max_cap": null },
- *     { "offer_id": "ghi", "type": "fixed_price", "value": 1.99, "message": "Gift for $1.99", "max_cap": null }
- *   ],
- *   "default_rule": { "type": "percentage", "value": 100, "message": "Free Gift", "max_cap": null }
- * }
+ * Items with `_freebie: "true"` are discounted. The `_offer_id` determines the rule:
+ *   - claim_rules match → use claim_price (customer pays fixed amount)
+ *   - GWP rules match → use that rule's type/value
+ *   - No match → default_rule (100% off)
  *
  * @param {RunInput} input
  * @returns {FunctionRunResult}
@@ -41,89 +26,100 @@ const DEFAULT_RULE = {
 export function run(input) {
   const configRaw = input?.discountNode?.metafield?.value ?? "{}";
   const config = JSON.parse(configRaw);
-  const defaultRule = config.default_rule ?? DEFAULT_RULE;
+  const defaultRule = config.default_rule ?? { type: "percentage", value: 100, message: "Free Gift", max_cap: null };
 
   /** @type {Record<string, any>} */
   const rulesMap = {};
-  if (Array.isArray(config.rules)) {
-    for (const rule of config.rules) {
-      if (rule.offer_id) rulesMap[rule.offer_id] = rule;
-    }
+  for (const rule of config.rules ?? []) {
+    if (rule.offer_id) rulesMap[rule.offer_id] = rule;
   }
 
+  /** @type {Record<string, any>} */
+  const claimRulesMap = {};
+  for (const rule of config.claim_rules ?? []) {
+    if (rule.offer_id) claimRulesMap[rule.offer_id] = rule;
+  }
+
+  /** @type {any[]} */
   const discounts = [];
 
-  // Collect targets grouped by rule key (for percentage / fixed_amount)
-  /** @type {Map<string, { rule: any, targets: any[] }>} */
-  const groups = new Map();
+  // Collect percentage-group targets (same pct + message → one discount entry)
+  /** @type {Map<string, { pct: number, message: string, targets: any[] }>} */
+  const pctGroups = new Map();
 
   for (const line of input.cart.lines) {
-    if (line.attribute?.value !== "true") continue;
     if (line.merchandise.__typename !== "ProductVariant") continue;
+    if (line.attribute?.value !== "true") continue;
 
     const variantId = line.merchandise.id;
     const offerId = line.offerIdAttr?.value ?? "";
-    const rule = rulesMap[offerId] ?? defaultRule;
     const linePrice = parseFloat(line.cost.amountPerQuantity.amount);
+    const target = { productVariant: { id: variantId, quantity: line.quantity } };
+
+    // Skip items with no offer_id — prevents tampering via _freebie: "true" alone
+    if (!offerId) continue;
+
+    // Check claim_rules first, then GWP rules, then default
+    const claimRule = claimRulesMap[offerId];
+    if (claimRule) {
+      const claimPrice = claimRule.claim_price ?? 0;
+      const discount = linePrice - claimPrice;
+      if (discount <= 0) continue;
+      const msg = claimRule.message || "Claimed Gift";
+
+      // Use fixedAmount for exact pricing (no rounding issues)
+      discounts.push({
+        message: msg,
+        value: { fixedAmount: { amount: String(discount) } },
+        targets: [target],
+      });
+      continue;
+    }
+
+    const rule = rulesMap[offerId] ?? defaultRule;
 
     if (rule.type === "fixed_price") {
-      // fixed_price: customer pays rule.value, discount = price - value (per item)
-      const discountPerItem = linePrice - rule.value;
-      if (discountPerItem <= 0) continue;
-
-      const cappedAmount =
-        rule.max_cap != null
-          ? Math.min(discountPerItem, rule.max_cap)
-          : discountPerItem;
-
+      const discount = linePrice - rule.value;
+      if (discount <= 0) continue;
+      const capped = rule.max_cap != null ? Math.min(discount, rule.max_cap) : discount;
       discounts.push({
         message: rule.message || "Free Gift",
-        value: { fixedAmount: { amount: String(cappedAmount) } },
-        targets: [{ productVariant: { id: variantId, quantity: line.quantity } }],
+        value: { fixedAmount: { amount: String(capped) } },
+        targets: [target],
+      });
+    } else if (rule.type === "fixed_amount") {
+      let amount = rule.value;
+      if (rule.max_cap != null) amount = Math.min(amount, rule.max_cap);
+      discounts.push({
+        message: rule.message || "Free Gift",
+        value: { fixedAmount: { amount: String(amount) } },
+        targets: [target],
       });
     } else {
-      // Group percentage and fixed_amount rules together
-      const groupKey = `${rule.type}|${rule.value}|${rule.message ?? ""}|${rule.max_cap ?? ""}`;
-
-      if (!groups.has(groupKey)) {
-        groups.set(groupKey, { rule, targets: [] });
+      // percentage — group same pct+message together
+      const pct = Math.min(rule.value ?? 100, 100);
+      const msg = rule.message || "Free Gift";
+      const key = pct + "|" + msg;
+      if (!pctGroups.has(key)) {
+        pctGroups.set(key, { pct, message: msg, targets: [] });
       }
-      groups
-        .get(groupKey)
-        .targets.push({ productVariant: { id: variantId, quantity: line.quantity } });
+      /** @type {{ targets: any[] }} */ (pctGroups.get(key)).targets.push(target);
     }
   }
 
-  // Build grouped discounts
-  for (const [, { rule, targets }] of groups) {
-    if (targets.length === 0) continue;
-
-    const message = rule.message || "Free Gift";
-
-    if (rule.type === "fixed_amount") {
-      let amount = rule.value;
-      if (rule.max_cap != null) amount = Math.min(amount, rule.max_cap);
-
-      discounts.push({
-        message,
-        value: { fixedAmount: { amount: String(amount) } },
-        targets,
-      });
-    } else {
-      // percentage (default)
-      const pct = Math.min(rule.value ?? 100, 100);
-      discounts.push({
-        message,
-        value: { percentage: { value: String(pct) } },
-        targets,
-      });
-    }
+  // Add grouped percentage discounts
+  for (const [, group] of pctGroups) {
+    discounts.push({
+      message: group.message,
+      value: { percentage: { value: String(group.pct) } },
+      targets: group.targets,
+    });
   }
 
   if (discounts.length === 0) return EMPTY_DISCOUNT;
 
   return {
-    discountApplicationStrategy: DiscountApplicationStrategy.First,
+    discountApplicationStrategy: DiscountApplicationStrategy.All,
     discounts,
   };
 }

@@ -1,5 +1,5 @@
 {
-  "name": "cart-max-storefront",
+  "name": "cartx-storefront",
   "private": true,
   "scripts": {
     "build": "esbuild src/index.jsx --bundle --minify --format=iife --target=es2020 --jsx-factory=h --jsx-fragment=Fragment --outfile=../extensions/cart-max-drawer/assets/cartmax.js",

@@ -1,5 +1,5 @@
 {
-  "name": "cart-max-drawer-src",
+  "name": "cartx-drawer-src",
   "private": true,
   "scripts": {
     "build": "node build.js",

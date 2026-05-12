@@ -1,8 +1,13 @@
 import { FROZEN_PAGES, FROZEN_PAGE_PREFIXES, LINE_PROPS } from './constants.js'
 
+function isDiscountedItem(item) {
+  return item.properties?.[LINE_PROPS.FREEBIE] === 'true' ||
+    item.properties?.[LINE_PROPS.CARTMAX_CLAIM] === 'true'
+}
+
 export function adjustedTotal(cartItems) {
   const cents = cartItems.reduce((sum, item) => {
-    if (item.properties?.[LINE_PROPS.FREEBIE] === 'true') return sum
+    if (isDiscountedItem(item)) return sum
     return sum + item.line_price
   }, 0)
   // Shopify sends prices in cents; config thresholds are in dollars
@@ -11,7 +16,7 @@ export function adjustedTotal(cartItems) {
 
 export function adjustedQty(cartItems) {
   return cartItems.reduce((sum, item) => {
-    if (item.properties?.[LINE_PROPS.FREEBIE] === 'true') return sum
+    if (isDiscountedItem(item)) return sum
     return sum + item.quantity
   }, 0)
 }

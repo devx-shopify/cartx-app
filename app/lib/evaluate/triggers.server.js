@@ -86,7 +86,10 @@ export function evaluateOffers(
     if (item.properties?.[LINE_PROPS.FREEBIE] !== 'true') continue
     if (item.properties?.[LINE_PROPS.CLAIMED] === 'true') continue
     const offerId = item.properties?.[LINE_PROPS.OFFER_ID]
-    if (!offerId) continue
+    if (!offerId) {
+      toRemove.push(item.key)
+      continue
+    }
     if (!triggeredOfferIds.has(offerId)) {
       toRemove.push(item.key)
     }

@@ -36,8 +36,7 @@ function collectBarEntries(config, page, customer) {
       label: claim.bar.label,
       sub_label: claim.bar.sub_label || null,
       icon_url: claim.bar.icon_url || null,
-      top_message:
-        claim.bar.unlocked_message || claim.bar.locked_message || null,
+      top_message: claim.bar.locked_message || null,
     })
   }
 
@@ -88,6 +87,7 @@ function computeBarState(tiers, currentValue, allCompleteMsg, moneyFormat) {
   let progress = 0
   let nextFound = false
   let topMessage = null
+  let prevThreshold = 0
 
   for (const tier of tiers) {
     if (currentValue >= tier.threshold) {
@@ -96,7 +96,9 @@ function computeBarState(tiers, currentValue, allCompleteMsg, moneyFormat) {
     } else if (!nextFound) {
       tier.state = 'next'
       const remaining = tier.threshold - currentValue
-      progress += (currentValue / tier.threshold) * segmentWidth
+      const segmentRange = tier.threshold - prevThreshold
+      const segmentProgress = segmentRange > 0 ? (currentValue - prevThreshold) / segmentRange : 0
+      progress += segmentProgress * segmentWidth
       nextFound = true
       topMessage = tier.top_message
         ? resolveTemplate(tier.top_message, { PRICE: remaining }, moneyFormat)
@@ -104,6 +106,7 @@ function computeBarState(tiers, currentValue, allCompleteMsg, moneyFormat) {
     } else {
       tier.state = 'inactive'
     }
+    prevThreshold = tier.threshold
   }
 
   if (!nextFound) {
@@ -124,6 +127,7 @@ function computeBarState(tiers, currentValue, allCompleteMsg, moneyFormat) {
       icon_url: t.icon_url,
       state: t.state,
       apply_button: t.apply_button,
+      ribbon_message: t.ribbon_message || null,
     })),
   }
 }

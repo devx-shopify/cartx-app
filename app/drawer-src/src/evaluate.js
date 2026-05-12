@@ -1,5 +1,5 @@
 // =============================================================
-// Cart Max — Evaluate & Enrich
+// cartx — Evaluate & Enrich
 // Hybrid: local eval for instant UI, server eval for accuracy.
 // Single /cart/update.js call for all cart mutations.
 // =============================================================
@@ -47,7 +47,7 @@ async function callEvaluate(cart) {
     }),
   });
   if (!res.ok) {
-    console.error('[CartMax] evaluate-cart failed:', res.status, await res.text());
+    console.error('[cartx] evaluate-cart failed:', res.status, await res.text());
     return null;
   }
   var result = await res.json();
@@ -176,7 +176,7 @@ async function applyResult(result, cart, pendingAction) {
       await cartUpdateAll({ updates: updates });
       didChange = true;
     } catch (e) {
-      console.error('[CartMax] cartUpdateAll failed:', e);
+      console.error('[cartx] cartUpdateAll failed:', e);
     }
   }
 
@@ -197,7 +197,7 @@ async function applyResult(result, cart, pendingAction) {
       });
       didChange = true;
     } catch (e) {
-      console.error('[CartMax] gift add failed:', e);
+      console.error('[cartx] gift add failed:', e);
     }
   }
 
@@ -215,7 +215,7 @@ async function applyResult(result, cart, pendingAction) {
           });
           if (!inFreshCart) {
             markGiftUnavailable(addedVid);
-            console.warn('[CartMax] Gift variant unavailable:', addedVid);
+            console.warn('[cartx] Gift variant unavailable:', addedVid);
           }
         }
       }
@@ -232,6 +232,92 @@ async function applyResult(result, cart, pendingAction) {
     } catch (e) {}
   }
 
+  return null;
+}
+
+// ── Recompute bar against server tiers with local cart value ──
+
+function recomputeBar(serverBar, cart) {
+  if (!serverBar || !serverBar.tiers || serverBar.tiers.length === 0) return serverBar;
+
+  var adjTotal = 0, adjQty = 0;
+  var items = cart.items || [];
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    if (it.properties && (it.properties['_freebie'] === 'true' || it.properties['_cartmax_claim'] === 'true')) continue;
+    adjTotal += (it.line_price || 0);
+    adjQty += (it.quantity || 0);
+  }
+  adjTotal /= 100;
+
+  var currentValue = serverBar.mode === 'price' ? adjTotal : adjQty;
+  var tiers = serverBar.tiers;
+  var n = tiers.length;
+  var segmentWidth = 100 / n;
+  var progress = 0;
+  var prevThreshold = 0;
+  var nextFound = false;
+  var newTiers = [];
+
+  for (var t = 0; t < n; t++) {
+    var tier = tiers[t];
+    var state;
+    if (currentValue >= tier.threshold) {
+      state = 'active';
+      progress += segmentWidth;
+    } else if (!nextFound) {
+      state = 'next';
+      nextFound = true;
+      var segmentRange = tier.threshold - prevThreshold;
+      progress += segmentRange > 0 ? ((currentValue - prevThreshold) / segmentRange) * segmentWidth : 0;
+    } else {
+      state = 'inactive';
+    }
+    prevThreshold = tier.threshold;
+    newTiers.push(Object.assign({}, tier, { state: state }));
+  }
+
+  // Resolve top_message from the "next" tier using cached config
+  var topMessage = null;
+  if (!nextFound) {
+    topMessage = (_cachedConfig && _cachedConfig.progress_bar && _cachedConfig.progress_bar.all_complete_message) || serverBar.top_message;
+  } else {
+    // Find the next tier and resolve its message
+    for (var m = 0; m < newTiers.length; m++) {
+      if (newTiers[m].state === 'next') {
+        var remaining = newTiers[m].threshold - currentValue;
+        // Try to find the message template from cached config offers
+        var tmpl = findTopMessage(newTiers[m].id);
+        if (tmpl) {
+          var moneyFmt = (_cachedConfig && _cachedConfig.money_format) || '';
+          var amountStr = remaining.toFixed(2);
+          var formatted = moneyFmt
+            ? moneyFmt.replace(/\{\{\s*amount\s*\}\}/, amountStr)
+                .replace(/\{\{\s*amount_no_decimals\s*\}\}/, String(Math.round(remaining)))
+                .replace(/\{\{\s*amount_with_comma_separator\s*\}\}/, amountStr.replace('.', ','))
+            : '$' + amountStr;
+          topMessage = tmpl.replace(/\[\[\s*price\s*\]\]/gi, formatted);
+        } else {
+          topMessage = serverBar.top_message;
+        }
+        break;
+      }
+    }
+  }
+
+  return Object.assign({}, serverBar, {
+    progress_pct: Math.min(progress, 100),
+    top_message: topMessage,
+    tiers: newTiers,
+  });
+}
+
+function findTopMessage(tierId) {
+  if (!_cachedConfig || !_cachedConfig.offers) return null;
+  for (var i = 0; i < _cachedConfig.offers.length; i++) {
+    var o = _cachedConfig.offers[i];
+    if (o.id === tierId && o.bar && o.bar.top_message) return o.bar.top_message;
+  }
   return null;
 }
 
@@ -254,24 +340,52 @@ async function runEvaluate(cart, action) {
   var ctx = getContext();
   if (!ctx.shopId || !ctx.themeId) return;
 
-  // Simulate cart with pending action
+  // Simulate cart with pending action for eval
   var evalCart = action ? simulateCart(cart, action) : cart;
 
-  // ── Server eval + apply ──
+  // ── FAST PATH: optimistic local eval ──
+  // Push simulated cart + local eval result to drawer IMMEDIATELY
+  // so user sees qty/price/bar changes with zero latency.
+  if (action) {
+    window.dispatchEvent(new CustomEvent('cartmax:optimistic-update', {
+      detail: { cart: evalCart },
+    }));
+  }
+  if (isCacheValid()) {
+    var localResult = localEvaluate(_cachedConfig, evalCart);
+    if (localResult && _lastResult && _lastResult.bar) {
+      var serverBar = _lastResult.bar;
+      var optimistic = Object.assign({}, _lastResult, {
+        ribbon_message: localResult.ribbon_message,
+      });
+
+      // Recompute progress + tier states against the SERVER's tiers
+      // using the simulated cart value. This is always correct regardless
+      // of whether local eval has different tier count.
+      optimistic.bar = recomputeBar(serverBar, evalCart);
+
+      window.dispatchEvent(new CustomEvent('cartmax:eval-result', { detail: optimistic }));
+    } else if (localResult && !_lastResult) {
+      window.dispatchEvent(new CustomEvent('cartmax:eval-result', { detail: localResult }));
+    }
+  }
+
+  // ── ACCURATE PATH: server eval + apply ──
   _evaluating = true;
   try {
     var result = await callEvaluate(evalCart);
     if (result) {
       _lastResult = result;
       var updatedCart = await applyResult(result, cart, action || null);
-      // If no cart mutations happened (no gifts to add/remove, no pending action),
-      // push eval result directly — internal-reload won't fire
+      // If no cart mutations happened, push eval result directly
       if (!updatedCart) {
-        window.dispatchEvent(new CustomEvent('cartmax:eval-result', { detail: result }));
+        window.dispatchEvent(new CustomEvent('cartmax:eval-result', {
+          detail: Object.assign({}, result, { _server: true }),
+        }));
       }
     }
   } catch (err) {
-    console.error('[CartMax] Evaluate error:', err);
+    console.error('[cartx] Evaluate error:', err);
   } finally {
     _evaluating = false;
   }

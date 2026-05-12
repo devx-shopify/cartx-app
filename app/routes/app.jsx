@@ -11,16 +11,28 @@ import {
   saveConfig,
   getShopAndTheme,
 } from "../lib/config.server.js";
-import "../styles/app.css";
+import { getActivePlan, hasFeature, ensureStoreRecord } from "../lib/billing.server.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const shopId = session.shop;
   const themes = await getAllThemes(admin);
   const selectedThemeId = await getSelectedTheme(shopId);
-
   const mainTheme = themes.find((t) => t.role === "MAIN");
   const activeThemeId = selectedThemeId || mainTheme?.id || "default";
+
+  // Ensure store record exists in DB (for legacy/billing tracking)
+  await ensureStoreRecord(shopId);
+
+  let planData = { plan: "free", isLegacy: false, features: { discount_function: false, theme_switcher: false } };
+  try {
+    planData = await getActivePlan(admin, shopId);
+  } catch {
+    // Default to free if billing query fails
+  }
+
+  // eslint-disable-next-line no-undef
+  const isAdmin = shopId === process.env.ADMIN_SHOP;
 
   return {
     // eslint-disable-next-line no-undef
@@ -28,6 +40,8 @@ export const loader = async ({ request }) => {
     themes,
     activeThemeId,
     mainThemeId: mainTheme?.id || "default",
+    planData,
+    isAdmin,
   };
 };
 
@@ -36,11 +50,19 @@ export const action = async ({ request }) => {
   const body = await request.json();
 
   if (body._action === "set_theme") {
+    const planData = await getActivePlan(admin, session.shop);
+    if (!hasFeature(planData, "theme_switcher")) {
+      return { ok: false, error: "Upgrade to the Max plan to use the theme switcher" };
+    }
     await setSelectedTheme(session.shop, body.theme_id || null);
     return { ok: true, themeId: body.theme_id };
   }
 
   if (body._action === "copy_promotions") {
+    const planData = await getActivePlan(admin, session.shop);
+    if (!hasFeature(planData, "theme_switcher")) {
+      return { ok: false, error: "Upgrade to the Max plan to use the theme switcher" };
+    }
     const preferred = await getSelectedTheme(session.shop);
     const { shopId, themeId: currentThemeId } = await getShopAndTheme(admin, session, preferred);
     const sourceThemeId = body.source_theme_id;
@@ -51,11 +73,9 @@ export const action = async ({ request }) => {
 
     const sourceConfig = await loadConfig(shopId, sourceThemeId);
     const targetConfig = await loadConfig(shopId, currentThemeId);
-
     targetConfig.offers = structuredClone(sourceConfig.offers);
     targetConfig.coupons = structuredClone(sourceConfig.coupons);
     targetConfig.claim_gifts = structuredClone(sourceConfig.claim_gifts);
-
     await saveConfig(shopId, currentThemeId, targetConfig);
     return { ok: true, toast: "Promotions copied" };
   }
@@ -126,107 +146,103 @@ export function ThemeSwitcher({ themes, activeThemeId, mainThemeId }) {
   const otherThemes = themes.filter((t) => t.id !== activeThemeId);
 
   return (
-    <div className="cx-theme-trigger-wrap" ref={ref}>
-      <button
-        type="button"
-        className={`cx-theme-trigger ${!isMain ? "cx-theme-trigger-draft" : ""} ${busy ? "cx-theme-trigger-busy" : ""}`}
+    <div style={{ position: "relative" }} ref={ref}>
+      <s-button
         onClick={() => { if (!busy) { setOpen(!open); setShowCopy(false); } }}
-        title={`Theme: ${activeTheme?.name || "Default"}`}
-        disabled={busy}
+        {...(busy ? { loading: true, disabled: true } : {})}
+        accessibilityLabel={`Theme: ${activeTheme?.name || "Default"}`}
       >
-        {busy ? (
-          <span className="cx-spinner" />
-        ) : (
-          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.078-.78-.22-1.128zm0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.994 15.994 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.151 1.151 0 00-1.597-1.597L14.146 6.32a15.996 15.996 0 00-4.649 4.764m3.42 3.42a6.776 6.776 0 00-3.42-3.42" />
-          </svg>
+        Theme
+        {!isMain && !busy && (
+          <s-badge tone="warning" style={{ marginLeft: 4 }}>Draft</s-badge>
         )}
-        {!isMain && !busy && <span className="cx-theme-trigger-dot" />}
-      </button>
+      </s-button>
 
       {open && (
-        <div className="cx-theme-dropdown">
-          <div className="cx-theme-dropdown-header">
-            <span className="cx-theme-dropdown-title">Switch theme</span>
-            <span className="cx-theme-dropdown-hint">Select which theme to configure</span>
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 8px)",
+            right: 0,
+            width: 280,
+            background: "#fff",
+            border: "1px solid #e3e3e3",
+            borderRadius: 12,
+            boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+            overflow: "hidden",
+            zIndex: 50,
+          }}
+        >
+          <div style={{ padding: "10px 12px", borderBottom: "1px solid #e3e3e3" }}>
+            <div style={{ fontWeight: 600, fontSize: 13, color: "#1a1a1a" }}>Switch theme</div>
+            <div style={{ fontSize: 12, color: "#6d7175", marginTop: 2 }}>Select which theme to configure</div>
           </div>
+
           {themes.map((t) => {
             const selected = t.id === activeThemeId;
             const live = t.id === mainThemeId;
             return (
-              <button
+              <div
                 key={t.id}
-                type="button"
-                className={`cx-theme-dropdown-item ${selected ? "cx-theme-dropdown-item-active" : ""}`}
                 onClick={() => selectTheme(t.id)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  padding: "10px 12px",
+                  cursor: "pointer",
+                  background: selected ? "#f1f8ff" : "transparent",
+                  borderBottom: "1px solid #e3e3e3",
+                }}
               >
-                <div className="cx-theme-dropdown-item-info">
-                  <span className="cx-theme-dropdown-item-name">{t.name}</span>
-                  <span className={`cx-badge cx-badge-dot ${live ? "cx-badge-success" : "cx-badge-warning"}`} style={{ fontSize: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontWeight: 500, fontSize: 13, color: "#1a1a1a" }}>{t.name}</span>
+                  <s-badge tone={live ? "success" : "warning"}>
                     {live ? "Live" : ROLE_LABELS[t.role] || t.role}
-                  </span>
+                  </s-badge>
                 </div>
                 {selected && (
-                  <svg width="14" height="14" fill="none" stroke="var(--cx-primary)" strokeWidth="2.5" viewBox="0 0 24 24">
+                  <svg width="14" height="14" fill="none" stroke="var(--s-color-text-brand)" strokeWidth="2.5" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                   </svg>
                 )}
-              </button>
+              </div>
             );
           })}
 
-          {/* Copy promotions section */}
-          <div className="cx-theme-dropdown-divider" />
+          <s-divider />
           {!showCopy ? (
-            <button
-              type="button"
-              className="cx-theme-dropdown-action"
+            <div
               onClick={() => { setShowCopy(true); setCopySource(otherThemes[0]?.id || ""); }}
+              style={{ padding: "10px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500, color: "#2c6ecb" }}
             >
-              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <rect x="9" y="9" width="13" height="13" rx="2" />
-                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-              </svg>
               Copy promotions from another theme
-            </button>
-          ) : (
-            <div className="cx-theme-dropdown-copy">
-              <span className="cx-theme-dropdown-copy-label">
-                Copy all promotions into <strong>{activeTheme?.name}</strong> from:
-              </span>
-              <select
-                className="cx-input cx-select"
-                value={copySource}
-                onChange={(e) => setCopySource(e.target.value)}
-                style={{ fontSize: 13 }}
-              >
-                {otherThemes.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} ({t.id === mainThemeId ? "Live" : ROLE_LABELS[t.role] || t.role})
-                  </option>
-                ))}
-              </select>
-              <div className="cx-banner cx-banner-warning" style={{ fontSize: 11, padding: "6px 10px" }}>
-                This will replace all existing promotions on {activeTheme?.name}.
-              </div>
-              <div className="cx-flex cx-gap-sm">
-                <button
-                  type="button"
-                  className="cx-btn cx-btn-primary cx-btn-sm"
-                  onClick={handleCopy}
-                  disabled={copying || !copySource}
-                >
-                  {copying ? "Copying..." : "Copy promotions"}
-                </button>
-                <button
-                  type="button"
-                  className="cx-btn cx-btn-ghost cx-btn-sm"
-                  onClick={() => setShowCopy(false)}
-                >
-                  Cancel
-                </button>
-              </div>
             </div>
+          ) : (
+            <s-box padding="300">
+              <s-stack direction="block" gap="200">
+                <s-text color="subdued" style={{ fontSize: 12 }}>
+                  Copy all promotions into <strong>{activeTheme?.name}</strong> from:
+                </s-text>
+                <s-select label="" value={copySource} onChange={(e) => setCopySource(e.target.value)}>
+                  {otherThemes.map((t) => (
+                    <s-option key={t.id} value={t.id}>
+                      {t.name} ({t.id === mainThemeId ? "Live" : ROLE_LABELS[t.role] || t.role})
+                    </s-option>
+                  ))}
+                </s-select>
+                <s-banner tone="warning">
+                  This will replace all existing promotions on {activeTheme?.name}.
+                </s-banner>
+                <s-stack gap="200">
+                  <s-button variant="primary" onClick={handleCopy} {...(copying ? { loading: true, disabled: true } : {})} disabled={!copySource}>
+                    {copying ? "Copying..." : "Copy promotions"}
+                  </s-button>
+                  <s-button onClick={() => setShowCopy(false)}>Cancel</s-button>
+                </s-stack>
+              </s-stack>
+            </s-box>
           )}
         </div>
       )}
@@ -235,16 +251,19 @@ export function ThemeSwitcher({ themes, activeThemeId, mainThemeId }) {
 }
 
 export default function App() {
-  const { apiKey, themes, activeThemeId, mainThemeId } = useLoaderData();
+  const { apiKey, themes, activeThemeId, mainThemeId, planData, isAdmin } = useLoaderData();
 
   return (
     <AppProvider embedded apiKey={apiKey}>
       <s-app-nav>
         <s-link href="/app">Home</s-link>
+        <s-link href="/app/cart-customizer">Customize Cart</s-link>
         <s-link href="/app/promotions">Promotions</s-link>
         <s-link href="/app/settings">Settings</s-link>
+        {!planData.isLegacy && <s-link href="/app/billing">Plans</s-link>}
+        {isAdmin && <s-link href="/app/internal">Admin</s-link>}
       </s-app-nav>
-      <Outlet context={{ themes, activeThemeId, mainThemeId }} />
+      <Outlet context={{ themes, activeThemeId, mainThemeId, planData }} />
     </AppProvider>
   );
 }

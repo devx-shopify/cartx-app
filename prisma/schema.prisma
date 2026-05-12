@@ -33,6 +33,21 @@ model Session {
   refreshTokenExpires DateTime?
 }
 
+model Store {
+  id            String   @id @default(cuid())
+  storeDomain   String   @unique           // e.g. brand-a.myshopify.com
+  planTier      String   @default("free")  // free, basic, max
+  billingMethod String   @default("shopify") // shopify, invoice, none
+  isLegacy      Boolean  @default(false)
+  legacyPrice   Int?                        // cents, for internal records
+  notes         String?
+  onboarding    String   @default("{\"completed\":false,\"steps\":{\"offer_created\":false,\"settings_configured\":false,\"previewed\":false}}")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([storeDomain])
+}
+
 model ThemeConfig {
   id        String   @id @default(cuid())
   shopId    String

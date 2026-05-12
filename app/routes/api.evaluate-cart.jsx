@@ -5,6 +5,8 @@ import { evaluateOffers } from '../lib/evaluate/triggers.server.js'
 import { buildBar, getRibbonFromBar } from '../lib/evaluate/bar.server.js'
 import { resolveAvailableCoupons } from '../lib/evaluate/coupons.server.js'
 import { resolveClaimGifts } from '../lib/evaluate/claims.server.js'
+import { checkRateLimit } from '../lib/rate-limit.server.js'
+import db from '../db.server.js'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -52,7 +54,22 @@ export const action = async ({ request }) => {
 
   const { cart, page, customer, shop_id: shopId, theme_id: themeId } = parsed.data
 
-  // 2. Frozen page check
+  // 2. Rate limiting
+  const rateResult = checkRateLimit(shopId)
+  if (!rateResult.allowed) {
+    return jsonResponse(
+      { error: 'Rate limit exceeded' },
+      429
+    )
+  }
+
+  // 3. Validate shop is installed
+  const session = await db.session.findFirst({ where: { shop: shopId } })
+  if (!session) {
+    return jsonResponse({ error: 'Unauthorized' }, 401)
+  }
+
+  // 4. Frozen page check
   if (isFrozenPage(page)) {
     return jsonResponse({
       frozen: true,
@@ -71,15 +88,15 @@ export const action = async ({ request }) => {
     })
   }
 
-  // 3. Load config
+  // 5. Load config
   const config = await loadConfig(shopId, themeId)
 
-  // 4. Compute adjusted totals (excluding freebie lines)
+  // 6. Compute adjusted totals (excluding freebie lines)
   const cartItems = cart.items || []
   const adjTotal = adjustedTotal(cartItems)
   const adjQty = adjustedQty(cartItems)
 
-  // 5. Evaluate offers → to_add
+  // 7. Evaluate offers → to_add
   const offerResult = evaluateOffers(
     config.offers,
     cart,
@@ -89,11 +106,11 @@ export const action = async ({ request }) => {
     customer
   )
 
-  // 6. Build bar
+  // 8. Build bar
   const bar = buildBar(config, page, customer, adjTotal, adjQty)
   const { ribbon_message, ribbon_code } = getRibbonFromBar(bar)
 
-  // 7. Coupons
+  // 9. Coupons
   const availableCoupons = resolveAvailableCoupons(
     config.coupons,
     cart,
@@ -103,7 +120,7 @@ export const action = async ({ request }) => {
   const appliedCoupons = availableCoupons.filter((c) => c.applied)
   const totalSavings = cart.total_discount || 0
 
-  // 8. Claim gifts
+  // 10. Claim gifts
   const claimGifts = resolveClaimGifts(
     config.claim_gifts,
     cart,
@@ -113,7 +130,28 @@ export const action = async ({ request }) => {
     customer
   )
 
-  // 9. Bottom ribbon OOS override
+  // 11. Remove claimed items whose threshold is no longer met
+  const toRemove = []
+  for (const item of cartItems) {
+    if (
+      item.properties?.['_claimed'] !== 'true' &&
+      item.properties?.['_cartmax_claim'] !== 'true'
+    ) continue
+    const claimId = item.properties?.['_offer_id']
+    if (!claimId) continue
+    const rule = config.claim_gifts.find((g) => g.id === claimId && g.enabled)
+    if (!rule) {
+      // Rule deleted or disabled — remove the claimed item
+      toRemove.push(item.key)
+      continue
+    }
+    const currentValue = rule.trigger.type === 'price' ? adjTotal : adjQty
+    if (currentValue < rule.trigger.threshold) {
+      toRemove.push(item.key)
+    }
+  }
+
+  // 12. Bottom ribbon OOS override
   const oosMessage = config.bottom_ribbon.enabled
     ? config.bottom_ribbon.oos_message_override || null
     : null
@@ -121,7 +159,7 @@ export const action = async ({ request }) => {
   return jsonResponse({
     frozen: false,
     to_add: offerResult.to_add,
-    to_remove: [],
+    to_remove: toRemove,
     bar,
     ribbon_message,
     ribbon_code,
@@ -132,5 +170,6 @@ export const action = async ({ request }) => {
     claim_gifts: claimGifts,
     unavailable_variants: [],
     cross_page_removal_notices: [],
+    drawer: config.drawer,
   })
 }

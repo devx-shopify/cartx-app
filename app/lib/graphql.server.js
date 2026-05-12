@@ -37,7 +37,7 @@ export async function fetchVariantData(admin, variantIds) {
     }
     return map;
   } catch (err) {
-    console.error('[CartMax] fetchVariantData error:', err);
+    console.error('[cartx] fetchVariantData error:', err);
     return {};
   }
 }

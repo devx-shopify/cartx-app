@@ -1,5 +1,5 @@
 // =============================================================
-// Cart Max — Client-Side Rule Evaluation
+// cartx — Client-Side Rule Evaluation
 // Mirrors the server-side triggers + bar logic for instant results.
 // Used when config is cached — avoids server roundtrip.
 // =============================================================
@@ -9,10 +9,15 @@ function normalizeId(id) {
   return s.startsWith('gid://') ? s.split('/').pop() : s;
 }
 
+function isDiscountedItem(item) {
+  return (item.properties && item.properties['_freebie'] === 'true') ||
+    (item.properties && item.properties['_cartmax_claim'] === 'true');
+}
+
 function adjustedTotal(items) {
   var cents = 0;
   for (var i = 0; i < items.length; i++) {
-    if (items[i].properties && items[i].properties['_freebie'] === 'true') continue;
+    if (isDiscountedItem(items[i])) continue;
     cents += items[i].line_price || 0;
   }
   return cents / 100;
@@ -21,7 +26,7 @@ function adjustedTotal(items) {
 function adjustedQty(items) {
   var qty = 0;
   for (var i = 0; i < items.length; i++) {
-    if (items[i].properties && items[i].properties['_freebie'] === 'true') continue;
+    if (isDiscountedItem(items[i])) continue;
     qty += items[i].quantity || 0;
   }
   return qty;
@@ -125,6 +130,7 @@ function buildBar(config, adjTotal, adjQty, page, moneyFormat) {
   var progress = 0;
   var topMessage = null;
   var tiers = [];
+  var prevThreshold = 0;
 
   for (var t = 0; t < filtered.length; t++) {
     var tier = filtered[t];
@@ -135,7 +141,9 @@ function buildBar(config, adjTotal, adjQty, page, moneyFormat) {
     } else if (!topMessage) {
       state = 'next';
       var remaining = tier.threshold - currentValue;
-      progress += (currentValue / tier.threshold) * segmentWidth;
+      var segmentRange = tier.threshold - prevThreshold;
+      var segmentProgress = segmentRange > 0 ? (currentValue - prevThreshold) / segmentRange : 0;
+      progress += segmentProgress * segmentWidth;
       if (tier.top_message) {
         var amountStr = remaining.toFixed(2);
         var formatted = moneyFormat
@@ -148,6 +156,7 @@ function buildBar(config, adjTotal, adjQty, page, moneyFormat) {
     } else {
       state = 'inactive';
     }
+    prevThreshold = tier.threshold;
     tiers.push({
       threshold: tier.threshold,
       label: tier.label,

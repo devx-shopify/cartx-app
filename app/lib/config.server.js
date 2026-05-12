@@ -90,7 +90,7 @@ export async function saveConfig(shopId, themeId, config) {
   try {
     ConfigSchema.parse(config)
   } catch (err) {
-    console.error('[CartMax] Config validation failed:', err.errors || err.message)
+    console.error('[cartx] Config validation failed:', err.errors || err.message)
     throw new Error('Invalid config: ' + (err.errors?.[0]?.message || err.message))
   }
 
@@ -131,7 +131,7 @@ export async function getShopAndTheme(admin, session, preferredThemeId) {
       : rawThemeId
     return { shopId, themeId }
   } catch (err) {
-    console.error('[CartMax] getShopAndTheme error:', err)
+    console.error('[cartx] getShopAndTheme error:', err)
     return { shopId, themeId: 'default' }
   }
 }
@@ -159,7 +159,7 @@ export async function getAllThemes(admin) {
       role: t.role,
     }))
   } catch (err) {
-    console.error('[CartMax] getAllThemes error:', err)
+    console.error('[cartx] getAllThemes error:', err)
     return []
   }
 }
@@ -177,7 +177,7 @@ export async function getSelectedTheme(shopId) {
       return data.selectedThemeId || null
     }
   } catch (err) {
-    console.error('[CartMax] getSelectedTheme error:', err)
+    console.error('[cartx] getSelectedTheme error:', err)
   }
   return null
 }

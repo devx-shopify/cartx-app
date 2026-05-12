@@ -19,14 +19,26 @@ api_version = "2026-07"
   topics = [ "app/scopes_update" ]
   uri = "/webhooks/app/scopes_update"
 
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "customers/data_request" ]
+  uri = "/webhooks/customers/data-request"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "customers/redact" ]
+  uri = "/webhooks/customers/redact"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "shop/redact" ]
+  uri = "/webhooks/shop/redact"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_themes,read_products,write_products,read_discounts,write_discounts,read_customers"
 
 [auth]
-redirect_urls = [ "https://repave-sitter-snazzy.ngrok-free.dev/auth/callback" ]
+redirect_urls = [ "https://merrilee-nonanarchic-dextrosinistrally.ngrok-free.dev/auth/callback" ]
 
 [app_proxy]
-url = "https://repave-sitter-snazzy.ngrok-free.dev/proxy"
+url = "https://merrilee-nonanarchic-dextrosinistrally.ngrok-free.dev/proxy"
 subpath = "cartmax"
 prefix = "apps"

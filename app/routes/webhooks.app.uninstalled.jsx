@@ -12,5 +12,14 @@ export const action = async ({ request }) => {
     await db.session.deleteMany({ where: { shop } });
   }
 
+  // Preserve ThemeConfig and Store records so configs survive reinstalls.
+  // Only sessions are deleted (Shopify requires fresh auth on reinstall).
+  // Reset onboarding so returning merchants see the setup guide again.
+  const defaultOnboarding = JSON.stringify({ completed: false, steps: { offer_created: false, settings_configured: false, app_enabled: false, previewed: false } });
+  await db.store.updateMany({
+    where: { storeDomain: shop },
+    data: { onboarding: defaultOnboarding },
+  });
+
   return new Response();
 };

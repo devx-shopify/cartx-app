@@ -1,13 +1,80 @@
 /* eslint-disable */
 import { h, Component } from 'preact';
-import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus } from './helpers';
+import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings } from './helpers';
+import { fireConfetti, setConfettiLottieUrl } from './confetti';
 
 // ── Timing constants ────────────────────────────────────────
 
-var CLOSE_DELAY = 300;
-var DEBOUNCE_DELAY = 500;
-var REMOVE_ANIM_DELAY = 300;
+var CLOSE_DELAY = 250;
+var DEBOUNCE_DELAY = 300;
+var REMOVE_ANIM_DELAY = 250;
 var PROCESSING_TIMEOUT = 10000;
+
+// ── SVG Icons (inline for zero network cost) ────────────────
+
+function IconClose() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+    </svg>
+  );
+}
+
+function IconMinus() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+
+function IconPlus() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <path d="M12 5v14" /><path d="M5 12h14" />
+    </svg>
+  );
+}
+
+function IconTrash() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </svg>
+  );
+}
+
+function IconBag() {
+  return (
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" /><path d="M3 6h18" /><path d="M16 10a4 4 0 0 1-8 0" />
+    </svg>
+  );
+}
+
+function IconGift() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+  );
+}
+
+function IconCheck() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
+function IconRemoveX() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+    </svg>
+  );
+}
 
 // ── CartDrawer Component ────────────────────────────────────
 
@@ -34,13 +101,15 @@ export default class CartDrawer extends Component {
     this._debounceTimers = {};
     this._processingTimeout = null;
     this._currency = (window.Shopify && window.Shopify.currency && window.Shopify.currency.active) || 'USD';
+    this._prevActiveTiers = {};
+    this._confettiInitialized = false;
+    this._confettiEnabled = true;
   }
 
   componentDidMount() {
-    // External ATC intercepted → use cart from event (no extra fetch) and open drawer
     window.addEventListener('cartmax:cart-changed', (e) => {
       if (e.detail && e.detail.cart) {
-        var cart = e.detail.cart;
+        var cart = this._stabiliseOrder(e.detail.cart);
         this._currency = cart.currency || this._currency;
         this.setState({ cart: cart, loading: false });
         updateCartCount(cart.item_count);
@@ -50,39 +119,50 @@ export default class CartDrawer extends Component {
       this.openDrawer();
     });
 
-    // Evaluate result → update bar/ribbon state
     window.addEventListener('cartmax:eval-result', (e) => {
-      if (e.detail) this.setState({ evalResult: e.detail });
+      if (e.detail) {
+        this.setState({ evalResult: e.detail });
+        if (e.detail.drawer) {
+          applyDrawerSettings(e.detail.drawer);
+          var beh = e.detail.drawer.behavior;
+          if (beh) {
+            this._confettiEnabled = beh.confetti !== false;
+            setConfettiLottieUrl(beh.confetti_lottie_url);
+          }
+        }
+        // Only fire confetti on server-confirmed results, not optimistic
+        if (e.detail._server) this._checkConfetti(e.detail);
+      }
     });
 
-    // Cart updated (single /cart/update.js completed) → sync drawer
-    // Batches cart data + eval result in one setState to avoid multiple re-renders
     window.addEventListener('cartmax:internal-reload', (e) => {
       if (e.detail && e.detail.cart) {
-        var newCart = e.detail.cart;
+        var newCart = this._stabiliseOrder(e.detail.cart);
         var newEval = e.detail.evalResult || this.state.evalResult;
         this._currency = newCart.currency || this._currency;
+        if (e.detail.evalResult) {
+          if (e.detail.evalResult.drawer) applyDrawerSettings(e.detail.evalResult.drawer);
+          this._checkConfetti(e.detail.evalResult);
+        }
 
         // Detect removed items for animation
         var oldItems = (this.state.cart && this.state.cart.items) || [];
         var newKeys = {};
         (newCart.items || []).forEach(function (item) { newKeys[item.key] = true; });
-
         var removing = {};
         oldItems.forEach(function (item) {
-          if (!newKeys[item.key]) {
-            removing[item.key] = true;
-          }
+          if (!newKeys[item.key]) removing[item.key] = true;
         });
 
         if (Object.keys(removing).length > 0) {
-          this.setState({ removing: removing, updating: {}, pendingQty: {}, loading: false, evalResult: newEval });
+          // DEFER evalResult until after remove animation completes
+          // so progress bar doesn't jump while items are fading out
+          this.setState({ removing: removing, updating: {}, pendingQty: {}, loading: false });
           setTimeout(() => {
-            this.setState({ cart: newCart, removing: {} });
+            this.setState({ cart: newCart, removing: {}, evalResult: newEval });
             updateCartCount(newCart.item_count);
-          }, 300);
+          }, REMOVE_ANIM_DELAY);
         } else {
-          // Single setState: cart + eval + clear all pending states
           this.setState({
             cart: newCart,
             evalResult: newEval,
@@ -98,13 +178,21 @@ export default class CartDrawer extends Component {
       }
     });
 
-    // Gift unavailable notification
+    // Optimistic cart update — instant UI before server responds
+    window.addEventListener('cartmax:optimistic-update', (e) => {
+      if (e.detail && e.detail.cart) {
+        var optimisticCart = this._stabiliseOrder(e.detail.cart);
+        this._currency = optimisticCart.currency || this._currency;
+        this.setState({ cart: optimisticCart, pendingQty: {} });
+        updateCartCount(optimisticCart.item_count);
+      }
+    });
+
     window.addEventListener('cartmax:gift-unavailable', (e) => {
       var variants = (e.detail && e.detail.variants) || [];
       this.setState({ unavailableGifts: variants });
     });
 
-    // Mark ready and flush any queued events from before mount
     window.__cartmaxReady = true;
     if (window.__cartmaxQueue && window.__cartmaxQueue.length > 0) {
       this.loadCart();
@@ -112,7 +200,7 @@ export default class CartDrawer extends Component {
       window.__cartmaxQueue = [];
     }
 
-    // Intercept clicks on cart icon/link
+    // Cart icon click — open drawer
     document.addEventListener('click', (e) => {
       var link = e.target.closest('a[href="/cart"], a[href="/cart/"], [data-cart-icon], #cart-icon-bubble');
       if (link) {
@@ -124,21 +212,83 @@ export default class CartDrawer extends Component {
       }
     }, true);
 
-    // Escape key to close
+    // Cart icon hover — prefetch cart data so open is instant
+    document.addEventListener('mouseover', (e) => {
+      var link = e.target.closest('a[href="/cart"], a[href="/cart/"], [data-cart-icon], #cart-icon-bubble');
+      if (link && !this._hoverPrefetched) {
+        this._hoverPrefetched = true;
+        this.loadCart();
+        // Reset after 10s so next hover prefetches again
+        setTimeout(() => { this._hoverPrefetched = false; }, 10000);
+      }
+    }, { passive: true });
+
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.state.open) this.close();
     });
   }
 
+  // ── Confetti on milestone unlock ─────────────────────────
+
+  _checkConfetti(evalResult) {
+    var bar = evalResult && evalResult.bar;
+    if (!bar || !bar.tiers) return;
+
+    var newActive = {};
+    for (var i = 0; i < bar.tiers.length; i++) {
+      var tier = bar.tiers[i];
+      var key = tier.label || String(i);
+      if (tier.state === 'active') newActive[key] = true;
+    }
+
+    // First eval — just record initial state, never fire
+    if (!this._confettiInitialized) {
+      this._confettiInitialized = true;
+      this._prevActiveTiers = newActive;
+      return;
+    }
+
+    // Detect newly activated tiers
+    var prev = this._prevActiveTiers;
+    var hasNew = false;
+    for (var k in newActive) {
+      if (newActive.hasOwnProperty(k) && !prev[k]) hasNew = true;
+    }
+
+    this._prevActiveTiers = newActive;
+
+    // Fire only if drawer is open and confetti is enabled
+    if (hasNew && this._confettiEnabled && this.state.open) {
+      fireConfetti();
+    }
+  }
+
+  // ── Stable item ordering ─────────────────────────────────
+  // Shopify's cart API can return items in different order.
+  // This preserves the order the user last saw to prevent jitter.
+
+  _stabiliseOrder(cart) {
+    if (!cart || !cart.items) return cart;
+    var oldItems = (this.state.cart && this.state.cart.items) || [];
+    if (oldItems.length === 0) return cart;
+    var oldOrder = {};
+    oldItems.forEach(function (item, idx) { oldOrder[item.key] = idx; });
+    var sorted = cart.items.slice().sort(function (a, b) {
+      var ia = oldOrder.hasOwnProperty(a.key) ? oldOrder[a.key] : 99999;
+      var ib = oldOrder.hasOwnProperty(b.key) ? oldOrder[b.key] : 99999;
+      return ia - ib;
+    });
+    return Object.assign({}, cart, { items: sorted });
+  }
+
   // ── Cart data ─────────────────────────────────────────────
 
   async loadCart() {
-    // Only show skeleton if we have no cart data yet (first load)
     if (!this.state.cart) {
       this.setState({ loading: true });
     }
     try {
-      var cart = await fetchCart();
+      var cart = this._stabiliseOrder(await fetchCart());
       this._currency = cart.currency || this._currency;
       this.setState({ cart: cart, loading: false });
       updateCartCount(cart.item_count);
@@ -154,6 +304,8 @@ export default class CartDrawer extends Component {
       clearTimeout(this._closeTimer);
       this._closeTimer = null;
     }
+    // Already fully open — skip re-animation to prevent flicker
+    if (this.state.visible && this.state.open) return;
     if (!this._triggerElement) {
       this._triggerElement = document.activeElement;
     }
@@ -199,7 +351,7 @@ export default class CartDrawer extends Component {
   _startProcessingTimeout() {
     this._clearProcessingTimeout();
     this._processingTimeout = setTimeout(() => {
-      console.warn('[CartMax] Processing timeout — forcing recovery');
+      console.warn('[cartx] Processing timeout — forcing recovery');
       this.setState({ updating: {}, removing: {}, pendingQty: {} });
       this.loadCart();
     }, PROCESSING_TIMEOUT);
@@ -283,20 +435,29 @@ export default class CartDrawer extends Component {
     var tiers = bar.tiers;
     var n = tiers.length;
     var pct = Math.min(bar.progress_pct || 0, 100);
+    // Leave room so last milestone label doesn't clip at the right edge
+    var trackPadRight = 30;
+    var usableWidth = 100;
 
     return (
       <div id="cartmax-progress" className="cartmax-progress">
         {bar.top_message ? <div class="cartmax-progress-msg">{bar.top_message}</div> : null}
-        <div className="cartmax-progress-track">
+        <div className="cartmax-progress-track" style={{ marginRight: trackPadRight + 'px' }}>
           <div className="cartmax-progress-fill" style={{ width: pct + '%' }} ><span className='visually-hidden'>Progress fill</span></div>
           {tiers.map((tier, i) => {
-            var pos = ((i + 1) / n) * 100;
+            var pos = ((i + 1) / n) * usableWidth;
             var cls = 'cartmax-milestone';
-            if (tier.state === 'active') cls += ' cartmax-milestone--active';
+            var isActive = tier.state === 'active';
+            if (isActive) cls += ' cartmax-milestone--active';
             else if (tier.state === 'next') cls += ' cartmax-milestone--next';
             return (
               <div class={cls} style={{ left: pos + '%' }} key={i}>
-                <div class="cartmax-milestone-dot" />
+                <div class="cartmax-milestone-dot">
+                  {isActive
+                    ? <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                    : <span class="visually-hidden">Milestone</span>
+                  }
+                </div>
                 <div class="cartmax-milestone-label">
                   {(tier.label || '').split('\n+ ')[0]}
                 </div>
@@ -329,7 +490,7 @@ export default class CartDrawer extends Component {
     var isPending = this.state.pendingQty.hasOwnProperty(item.key);
     var curr = this._currency;
     var isFreebie = item.properties && item.properties['_freebie'] === 'true' && item.properties['_claimed'] !== 'true';
-    var isClaimed = item.properties && item.properties['_claimed'] === 'true';
+    var isClaimed = item.properties && (item.properties['_claimed'] === 'true' || item.properties['_cartmax_claim'] === 'true');
     var cls = 'cartmax-line-item'
       + (isRemoving ? ' cartmax-line-removing' : '')
       + (isFreebie ? ' cartmax-line-freebie' : '');
@@ -338,8 +499,8 @@ export default class CartDrawer extends Component {
       <div class={cls} key={item.key}>
         <div class="cartmax-line-image">
           {item.image
-            ? <img src={resizeImage(item.image, 128)} alt={item.title} width="64" height="64" loading="lazy" />
-            : <div class="cartmax-line-image-placeholder" />
+            ? <img src={resizeImage(item.image, 96)} alt={item.title} width="64" height="64" loading="lazy" />
+            : <div class="cartmax-line-image-placeholder"><span class="visually-hidden">No image</span></div>
           }
         </div>
         <div class="cartmax-line-details">
@@ -347,7 +508,9 @@ export default class CartDrawer extends Component {
           {item.variant_title ? <div class="cartmax-line-variant">{item.variant_title}</div> : null}
           <div class="cartmax-line-price">
             {isFreebie
-              ? <span class="cartmax-line-price-free">FREE</span>
+              ? <span class="cartmax-line-price-free">
+                  <span class="cartmax-gift-badge"><IconGift /> FREE</span>
+                </span>
               : [
                   item.original_line_price !== item.final_line_price
                     ? <span class="cartmax-line-price-original">{formatMoney(item.original_line_price, curr)}</span>
@@ -374,7 +537,7 @@ export default class CartDrawer extends Component {
                     onClick={() => this.queueQuantityChange(item.key, displayQty - 1)}
                     disabled={isUpdating || displayQty <= 1}
                     aria-label="Decrease quantity"
-                  >&#8722;</button>
+                  ><IconMinus /></button>
                   <span class={'cartmax-qty-value' + (isPending ? ' cartmax-qty-pending' : '')}>
                     {displayQty}
                   </span>
@@ -383,14 +546,14 @@ export default class CartDrawer extends Component {
                     onClick={() => this.queueQuantityChange(item.key, displayQty + 1)}
                     disabled={isUpdating}
                     aria-label="Increase quantity"
-                  >+</button>
+                  ><IconPlus /></button>
                 </div>
                 <button
                   class="cartmax-remove-btn"
                   onClick={() => this.handleRemove(item.key)}
                   disabled={isUpdating || isRemoving}
                   aria-label={'Remove ' + item.product_title}
-                >Remove</button>
+                ><IconTrash /></button>
               </div>
             : null
           }
@@ -404,9 +567,18 @@ export default class CartDrawer extends Component {
   renderLoading() {
     return (
       <div class="cartmax-loading">
-        <div class="cartmax-skeleton" />
-        <div class="cartmax-skeleton" />
-        <div class="cartmax-skeleton" />
+        {[0, 1, 2].map(function (i) {
+          return (
+            <div class="cartmax-skeleton-item" key={i}>
+              <div class="cartmax-skeleton-img"><span class="visually-hidden">Loading</span></div>
+              <div class="cartmax-skeleton-lines">
+                <div class="cartmax-skeleton-line"><span class="visually-hidden">Loading</span></div>
+                <div class="cartmax-skeleton-line"><span class="visually-hidden">Loading</span></div>
+                <div class="cartmax-skeleton-line"><span class="visually-hidden">Loading</span></div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -416,10 +588,10 @@ export default class CartDrawer extends Component {
   renderEmpty() {
     return (
       <div class="cartmax-empty">
-        <div class="cartmax-empty-icon">🛍️</div>
+        <div class="cartmax-empty-icon"><IconBag /></div>
         <p class="cartmax-empty-text">Your cart is empty</p>
         <p class="cartmax-empty-subtitle">Looks like you haven't added anything yet</p>
-        <button class="cartmax-continue-btn" onClick={this.close}>Continue shopping</button>
+        <button class="cartmax-empty-btn" onClick={this.close}>Continue shopping</button>
       </div>
     );
   }
@@ -438,16 +610,16 @@ export default class CartDrawer extends Component {
         body: JSON.stringify({
           id: Number(variantId),
           quantity: 1,
-          properties: { _freebie: 'true', _claimed: 'true', _offer_id: claimId },
+          properties: { _freebie: 'true', _cartmax_claim: 'true', _claimed: 'true', _offer_id: claimId },
         }),
       });
       var cart = await fetchCart();
       this._currency = cart.currency || this._currency;
       this.setState({ cart: cart });
       updateCartCount(cart.item_count);
-      window.dispatchEvent(new CustomEvent('cartmax:cart-ready', { detail: { cart: cart } }));
+      window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: { cart: cart } }));
     } catch (err) {
-      console.error('[CartMax] Claim add error:', err);
+      console.error('[cartx] Claim add error:', err);
     } finally {
       var newUpdating = Object.assign({}, this.state.updating);
       delete newUpdating[key];
@@ -458,7 +630,6 @@ export default class CartDrawer extends Component {
   async handleClaimRemove(variantId) {
     var cart = this.state.cart;
     if (!cart) return;
-    // Find the line item by variant_id (any source — claimed, normal add, etc.)
     var line = cart.items.find(function (i) {
       return String(i.variant_id) === String(variantId);
     });
@@ -471,8 +642,6 @@ export default class CartDrawer extends Component {
     if (!result || !result.claim_gifts) return null;
     var cg = result.claim_gifts;
     if (!cg.applicable_to_current_page) return null;
-
-    // Threshold not yet met — progress bar handles the milestone messaging
     if (cg.threshold_remaining) return null;
 
     var allGifts = cg.gifts || [];
@@ -482,7 +651,6 @@ export default class CartDrawer extends Component {
     var cart = this.state.cart;
     var maxClaims = cg.max_claims || allGifts.length;
 
-    // Check if variant is anywhere in cart
     function isInCart(vid) {
       if (!cart || !cart.items) return false;
       return cart.items.some(function (item) {
@@ -492,11 +660,10 @@ export default class CartDrawer extends Component {
 
     var gifts = allGifts;
 
-    // Count claimed items from actual cart state
     var cartClaimedCount = 0;
     if (cart && cart.items) {
       cart.items.forEach(function (item) {
-        if (item.properties && item.properties['_claimed'] === 'true') {
+        if (item.properties && (item.properties['_claimed'] === 'true' || item.properties['_cartmax_claim'] === 'true')) {
           cartClaimedCount++;
         }
       });
@@ -506,7 +673,6 @@ export default class CartDrawer extends Component {
     return (
       <div class="cartmax-claims">
         <div class="cartmax-claims-heading">{cg.section_heading}</div>
-        {limitReached ? <div class="cartmax-claims-locked">You have reached the maximum number of gifts you can claim</div> : null}
         <div class="cartmax-claims-scroll">
           {gifts.map(function (g) {
             var vid = String(g.variant_id);
@@ -516,8 +682,8 @@ export default class CartDrawer extends Component {
             return (
               <div class={'cartmax-claim-card' + (inCart ? ' cartmax-claim-card--in-cart' : '')} key={vid}>
                 {g.image
-                  ? <img class="cartmax-claim-img" src={resizeImage(g.image, 120)} alt={g.title} loading="lazy" />
-                  : <div class="cartmax-claim-img-placeholder" />
+                  ? <img class="cartmax-claim-img" src={resizeImage(g.image, 96)} alt={g.title} loading="lazy" />
+                  : <div class="cartmax-claim-img-placeholder"><span class="visually-hidden">No image</span></div>
                 }
                 <div class="cartmax-claim-info">
                   {g.title ? <div class="cartmax-claim-title">{g.title}</div> : null}
@@ -557,7 +723,6 @@ export default class CartDrawer extends Component {
         }
       });
     });
-    // Deduplicate
     return codes.filter(function (c, i, arr) { return arr.indexOf(c) === i; });
   }
 
@@ -565,7 +730,6 @@ export default class CartDrawer extends Component {
     if (!code || !code.trim()) return;
     this.setState({ couponLoading: true, couponError: null });
     try {
-      // Build comma-separated discount list: existing + new code
       var currentCodes = this.getAppliedCodes();
       var newCode = code.trim();
       if (!currentCodes.some(function (c) { return c.toUpperCase() === newCode.toUpperCase(); })) {
@@ -573,11 +737,9 @@ export default class CartDrawer extends Component {
       }
       var discountPayload = currentCodes.join(',');
 
-      // Apply via /cart/update.js with discount parameter
       await cartUpdateAll({ discount: discountPayload });
       var cart = await fetchCart();
 
-      // Verify it was applied
       var codeUpper = newCode.toUpperCase();
       var applied = (cart.cart_level_discount_applications || []).some(function (d) {
         return d.title && d.title.toUpperCase() === codeUpper;
@@ -609,13 +771,11 @@ export default class CartDrawer extends Component {
   async handleCouponRemove(codeToRemove) {
     this.setState({ couponLoading: true });
     try {
-      // Build list without the removed code
       var currentCodes = this.getAppliedCodes();
       var removeUpper = (codeToRemove || '').toUpperCase();
       var remaining = currentCodes.filter(function (c) { return c.toUpperCase() !== removeUpper; });
       var discountPayload = remaining.length > 0 ? remaining.join(',') : '';
 
-      // Send via /cart/update.js
       await cartUpdateAll({ discount: discountPayload });
       var cart = await fetchCart();
 
@@ -647,11 +807,9 @@ export default class CartDrawer extends Component {
     var result = this.state.evalResult;
     var available = (result && result.available_coupons) || [];
     var showPanel = this.state.couponPanelOpen;
-    var curr = this._currency;
 
     return (
       <div class="cartmax-coupons">
-        {/* Discount code input */}
         <div class="cartmax-coupon-input-row">
           <input
             class="cartmax-coupon-input"
@@ -673,7 +831,6 @@ export default class CartDrawer extends Component {
           : null
         }
 
-        {/* View all coupons toggle */}
         {available.length > 0 && (
           <button
             class="cartmax-coupons-viewall"
@@ -681,7 +838,6 @@ export default class CartDrawer extends Component {
           >{showPanel ? 'Hide coupons' : 'View all coupons (' + available.length + ')'}</button>
         )}
 
-        {/* Applied discount codes */}
         {appliedDiscounts.length > 0 && (
           <div class="cartmax-applied-discounts">
             {appliedDiscounts.map(function (d) {
@@ -695,14 +851,13 @@ export default class CartDrawer extends Component {
                     onClick={function () { self.handleCouponRemove(d.code); }}
                     disabled={isLoading}
                     aria-label={'Remove ' + d.code}
-                  >&#10005;</button>
+                  ><IconRemoveX /></button>
                 </div>
               );
             })}
           </div>
         )}
 
-        {/* Coupon drawer — slides in from right */}
         <div class={'cartmax-coupon-drawer' + (showPanel ? ' cartmax-coupon-drawer--open' : '')}>
           <div class="cartmax-coupon-drawer-header">
             <button
@@ -726,7 +881,7 @@ export default class CartDrawer extends Component {
                   <div class="cartmax-coupon-card-title">{c.title}</div>
                   {c.display_message ? <div class="cartmax-coupon-card-msg">{c.display_message}</div> : null}
                   {c.applied
-                    ? <span class="cartmax-coupon-card-applied">Applied</span>
+                    ? <span class="cartmax-coupon-card-applied"><IconCheck /> Applied</span>
                     : !c.is_automatic
                       ? <button
                           class="cartmax-coupon-card-btn"
@@ -761,9 +916,9 @@ export default class CartDrawer extends Component {
       this._currency = cart.currency || this._currency;
       this.setState({ cart: cart });
       updateCartCount(cart.item_count);
-      window.dispatchEvent(new CustomEvent('cartmax:cart-ready', { detail: { cart: cart } }));
+      window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: { cart: cart } }));
     } catch (err) {
-      console.error('[CartMax] Upsell add error:', err);
+      console.error('[cartx] Upsell add error:', err);
     } finally {
       var newUpdating = Object.assign({}, this.state.updating);
       delete newUpdating[key];
@@ -778,7 +933,6 @@ export default class CartDrawer extends Component {
     var products = upsells.products || [];
     if (products.length === 0) return null;
 
-    // Filter out products already in cart
     var cart = this.state.cart;
     var cartVariantIds = (cart && cart.items || []).map(function (i) { return String(i.variant_id); });
     var filtered = products.filter(function (p) {
@@ -802,8 +956,8 @@ export default class CartDrawer extends Component {
             return (
               <div class="cartmax-upsell-card" key={p.product_id}>
                 {p.image_url
-                  ? <img class="cartmax-upsell-img" src={resizeImage(p.image_url, 120)} alt={p.title} loading="lazy" />
-                  : <div class="cartmax-upsell-img-placeholder" />
+                  ? <img class="cartmax-upsell-img" src={resizeImage(p.image_url, 96)} alt={p.title} loading="lazy" />
+                  : <div class="cartmax-upsell-img-placeholder"><span class="visually-hidden">No image</span></div>
                 }
                 <div class="cartmax-upsell-info">
                   <div class="cartmax-upsell-title">{p.title}</div>
@@ -834,40 +988,35 @@ export default class CartDrawer extends Component {
     var cart = this.state.cart;
     var curr = this._currency;
     var hasDiscount = cart.total_discount > 0;
+    var discounts = cart.cart_level_discount_applications || [];
 
     return (
       <div class="cartmax-footer">
-        <div class="cartmax-totals">
-          <div class="cartmax-totals-row">
-            <span>Subtotal</span>
-            <span>{formatMoney(cart.items_subtotal_price, curr)}</span>
+        {/* Only show subtotal + discount rows when there's a discount, otherwise just total */}
+        {hasDiscount ? (
+          <div class="cartmax-totals">
+            <div class="cartmax-totals-row">
+              <span>Subtotal</span>
+              <span>{formatMoney(cart.items_subtotal_price, curr)}</span>
+            </div>
+            {discounts.map((d) => {
+              var amt = d.total_allocated_amount || d.amount || 0;
+              return (
+                <div class="cartmax-totals-row cartmax-discount-row" key={d.title}>
+                  <span>{d.title || 'Discount'}</span>
+                  <span>{'\u2212' + formatMoney(amt, curr)}</span>
+                </div>
+              );
+            })}
           </div>
-          {cart.cart_level_discount_applications && cart.cart_level_discount_applications.length > 0
-            ? cart.cart_level_discount_applications.map((d) => {
-                var amt = d.total_allocated_amount || d.amount || 0;
-                return (
-                  <div class="cartmax-totals-row cartmax-discount-row" key={d.title}>
-                    <span>{d.title || 'Discount'}</span>
-                    <span>{'\u2212' + formatMoney(amt, curr)}</span>
-                  </div>
-                );
-              })
-            : null
-          }
-          {hasDiscount
-            ? <div class="cartmax-totals-row cartmax-discount-row">
-                <span>Total Discount</span>
-                <span>{'\u2212' + formatMoney(cart.total_discount, curr)}</span>
-              </div>
-            : null
-          }
-          <div class="cartmax-totals-row cartmax-total-row">
+        ) : null}
+        <div class="cartmax-footer-checkout">
+          <div class="cartmax-footer-total">
             <span>Total</span>
             <span>{formatMoney(cart.total_price, curr)}</span>
           </div>
+          <a class="cartmax-checkout-btn" href="/checkout">Checkout</a>
         </div>
-        <a class="cartmax-checkout-btn" href="/checkout">Checkout</a>
-        <button class="cartmax-continue-btn" onClick={this.close}>Continue shopping</button>
       </div>
     );
   }
@@ -909,10 +1058,10 @@ export default class CartDrawer extends Component {
             <div class="cartmax-header">
               <span class="cartmax-title">
                 Your Cart
-                {count > 0 ? <span class="cartmax-header-count">{' (' + count + ')'}</span> : null}
+                {count > 0 ? <span class="cartmax-header-count">{count}</span> : null}
               </span>
               <button class="cartmax-close" onClick={this.close} aria-label="Close cart">
-                &#10005;
+                <IconClose />
               </button>
             </div>
 
@@ -922,10 +1071,10 @@ export default class CartDrawer extends Component {
               : null
             }
 
-            {/* Progress bar — only when cart has items */}
+            {/* Progress bar */}
             {hasItems ? this.renderProgressBar() : null}
 
-            {/* Claim gifts — above cart items */}
+            {/* Claim gifts */}
             {hasItems ? this.renderClaimGifts() : null}
 
             {/* Body */}
@@ -938,13 +1087,13 @@ export default class CartDrawer extends Component {
                   : null
             }
 
-            {/* Coupons — below cart items */}
+            {/* Coupons */}
             {hasItems ? this.renderCoupons() : null}
 
-            {/* Upsells — below coupons */}
+            {/* Upsells */}
             {this.renderUpsells()}
 
-            {/* Ribbon — between body and footer */}
+            {/* Ribbon */}
             {hasItems ? this.renderRibbon() : null}
 
             {/* Footer */}

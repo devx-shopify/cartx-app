@@ -1,7 +1,7 @@
 import prisma from "../db.server.js";
 
 const DISCOUNT_STORE_KEY = "__freebie_discount__";
-const DISCOUNT_TITLE = "Cart Max Free Gift";
+const DISCOUNT_TITLE = "cartx free gift";
 const FUNCTION_HANDLE = "cart-max-freebie-discount";
 const METAFIELD_NAMESPACE = "$app:cart-max-freebie-discount";
 const METAFIELD_KEY = "function-configuration";
@@ -54,7 +54,7 @@ async function findFunction(admin) {
   const functions = json.data?.shopifyFunctions?.nodes ?? [];
   return (
     functions.find(
-      (f) => f.title === FUNCTION_HANDLE || f.title === "cart-max-freebie-discount"
+      (f) => f.title === FUNCTION_HANDLE || f.title === "cart-max-freebie-discount" || f.title === "cartx freebie discount"
     ) ?? null
   );
 }
@@ -64,9 +64,10 @@ async function findFunction(admin) {
 /**
  * Build the metafield JSON config from stored rules.
  */
-export function buildFunctionConfig(rules, defaultRule) {
+export function buildFunctionConfig(rules, defaultRule, claimRules) {
   return JSON.stringify({
     rules: rules ?? [],
+    claim_rules: claimRules ?? [],
     default_rule: defaultRule ?? {
       type: "percentage",
       value: 100,
@@ -109,7 +110,7 @@ export async function ensureFreebieDiscount(admin, shopId, functionConfig) {
   const fn = await findFunction(admin);
   if (!fn) {
     throw new Error(
-      "Cart Max Freebie Discount function not found. Deploy the app first with `shopify app deploy`."
+      "cartx Freebie Discount function not found. Deploy the app first with `shopify app deploy`."
     );
   }
 
@@ -318,20 +319,57 @@ export async function deleteFreebieDiscount(admin, shopId) {
 }
 
 /**
+ * Build claim_rules from claim_gifts config for the discount function.
+ */
+export function buildClaimRules(claimGifts) {
+  return (claimGifts || [])
+    .filter((g) => g.enabled)
+    .map((g) => ({
+      offer_id: g.id,
+      claim_price: g.claim_price ?? 0,
+      message: g.claim_price > 0 ? `Claimed for Rs.${g.claim_price}` : "Claimed Gift",
+    }));
+}
+
+/**
+ * Sync claim_rules into the discount function config.
+ * Call after saving claim gifts to keep the function in sync.
+ */
+export async function syncClaimRulesToFunction(admin, shopId, claimGifts) {
+  const record = await loadDiscountRecord(shopId);
+  if (!record?.discountId) return; // No active discount function, skip
+
+  let parsedConfig = {};
+  try {
+    parsedConfig = JSON.parse(record.functionConfig ?? "{}");
+  } catch { /* use empty */ }
+
+  const claimRules = buildClaimRules(claimGifts);
+  const functionConfig = buildFunctionConfig(
+    parsedConfig.rules ?? [],
+    parsedConfig.default_rule ?? null,
+    claimRules
+  );
+  await updateDiscountMetafield(admin, record.discountId, functionConfig);
+  await saveDiscountRecord(shopId, { ...record, functionConfig });
+}
+
+/**
  * Update just the function config (rules) on an existing discount.
  */
 export async function updateFreebieDiscountConfig(
   admin,
   shopId,
   rules,
-  defaultRule
+  defaultRule,
+  claimRules
 ) {
   const record = await loadDiscountRecord(shopId);
   if (!record?.discountId) {
     throw new Error("No active discount function. Activate it first.");
   }
 
-  const functionConfig = buildFunctionConfig(rules, defaultRule);
+  const functionConfig = buildFunctionConfig(rules, defaultRule, claimRules);
   await updateDiscountMetafield(admin, record.discountId, functionConfig);
   await saveDiscountRecord(shopId, {
     ...record,

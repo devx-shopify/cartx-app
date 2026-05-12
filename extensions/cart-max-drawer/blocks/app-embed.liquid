@@ -1,5 +1,5 @@
 {% comment %}
-  Cart Max — App Embed Block
+  cartx — App Embed Block
   Auto-injected on every page when enabled in theme editor.
   Mounts the Preact cart drawer and installs fetch interception.
 {% endcomment %}
@@ -53,7 +53,7 @@
       return '';
     }
 
-    // Flag for Cart Max's own API calls — skip interception for these
+    // Flag for cartx's own API calls — skip interception for these
     window.__cartmaxInternal = false;
 
     // Patch window.fetch
@@ -133,17 +133,17 @@
 
 {% schema %}
 {
-  "name": "Cart Max Drawer",
+  "name": "cartx Drawer",
   "target": "body",
   "settings": [
     {
       "type": "header",
-      "content": "Cart Max Settings"
+      "content": "cartx Settings"
     },
     {
       "type": "checkbox",
       "id": "enabled",
-      "label": "Enable Cart Max",
+      "label": "Enable cartx",
       "default": true
     }
   ]

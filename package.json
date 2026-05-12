@@ -1,5 +1,5 @@
 {
-  "name": "max",
+  "name": "cartx",
   "private": true,
   "scripts": {
     "build": "react-router build",

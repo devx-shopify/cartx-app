@@ -7,7 +7,7 @@ var ANIM_DURATION = 300;
 var DEBOUNCE_MS = 500;
 var REMOVE_ANIM_MS = 300;
 
-class CartMaxDrawer extends Component {
+class CartxDrawer extends Component {
   constructor() {
     super();
     this.state = {
@@ -387,7 +387,7 @@ class CartMaxDrawer extends Component {
 function mount() {
   var root = document.getElementById('cartmax-root');
   if (root) {
-    render(h(CartMaxDrawer), root);
+    render(h(CartxDrawer), root);
   }
 }
 
