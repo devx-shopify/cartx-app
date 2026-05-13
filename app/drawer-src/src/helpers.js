@@ -123,6 +123,7 @@ var HEADING_SIZE_MAP = { small: '14px', medium: '16px', large: '18px' };
 var BODY_SIZE_MAP = { small: '12px', medium: '13px', large: '14px' };
 var IMG_SIZE_MAP = { small: '56px', medium: '72px', large: '96px' };
 var DENSITY_MAP = { compact: '8px', comfortable: '14px', spacious: '20px' };
+var ANIM_SPEED_MAP = { fast: '150ms', normal: '250ms', slow: '400ms' };
 
 export function applyDrawerSettings(settings) {
   if (!settings) return;
@@ -172,6 +173,12 @@ export function applyDrawerSettings(settings) {
     if (l.density && DENSITY_MAP[l.density]) {
       s.setProperty('--cartmax-density-padding', DENSITY_MAP[l.density]);
     }
+  }
+
+  // Animation speed
+  var b = settings.behavior;
+  if (b && b.animation_speed && ANIM_SPEED_MAP[b.animation_speed]) {
+    s.setProperty('--cartmax-anim-speed', ANIM_SPEED_MAP[b.animation_speed]);
   }
 }
 

@@ -24,12 +24,13 @@ const CLAIM_GIFTS = [
   { title: "Branded Tote Bag", inCart: true },
 ];
 
-export default function CartPreview({ settings }) {
+export default function CartPreview({ settings, showEmpty }) {
   const c = settings.colors || {};
   const sh = settings.shape || {};
   const t = settings.typography || {};
   const tx = settings.text || {};
   const l = settings.layout || {};
+  const sec = settings.sections || {};
 
   const radius = RADIUS_MAP[sh.border_radius] || "10px";
   const headingSize = HEADING_SIZE_MAP[t.heading_size] || "16px";
@@ -124,19 +125,21 @@ export default function CartPreview({ settings }) {
           }}
         >
           {tx.cart_title || "Your Cart"}
-          <span
-            style={{
-              background: primary,
-              color: primaryText,
-              fontSize: 10,
-              fontWeight: 600,
-              padding: "2px 7px",
-              borderRadius: 10,
-              lineHeight: "1.4",
-            }}
-          >
-            4
-          </span>
+          {!showEmpty && (
+            <span
+              style={{
+                background: primary,
+                color: primaryText,
+                fontSize: 10,
+                fontWeight: 600,
+                padding: "2px 7px",
+                borderRadius: 10,
+                lineHeight: "1.4",
+              }}
+            >
+              4
+            </span>
+          )}
         </span>
         <span
           style={{
@@ -150,7 +153,57 @@ export default function CartPreview({ settings }) {
         </span>
       </div>
 
+      {/* ── Empty state ── */}
+      {showEmpty && (<>
+        <div style={{
+          flex: 1, display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          padding: "40px 28px", background: bg,
+        }}>
+          <div style={{ color: "#d1d5db", marginBottom: 16 }}>
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" /><path d="M3 6h18" /><path d="M16 10a4 4 0 0 1-8 0" />
+            </svg>
+          </div>
+          <div style={{ fontSize: headingSize, fontWeight: 600, color: text, marginBottom: 4, textAlign: "center" }}>
+            {tx.empty_title || "Your cart is empty"}
+          </div>
+          <div style={{ fontSize: bodySize, color: textSec, marginBottom: 22, textAlign: "center", lineHeight: 1.5 }}>
+            {tx.empty_subtitle || "Looks like you haven't added anything yet"}
+          </div>
+          <div style={btnStyle}>
+            {tx.empty_button || "Continue shopping"}
+          </div>
+        </div>
+
+        {/* Upsells in empty state */}
+        {sec.show_upsells && (
+          <div style={{ padding: "8px 16px", borderTop: `1px solid ${border}`, background: bg }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: textSec, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
+              You may also like
+            </div>
+            <div style={{ display: "flex", gap: 8, overflowX: "auto" }}>
+              {[{ title: "Summer Hat", price: "$24.00" }, { title: "Silk Scarf", price: "$35.00" }].map((p, i) => (
+                <div key={i} style={{
+                  flexShrink: 0, width: "70%", display: "flex", alignItems: "center", gap: 8,
+                  border: `1px solid ${border}`, borderRadius: radius, overflow: "hidden", background: bg,
+                }}>
+                  <div style={{ width: 52, height: 52, minWidth: 52, background: "#f3f4f6" }} />
+                  <div style={{ flex: 1, padding: "6px 8px 6px 0" }}>
+                    <div style={{ fontSize: 12, fontWeight: 500, color: text }}>{p.title}</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: text, marginBottom: 3 }}>{p.price}</div>
+                    <span style={{ ...smallBtnStyle, padding: "3px 8px", fontSize: 10, fontWeight: 700, cursor: "default", width: "fit-content", textTransform: "uppercase", letterSpacing: 0.5 }}>Add</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </>)}
+
+      {!showEmpty && (<>
       {/* ── Progress bar ── */}
+      {sec.show_progress_bar !== false && (
       <div
         style={{
           padding: "10px 16px 22px",
@@ -182,7 +235,10 @@ export default function CartPreview({ settings }) {
         </div>
       </div>
 
+      )}
+
       {/* ── Claim Gifts ── */}
+      {sec.show_claim_gifts !== false && (
       <div
         style={{
           padding: "12px 16px",
@@ -284,6 +340,8 @@ export default function CartPreview({ settings }) {
           })}
         </div>
       </div>
+
+      )}
 
       {/* ── Regular line items ── */}
       {DUMMY_ITEMS.map((item, i) => (
@@ -454,7 +512,7 @@ export default function CartPreview({ settings }) {
       </div>
 
       {/* ── Coupon input ── */}
-      <div
+      {sec.show_coupons !== false && (<div
         style={{
           padding: "10px 16px",
           borderTop: `1px solid ${border}`,
@@ -491,8 +549,10 @@ export default function CartPreview({ settings }) {
         </div>
       </div>
 
+      )}
+
       {/* ── Ribbon ── */}
-      <div
+      {sec.show_ribbon !== false && (<div
         style={{
           padding: "7px 12px",
           margin: "4px 16px 8px",
@@ -506,7 +566,31 @@ export default function CartPreview({ settings }) {
         }}
       >
         Free shipping on orders over $50!
-      </div>
+      </div>)}
+
+      {/* ── Upsells ── */}
+      {sec.show_upsells !== false && (
+        <div style={{ padding: "8px 16px", borderTop: `1px solid ${border}`, background: bg }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: textSec, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
+            You may also like
+          </div>
+          <div style={{ display: "flex", gap: 8, overflowX: "auto" }}>
+            {[{ title: "Summer Hat", price: "$24.00" }, { title: "Silk Scarf", price: "$35.00" }].map((p, i) => (
+              <div key={i} style={{
+                flexShrink: 0, width: "70%", display: "flex", alignItems: "center", gap: 8,
+                border: `1px solid ${border}`, borderRadius: radius, overflow: "hidden", background: bg,
+              }}>
+                <div style={{ width: 52, height: 52, minWidth: 52, background: "#f3f4f6" }} />
+                <div style={{ flex: 1, padding: "6px 8px 6px 0" }}>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: text }}>{p.title}</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: text, marginBottom: 3 }}>{p.price}</div>
+                  <span style={{ ...smallBtnStyle, padding: "3px 8px", fontSize: 10, fontWeight: 700, cursor: "default", width: "fit-content", textTransform: "uppercase", letterSpacing: 0.5 }}>Add</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Footer ── */}
       <div
@@ -568,7 +652,15 @@ export default function CartPreview({ settings }) {
           </div>
           <div style={btnStyle}>{tx.checkout_button || "Checkout"}</div>
         </div>
+        {(tx.continue_shopping || tx.continue_shopping_url) && (
+          <div style={{ textAlign: "center", marginTop: 6 }}>
+            <span style={{ fontSize: 12, color: textSec, textDecoration: "underline", textUnderlineOffset: 2 }}>
+              {tx.continue_shopping || "Continue shopping"}
+            </span>
+          </div>
+        )}
       </div>
+      </>)}
     </div>
   );
 }

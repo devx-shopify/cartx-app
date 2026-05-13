@@ -8,7 +8,9 @@ function isDiscountedItem(item) {
 export function adjustedTotal(cartItems) {
   const cents = cartItems.reduce((sum, item) => {
     if (isDiscountedItem(item)) return sum
-    return sum + item.line_price
+    // Use original_line_price to ignore Shopify Function discounts (e.g. volume discount)
+    // so milestone triggers evaluate against pre-discount prices
+    return sum + (item.original_line_price ?? item.line_price)
   }, 0)
   // Shopify sends prices in cents; config thresholds are in dollars
   return cents / 100

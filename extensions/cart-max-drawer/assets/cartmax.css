@@ -155,17 +155,13 @@ cart-notification,
   max-height: 200px;
   opacity: 1;
   overflow: hidden;
-  transition: opacity 0.25s ease, max-height 0.25s ease, padding 0.25s ease;
   background: var(--cartmax-bg, #ffffff);
   content-visibility: auto;
   contain-intrinsic-size: auto 100px;
 }
 
 .cartmax-line-removing {
-  opacity: 0;
-  max-height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
+  display: none;
 }
 
 .cartmax-line-image {
@@ -1248,6 +1244,108 @@ cart-notification,
   text-align: center;
   border-bottom: 1px solid #fde68a;
   flex-shrink: 0;
+}
+
+/* --- Left Position --- */
+
+.cartmax-pos-left .cartmax-drawer {
+  right: auto;
+  left: 0;
+  transform: translateX(-100%);
+  box-shadow: 2px 0 24px rgba(0, 0, 0, 0.12);
+}
+
+.cartmax-pos-left.cartmax-open .cartmax-drawer {
+  transform: translateX(0);
+}
+
+/* --- Button Outline Variant --- */
+
+.cartmax-btn-outline .cartmax-checkout-btn,
+.cartmax-btn-outline .cartmax-empty-btn {
+  background: transparent;
+  color: var(--cartmax-primary, #1a1a1a);
+  border: 2px solid var(--cartmax-primary, #1a1a1a);
+}
+
+.cartmax-btn-outline .cartmax-checkout-btn:hover,
+.cartmax-btn-outline .cartmax-empty-btn:hover {
+  background: var(--cartmax-primary, #1a1a1a);
+  color: var(--cartmax-primary-text, #ffffff);
+}
+
+/* --- Image Style Variants --- */
+
+.cartmax-img-square .cartmax-line-image,
+.cartmax-img-square .cartmax-upsell-img,
+.cartmax-img-square .cartmax-claim-img { border-radius: 0; }
+
+.cartmax-img-circle .cartmax-line-image,
+.cartmax-img-circle .cartmax-upsell-img,
+.cartmax-img-circle .cartmax-claim-img { border-radius: 50%; }
+
+/* --- Quantity Minimal Variant --- */
+
+.cartmax-qty-minimal .cartmax-qty-controls {
+  border: none;
+  background: none;
+  gap: 4px;
+}
+
+.cartmax-qty-minimal .cartmax-qty-value {
+  border: none;
+}
+
+.cartmax-qty-minimal .cartmax-qty-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--cartmax-radius, 6px);
+  background: var(--cartmax-border, #f0f0f0);
+}
+
+/* --- Vendor Name --- */
+
+.cartmax-line-vendor {
+  font-size: calc(var(--cartmax-body-size, 13px) - 2px);
+  color: var(--cartmax-text-secondary, #9ca3af);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-weight: 600;
+}
+
+/* --- Animation Variants --- */
+
+.cartmax-anim-fade .cartmax-drawer {
+  transform: none;
+  opacity: 0;
+  transition: opacity var(--cartmax-anim-speed, 250ms) ease;
+}
+
+.cartmax-anim-fade.cartmax-open .cartmax-drawer {
+  opacity: 1;
+}
+
+.cartmax-anim-none .cartmax-drawer {
+  transform: none;
+  transition: none;
+}
+
+.cartmax-anim-none.cartmax-open .cartmax-drawer {
+  transform: none;
+}
+
+.cartmax-anim-none .cartmax-overlay {
+  transition: none;
+}
+
+/* --- Animation Speed --- */
+
+.cartmax-drawer {
+  transition-duration: var(--cartmax-anim-speed, 250ms);
+}
+
+.cartmax-overlay {
+  transition-duration: var(--cartmax-anim-speed, 250ms);
 }
 
 /* --- Visually hidden (a11y) --- */

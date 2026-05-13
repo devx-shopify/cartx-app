@@ -1,13 +1,43 @@
-import { audienceFilter, pageMatch } from '../helpers.server.js'
+import { audienceFilter, pageMatch, getActiveEntries } from '../helpers.server.js'
 import { resolveTemplate } from './messages.server.js'
 
 function collectBarEntries(config, page, customer) {
   const entries = []
 
+  // Use getActiveEntries for offers — page-specific offers take priority over global ones
+  const eligibleOffers = (config.offers || []).filter(
+    (o) => o.enabled && o.bar?.show && audienceFilter(o, customer)
+  )
+  const activeOffers = getActiveEntries(page, eligibleOffers)
+  const activeOfferIds = new Set(activeOffers.map((o) => o.id))
+
   for (const offer of config.offers) {
-    if (!offer.enabled || !offer.bar?.show || !audienceFilter(offer, customer))
+    if (!activeOfferIds.has(offer.id)) continue
+
+    // Volume discount offers auto-generate one bar entry per tier
+    if (offer.reward?.type === 'volume_discount') {
+      const tiers = (offer.reward.tiers || []).slice().sort((a, b) => a.quantity - b.quantity)
+      for (const tier of tiers) {
+        const tierLabel = offer.reward.discount_mode === 'fixed_total'
+          ? `Buy ${tier.quantity} @ ${tier.value}`
+          : `Buy ${tier.quantity} get ${tier.value}% off`
+        entries.push({
+          id: offer.id + '_tier_' + tier.quantity,
+          source: 'volume_discount',
+          threshold: tier.quantity,
+          trigger_type: 'quantity',
+          label: tierLabel,
+          sub_label: null,
+          icon_url: offer.bar.icon_url || null,
+          top_message: `Add [[QTY]] more for ${tierLabel}!`,
+          ribbon_message: null,
+          _volume_tier_value: tier.value,
+          _volume_discount_mode: offer.reward.discount_mode,
+        })
+      }
       continue
-    if (!pageMatch(offer.page_handles, page)) continue
+    }
+
     entries.push({
       id: offer.id,
       source: 'offer',
@@ -24,10 +54,20 @@ function collectBarEntries(config, page, customer) {
 
   // Coupons no longer contribute to the progress bar — they're showcase only
 
+  // Check if any page-specific offers matched — if so, suppress global claims/milestones
+  const hasPageSpecificOffers = activeOffers.some(
+    (o) => !o.page_handles.includes('/')
+  )
+
+  // Use getActiveEntries for claims — but suppress if page-specific offers exist
+  const eligibleClaims = (config.claim_gifts || []).filter(
+    (c) => c.enabled && c.bar?.show && audienceFilter(c, customer)
+  )
+  const activeClaims = hasPageSpecificOffers ? [] : getActiveEntries(page, eligibleClaims)
+  const activeClaimIds = new Set(activeClaims.map((c) => c.id))
+
   for (const claim of config.claim_gifts) {
-    if (!claim.enabled || !claim.bar?.show || !audienceFilter(claim, customer))
-      continue
-    if (!pageMatch(claim.page_handles, page)) continue
+    if (!activeClaimIds.has(claim.id)) continue
     entries.push({
       id: claim.id,
       source: 'claim_gift',
@@ -41,6 +81,7 @@ function collectBarEntries(config, page, customer) {
   }
 
   for (const m of config.progress_bar.visual_milestones) {
+    if (hasPageSpecificOffers) continue
     if (!m.enabled || !audienceFilter(m, customer)) continue
     if (!pageMatch(m.page_handles, page)) continue
     entries.push({
@@ -101,7 +142,14 @@ function computeBarState(tiers, currentValue, allCompleteMsg, moneyFormat) {
       progress += segmentProgress * segmentWidth
       nextFound = true
       topMessage = tier.top_message
-        ? resolveTemplate(tier.top_message, { PRICE: remaining }, moneyFormat)
+        ? resolveTemplate(
+            tier.top_message,
+            {
+              PRICE: tier._volume_tier_value || remaining,
+              QTY: remaining,
+            },
+            moneyFormat
+          )
         : null
     } else {
       tier.state = 'inactive'
@@ -132,18 +180,88 @@ function computeBarState(tiers, currentValue, allCompleteMsg, moneyFormat) {
   }
 }
 
+function computeTierStates(tiers, currentValue) {
+  let nextFound = false
+  let prevThreshold = 0
+  return tiers.map((tier) => {
+    let state
+    let topMsg = null
+    if (currentValue >= tier.threshold) {
+      state = 'active'
+    } else if (!nextFound) {
+      state = 'next'
+      nextFound = true
+      const remaining = tier.threshold - currentValue
+      topMsg = tier.top_message
+        ? resolveTemplate(tier.top_message, { PRICE: tier._volume_tier_value || remaining, QTY: remaining }, '')
+        : null
+    } else {
+      state = 'inactive'
+    }
+    const result = {
+      ...tier,
+      state,
+      _top_message: topMsg,
+      _prevThreshold: prevThreshold,
+      _trigger_type: tier.trigger_type,
+    }
+    prevThreshold = tier.threshold
+    return result
+  })
+}
+
 export function buildBar(config, page, customer, adjustedTotal, adjustedQty, moneyFormat) {
   if (!config.progress_bar.enabled) return null
 
   const entries = collectBarEntries(config, page, customer)
   if (entries.length === 0) return null
 
-  // Price priority
-  const mode = entries.some((e) => e.trigger_type === 'price')
-    ? 'price'
-    : 'quantity'
+  // Separate entries by trigger type
+  const priceEntries = entries.filter((e) => e.trigger_type === 'price')
+  const qtyEntries = entries.filter((e) => e.trigger_type === 'quantity')
 
-  const filtered = entries.filter((e) => e.trigger_type === mode)
+  // If both types exist, compute each independently and merge the tiers
+  if (priceEntries.length > 0 && qtyEntries.length > 0) {
+    const priceMerged = mergeCollisions(priceEntries)
+    priceMerged.sort((a, b) => a.threshold - b.threshold)
+    const priceTiers = computeTierStates(priceMerged, adjustedTotal)
+
+    const qtyMerged = mergeCollisions(qtyEntries)
+    qtyMerged.sort((a, b) => a.threshold - b.threshold)
+    const qtyTiers = computeTierStates(qtyMerged, adjustedQty)
+
+    const allTiers = [...priceTiers, ...qtyTiers]
+    const nextTier = allTiers.find((t) => t.state === 'next')
+    const allComplete = allTiers.every((t) => t.state === 'active')
+
+    // Compute combined progress
+    const totalSegments = allTiers.length
+    const activeCount = allTiers.filter((t) => t.state === 'active').length
+    let progressPct = (activeCount / totalSegments) * 100
+    if (nextTier) {
+      // Add partial progress for the next tier
+      const partial = nextTier._trigger_type === 'price'
+        ? (adjustedTotal - (nextTier._prevThreshold || 0)) / (nextTier.threshold - (nextTier._prevThreshold || 0))
+        : (adjustedQty - (nextTier._prevThreshold || 0)) / (nextTier.threshold - (nextTier._prevThreshold || 0))
+      progressPct += Math.max(0, Math.min(1, partial)) * (100 / totalSegments)
+    }
+
+    return {
+      enabled: true,
+      mode: 'mixed',
+      progress_pct: Math.min(progressPct, 100),
+      top_message: nextTier?._top_message || (allComplete ? config.progress_bar.all_complete_message : null),
+      tiers: allTiers.map((t) => ({
+        id: t.id, source: t.source, threshold: t.threshold,
+        label: t.label, sub_label: t.sub_label, icon_url: t.icon_url,
+        state: t.state, ribbon_message: t.ribbon_message || null,
+      })),
+    }
+  }
+
+  // Single mode — original logic
+  const mode = priceEntries.length > 0 ? 'price' : 'quantity'
+  const filtered = mode === 'price' ? priceEntries : qtyEntries
   const merged = mergeCollisions(filtered)
   merged.sort((a, b) => a.threshold - b.threshold)
 

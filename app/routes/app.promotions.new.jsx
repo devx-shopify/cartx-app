@@ -12,6 +12,7 @@ import {
 import { generateId } from "../lib/helpers.server.js";
 import { fetchVariantData, enrichVariantData } from "../lib/graphql.server.js";
 import { syncClaimRulesToFunction } from "../lib/discount.server.js";
+import { syncVolumeDiscountConfig } from "../lib/volume-discount.server.js";
 import { markStep } from "../lib/onboarding.server.js";
 import OfferForm from "../components/OfferForm.jsx";
 import CouponForm from "../components/CouponForm.jsx";
@@ -46,6 +47,11 @@ export const action = async ({ request }) => {
   // Sync claim rules to discount function if a claim gift was created
   if (type === "claim-gift") {
     await syncClaimRulesToFunction(admin, session.shop, config.claim_gifts);
+  }
+
+  // Sync volume discount config if an offer was created
+  if (type === "offer") {
+    await syncVolumeDiscountConfig(admin, session.shop, config.offers);
   }
 
   // Mark onboarding step

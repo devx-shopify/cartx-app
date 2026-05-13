@@ -7,7 +7,7 @@ import { fireConfetti, setConfettiLottieUrl } from './confetti';
 
 var CLOSE_DELAY = 250;
 var DEBOUNCE_DELAY = 300;
-var REMOVE_ANIM_DELAY = 250;
+var REMOVE_ANIM_DELAY = 0;
 var PROCESSING_TIMEOUT = 10000;
 
 // ── SVG Icons (inline for zero network cost) ────────────────
@@ -104,6 +104,17 @@ export default class CartDrawer extends Component {
     this._prevActiveTiers = {};
     this._confettiInitialized = false;
     this._confettiEnabled = true;
+    this._text = {
+      cart_title: 'Your Cart', empty_title: 'Your cart is empty',
+      empty_subtitle: "Looks like you haven't added anything yet",
+      empty_button: 'Continue shopping', checkout_button: 'Checkout',
+      continue_shopping: 'Continue shopping', continue_shopping_url: '',
+      coupon_placeholder: 'Discount code', total_label: 'Total', subtotal_label: 'Subtotal',
+    };
+    this._layout = { drawer_position: 'right', image_style: 'rounded', qty_style: 'bordered', show_variant_title: true, show_vendor: false };
+    this._shape = { button_style: 'solid' };
+    this._sections = { show_progress_bar: true, show_claim_gifts: true, show_coupons: true, show_upsells: true, show_ribbon: true };
+    this._behavior = { auto_open_on_add: true, animation_style: 'slide', close_on_overlay_click: true, close_on_esc: true };
   }
 
   componentDidMount() {
@@ -116,7 +127,7 @@ export default class CartDrawer extends Component {
       } else {
         this.loadCart();
       }
-      this.openDrawer();
+      if (this._behavior.auto_open_on_add) this.openDrawer();
     });
 
     window.addEventListener('cartmax:eval-result', (e) => {
@@ -124,13 +135,10 @@ export default class CartDrawer extends Component {
         this.setState({ evalResult: e.detail });
         if (e.detail.drawer) {
           applyDrawerSettings(e.detail.drawer);
+          this._applyDrawerConfig(e.detail.drawer);
           var beh = e.detail.drawer.behavior;
-          if (beh) {
-            this._confettiEnabled = beh.confetti !== false;
-            setConfettiLottieUrl(beh.confetti_lottie_url);
-          }
+          if (beh && beh.confetti_lottie_url) setConfettiLottieUrl(beh.confetti_lottie_url);
         }
-        // Only fire confetti on server-confirmed results, not optimistic
         if (e.detail._server) this._checkConfetti(e.detail);
       }
     });
@@ -141,7 +149,10 @@ export default class CartDrawer extends Component {
         var newEval = e.detail.evalResult || this.state.evalResult;
         this._currency = newCart.currency || this._currency;
         if (e.detail.evalResult) {
-          if (e.detail.evalResult.drawer) applyDrawerSettings(e.detail.evalResult.drawer);
+          if (e.detail.evalResult.drawer) {
+            applyDrawerSettings(e.detail.evalResult.drawer);
+            this._applyDrawerConfig(e.detail.evalResult.drawer);
+          }
           this._checkConfetti(e.detail.evalResult);
         }
 
@@ -200,6 +211,16 @@ export default class CartDrawer extends Component {
       window.__cartmaxQueue = [];
     }
 
+    // ── Public API for third-party apps ──────────────────
+    var self = this;
+    window.cartx = {
+      open: function () { self.loadCart(); self.openDrawer(); },
+      close: function () { self.close(); },
+      toggle: function () { self.state.open ? self.close() : (self.loadCart(), self.openDrawer()); },
+      refresh: function () { self.loadCart(); window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: {} })); },
+      isOpen: function () { return self.state.open; },
+    };
+
     // Cart icon click — open drawer
     document.addEventListener('click', (e) => {
       var link = e.target.closest('a[href="/cart"], a[href="/cart/"], [data-cart-icon], #cart-icon-bubble');
@@ -224,8 +245,72 @@ export default class CartDrawer extends Component {
     }, { passive: true });
 
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.state.open) this.close();
+      if (e.key === 'Escape' && this.state.open && this._behavior.close_on_esc) this.close();
     });
+  }
+
+  // ── Apply drawer config to instance properties ──────────
+
+  _applyDrawerConfig(drawer) {
+    if (!drawer) return;
+    var t = drawer.text || {};
+    this._text = Object.assign({}, this._text, t);
+    var l = drawer.layout || {};
+    this._layout = {
+      drawer_position: l.drawer_position || 'right',
+      image_style: l.image_style || 'rounded',
+      qty_style: l.qty_style || 'bordered',
+      show_variant_title: l.show_variant_title !== false,
+      show_vendor: l.show_vendor === true,
+    };
+    var sh = drawer.shape || {};
+    this._shape = { button_style: sh.button_style || 'solid' };
+    var sec = drawer.sections || {};
+    this._sections = {
+      show_progress_bar: sec.show_progress_bar !== false,
+      show_claim_gifts: sec.show_claim_gifts !== false,
+      show_coupons: sec.show_coupons !== false,
+      show_upsells: sec.show_upsells !== false,
+      show_ribbon: sec.show_ribbon !== false,
+    };
+    var beh = drawer.behavior || {};
+    this._behavior = {
+      auto_open_on_add: beh.auto_open_on_add !== false,
+      animation_style: beh.animation_style || 'slide',
+      close_on_overlay_click: beh.close_on_overlay_click !== false,
+      close_on_esc: beh.close_on_esc !== false,
+    };
+    this._confettiEnabled = beh.confetti !== false;
+    this._injectCustomCSS(drawer.advanced && drawer.advanced.custom_css);
+    this._loadCustomFont(drawer.typography);
+  }
+
+  _injectCustomCSS(css) {
+    var existing = document.getElementById('cartmax-custom-css');
+    if (existing) existing.remove();
+    if (!css) return;
+    if (/<\/style|<script|javascript:|expression\(|@import/i.test(css)) return;
+    var style = document.createElement('style');
+    style.id = 'cartmax-custom-css';
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+
+  _loadCustomFont(typo) {
+    if (!typo || typo.font_source !== 'custom' || !typo.custom_font_url) return;
+    if (document.getElementById('cartmax-custom-font')) return;
+    var link = document.createElement('link');
+    link.id = 'cartmax-custom-font';
+    link.rel = 'stylesheet';
+    link.href = typo.custom_font_url;
+    document.head.appendChild(link);
+    // Extract font family name from Google Fonts URL
+    var match = typo.custom_font_url.match(/family=([^:&]+)/);
+    if (match) {
+      var family = decodeURIComponent(match[1]).replace(/\+/g, ' ');
+      var root = document.getElementById('cartmax-root');
+      if (root) root.style.setProperty('--cartmax-font-family', '"' + family + '"');
+    }
   }
 
   // ── Confetti on milestone unlock ─────────────────────────
@@ -343,7 +428,7 @@ export default class CartDrawer extends Component {
   }
 
   handleOverlayClick() {
-    this.close();
+    if (this._behavior.close_on_overlay_click) this.close();
   }
 
   // ── Processing safety timeout ──────────────────────────────
@@ -504,8 +589,9 @@ export default class CartDrawer extends Component {
           }
         </div>
         <div class="cartmax-line-details">
+          {this._layout.show_vendor && item.vendor ? <div class="cartmax-line-vendor">{item.vendor}</div> : null}
           <div class="cartmax-line-title">{item.product_title}</div>
-          {item.variant_title ? <div class="cartmax-line-variant">{item.variant_title}</div> : null}
+          {this._layout.show_variant_title && item.variant_title ? <div class="cartmax-line-variant">{item.variant_title}</div> : null}
           <div class="cartmax-line-price">
             {isFreebie
               ? <span class="cartmax-line-price-free">
@@ -586,12 +672,16 @@ export default class CartDrawer extends Component {
   // ── Render: Empty state ───────────────────────────────────
 
   renderEmpty() {
+    var self = this;
     return (
       <div class="cartmax-empty">
         <div class="cartmax-empty-icon"><IconBag /></div>
-        <p class="cartmax-empty-text">Your cart is empty</p>
-        <p class="cartmax-empty-subtitle">Looks like you haven't added anything yet</p>
-        <button class="cartmax-empty-btn" onClick={this.close}>Continue shopping</button>
+        <p class="cartmax-empty-text">{this._text.empty_title}</p>
+        <p class="cartmax-empty-subtitle">{this._text.empty_subtitle}</p>
+        <button class="cartmax-empty-btn" onClick={function () {
+          if (self._text.continue_shopping_url) { window.location.href = self._text.continue_shopping_url; }
+          else { self.close(); }
+        }}>{this._text.empty_button}</button>
       </div>
     );
   }
@@ -814,7 +904,7 @@ export default class CartDrawer extends Component {
           <input
             class="cartmax-coupon-input"
             type="text"
-            placeholder="Discount code"
+            placeholder={this._text.coupon_placeholder}
             value={this.state.couponInput || ''}
             onInput={function (e) { self.setState({ couponInput: e.target.value, couponError: null }); }}
             onKeyDown={function (e) { if (e.key === 'Enter') self.handleCouponApply(self.state.couponInput); }}
@@ -996,7 +1086,7 @@ export default class CartDrawer extends Component {
         {hasDiscount ? (
           <div class="cartmax-totals">
             <div class="cartmax-totals-row">
-              <span>Subtotal</span>
+              <span>{this._text.subtotal_label}</span>
               <span>{formatMoney(cart.items_subtotal_price, curr)}</span>
             </div>
             {discounts.map((d) => {
@@ -1012,11 +1102,22 @@ export default class CartDrawer extends Component {
         ) : null}
         <div class="cartmax-footer-checkout">
           <div class="cartmax-footer-total">
-            <span>Total</span>
+            <span>{this._text.total_label}</span>
             <span>{formatMoney(cart.total_price, curr)}</span>
           </div>
-          <a class="cartmax-checkout-btn" href="/checkout">Checkout</a>
+          <a class="cartmax-checkout-btn" href="/checkout">{this._text.checkout_button}</a>
         </div>
+        {this._text.continue_shopping && (
+          <div style={{ textAlign: 'center', marginTop: '6px' }}>
+            <button
+              class="cartmax-coupons-viewall"
+              onClick={() => {
+                if (this._text.continue_shopping_url) { window.location.href = this._text.continue_shopping_url; }
+                else { this.close(); }
+              }}
+            >{this._text.continue_shopping}</button>
+          </div>
+        )}
       </div>
     );
   }
@@ -1037,10 +1138,22 @@ export default class CartDrawer extends Component {
       return <div class="cartmax-wrapper">{liveRegion}</div>;
     }
 
-    var overlayClass = 'cartmax-overlay' + (open ? ' cartmax-open' : '');
     var isEmpty = !loading && cart && cart.items && cart.items.length === 0;
     var hasItems = !loading && cart && cart.items && cart.items.length > 0;
     var count = cart ? cart.item_count : 0;
+
+    // Build overlay classes from settings
+    var overlayClass = 'cartmax-overlay';
+    if (open) overlayClass += ' cartmax-open';
+    if (this._layout.drawer_position === 'left') overlayClass += ' cartmax-pos-left';
+    if (this._shape.button_style === 'outline') overlayClass += ' cartmax-btn-outline';
+    if (this._layout.image_style === 'square') overlayClass += ' cartmax-img-square';
+    else if (this._layout.image_style === 'circle') overlayClass += ' cartmax-img-circle';
+    if (this._layout.qty_style === 'minimal') overlayClass += ' cartmax-qty-minimal';
+    if (this._behavior.animation_style === 'fade') overlayClass += ' cartmax-anim-fade';
+    else if (this._behavior.animation_style === 'none') overlayClass += ' cartmax-anim-none';
+
+    var sec = this._sections;
 
     return (
       <div class="cartmax-wrapper">
@@ -1057,7 +1170,7 @@ export default class CartDrawer extends Component {
             {/* Header */}
             <div class="cartmax-header">
               <span class="cartmax-title">
-                Your Cart
+                {this._text.cart_title}
                 {count > 0 ? <span class="cartmax-header-count">{count}</span> : null}
               </span>
               <button class="cartmax-close" onClick={this.close} aria-label="Close cart">
@@ -1072,10 +1185,10 @@ export default class CartDrawer extends Component {
             }
 
             {/* Progress bar */}
-            {hasItems ? this.renderProgressBar() : null}
+            {hasItems && sec.show_progress_bar ? this.renderProgressBar() : null}
 
             {/* Claim gifts */}
-            {hasItems ? this.renderClaimGifts() : null}
+            {hasItems && sec.show_claim_gifts ? this.renderClaimGifts() : null}
 
             {/* Body */}
             {loading
@@ -1088,13 +1201,13 @@ export default class CartDrawer extends Component {
             }
 
             {/* Coupons */}
-            {hasItems ? this.renderCoupons() : null}
+            {hasItems && sec.show_coupons ? this.renderCoupons() : null}
 
             {/* Upsells */}
-            {this.renderUpsells()}
+            {sec.show_upsells ? this.renderUpsells() : null}
 
             {/* Ribbon */}
-            {hasItems ? this.renderRibbon() : null}
+            {hasItems && sec.show_ribbon ? this.renderRibbon() : null}
 
             {/* Footer */}
             {hasItems ? this.renderFooter() : null}

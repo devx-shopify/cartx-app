@@ -18,7 +18,7 @@ function adjustedTotal(items) {
   var cents = 0;
   for (var i = 0; i < items.length; i++) {
     if (isDiscountedItem(items[i])) continue;
-    cents += items[i].line_price || 0;
+    cents += items[i].original_line_price || items[i].line_price || 0;
   }
   return cents / 100;
 }

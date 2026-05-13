@@ -138,21 +138,27 @@ const SECTION_LABELS = {
 
 function SectionToggles({ sections, onToggle }) {
   var toggles = [
-    { key: "show_progress_bar", label: "Progress Bar" },
+    { key: "show_progress_bar", label: "Progress Bar", settingsHint: "Configure milestones" },
     { key: "show_claim_gifts", label: "Claim Gifts" },
     { key: "show_coupons", label: "Discount Codes" },
-    { key: "show_upsells", label: "Upsell Products" },
+    { key: "show_upsells", label: "Upsell Products", settingsHint: "Configure products" },
     { key: "show_ribbon", label: "Announcement Ribbon" },
   ];
   return (
-    <s-stack direction="block" gap="300">
-      {toggles.map(({ key, label }) => (
-        <s-switch
-          key={key}
-          label={label}
-          checked={sections[key] !== false || undefined}
-          onChange={() => onToggle(key, !sections[key])}
-        />
+    <s-stack direction="block" gap="200">
+      {toggles.map(({ key, label, settingsHint }) => (
+        <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 0" }}>
+          <s-switch
+            label={label}
+            checked={sections[key] !== false || undefined}
+            onChange={() => onToggle(key, !sections[key])}
+          />
+          {settingsHint && (
+            <a href="/app/settings" style={{ fontSize: 11, color: "var(--s-color-text-brand, #2c6ecb)", textDecoration: "none" }}>
+              {settingsHint} →
+            </a>
+          )}
+        </div>
       ))}
     </s-stack>
   );
@@ -164,6 +170,7 @@ export default function CartCustomizer() {
   const { drawer: initial } = useLoaderData();
   const [settings, setSettings] = useState(initial);
   const [dirty, setDirty] = useState(false);
+  const [showEmpty, setShowEmpty] = useState(false);
   const fetcher = useFetcher();
   const shopify = useAppBridge();
   const saving = fetcher.state !== "idle";
@@ -460,13 +467,71 @@ export default function CartCustomizer() {
                 />
                 <s-text color="subdued">Burst confetti animation when a customer reaches a progress bar milestone</s-text>
                 {s.behavior.confetti && (
-                  <s-text-field
-                    label="Lottie animation URL"
-                    value={s.behavior.confetti_lottie_url}
-                    onInput={(e) => update("behavior.confetti_lottie_url", e.target.value)}
-                    placeholder="https://assets.lottiefiles.com/..."
-                    details="Paste a .lottie or .json URL from LottieFiles. Leave empty to use the default confetti."
-                  />
+                  <>
+                    <s-text-field
+                      label="Lottie animation URL"
+                      value={s.behavior.confetti_lottie_url}
+                      onInput={(e) => update("behavior.confetti_lottie_url", e.target.value)}
+                      placeholder="https://assets.lottiefiles.com/..."
+                      details="Paste a .lottie or .json URL from LottieFiles. Leave empty to use the default confetti."
+                    />
+                    <button type="button" onClick={() => {
+                      var previewEl = document.querySelector('[data-preview-confetti]');
+                      if (!previewEl) return;
+                      var lottieUrl = s.behavior.confetti_lottie_url;
+                      if (lottieUrl) {
+                        // Load dotlottie player if needed, then play
+                        var script = document.querySelector('script[data-cartmax-lottie-admin]');
+                        function playLottie() {
+                          var player = document.createElement('dotlottie-player');
+                          player.setAttribute('src', lottieUrl);
+                          player.setAttribute('autoplay', '');
+                          player.setAttribute('speed', '1');
+                          player.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:999;background:transparent';
+                          previewEl.appendChild(player);
+                          player.addEventListener('complete', function () { player.remove(); });
+                          setTimeout(function () { if (player.parentNode) player.remove(); }, 6000);
+                        }
+                        if (customElements.get('dotlottie-player')) { playLottie(); }
+                        else if (!script) {
+                          var s2 = document.createElement('script');
+                          s2.src = 'https://unpkg.com/@dotlottie/player-component@2.7.12/dist/dotlottie-player.mjs';
+                          s2.type = 'module';
+                          s2.dataset.cartmaxLottieAdmin = '';
+                          s2.onload = function () { setTimeout(playLottie, 100); };
+                          document.head.appendChild(s2);
+                        } else { setTimeout(playLottie, 200); }
+                      } else {
+                        // Default canvas confetti
+                        var canvas = document.createElement('canvas');
+                        canvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:999';
+                        canvas.width = previewEl.offsetWidth;
+                        canvas.height = previewEl.offsetHeight;
+                        previewEl.appendChild(canvas);
+                        var ctx = canvas.getContext('2d');
+                        var colors = ['#ff6b6b','#ffd93d','#6bcb77','#4d96ff','#ff922b','#cc5de8','#20c997','#f06595'];
+                        var particles = [];
+                        for (var i = 0; i < 60; i++) {
+                          particles.push({ x: canvas.width/2 + (Math.random()-0.5)*canvas.width*0.6, y: canvas.height*0.3,
+                            vx: (Math.random()-0.5)*12, vy: -4-Math.random()*8, size: 3+Math.random()*5,
+                            color: colors[Math.floor(Math.random()*colors.length)], rot: Math.random()*360, rs: (Math.random()-0.5)*16, op: 1 });
+                        }
+                        var start = Date.now();
+                        (function animate() {
+                          var t = Date.now()-start;
+                          if (t > 2000) { canvas.remove(); return; }
+                          ctx.clearRect(0,0,canvas.width,canvas.height);
+                          particles.forEach(function(p) { p.vy += 0.12; p.vx *= 0.98; p.x += p.vx; p.y += p.vy; p.rot += p.rs;
+                            if (t > 1200) p.op = Math.max(0, 1-(t-1200)/800);
+                            if (p.op <= 0) return;
+                            ctx.save(); ctx.globalAlpha = p.op; ctx.translate(p.x,p.y); ctx.rotate(p.rot*Math.PI/180);
+                            ctx.fillStyle = p.color; ctx.fillRect(-p.size/2,-p.size/2,p.size,p.size*0.6); ctx.restore();
+                          });
+                          requestAnimationFrame(animate);
+                        })();
+                      }
+                    }} style={actionBtnStyle}>🎉 Test confetti</button>
+                  </>
                 )}
               </s-stack>
             </s-section>
@@ -482,7 +547,8 @@ export default function CartCustomizer() {
                     rows={6}
                     placeholder={".cartmax-checkout-btn {\n  text-transform: uppercase;\n}"}
                     style={{
-                      width: "100%", padding: "10px 12px",
+                      width: "100%", maxWidth: "100%", boxSizing: "border-box",
+                      padding: "10px 12px",
                       border: "1px solid var(--s-color-border, #ccc)",
                       borderRadius: 8, fontSize: 12,
                       fontFamily: "var(--s-font-family-mono, monospace)",
@@ -496,9 +562,48 @@ export default function CartCustomizer() {
                     Applied inside the cart drawer only. Does not affect your theme.
                   </s-text>
                 </div>
-                <s-button tone="critical" variant="tertiary" onClick={handleReset}>
-                  Reset all settings to defaults
-                </s-button>
+                <s-divider />
+                <div style={{ fontSize: 13, fontWeight: 550, marginBottom: 6 }}>Export / Import</div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+                  <button type="button" onClick={() => {
+                    var blob = new Blob([JSON.stringify(settings, null, 2)], { type: "application/json" });
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement("a");
+                    a.href = url; a.download = "cartx-drawer-settings.json"; a.click();
+                    URL.revokeObjectURL(url);
+                    shopify.toast.show("Settings exported");
+                  }} style={actionBtnStyle}>Export settings</button>
+                  <button type="button" onClick={() => {
+                    var input = document.createElement("input");
+                    input.type = "file"; input.accept = ".json";
+                    input.onchange = function (e) {
+                      var file = e.target.files[0];
+                      if (!file) return;
+                      var reader = new FileReader();
+                      reader.onload = function (ev) {
+                        try {
+                          var imported = JSON.parse(ev.target.result);
+                          if (imported && typeof imported === "object" && imported.colors) {
+                            setSettings(imported);
+                            setDirty(true);
+                            shopify.toast.show("Settings imported — save to apply");
+                          } else {
+                            shopify.toast.show("Invalid settings file", { isError: true });
+                          }
+                        } catch { shopify.toast.show("Failed to parse file", { isError: true }); }
+                      };
+                      reader.readAsText(file);
+                    };
+                    input.click();
+                  }} style={actionBtnStyle}>Import settings</button>
+                </div>
+                <s-text color="subdued">Export your drawer config as JSON or import from another store.</s-text>
+                <s-divider />
+                <button type="button" onClick={handleReset} style={{
+                  padding: "8px 16px", fontSize: 13, fontWeight: 500,
+                  background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8,
+                  color: "#dc2626", cursor: "pointer", fontFamily: "inherit",
+                }}>Reset all settings to defaults</button>
               </s-stack>
             </s-section>
 
@@ -506,20 +611,53 @@ export default function CartCustomizer() {
 
           {/* ── Right: Preview ─────────────────── */}
           <div style={{ position: "sticky", top: 60 }}>
-            <div style={{
-              fontSize: 13, fontWeight: 600,
-              color: "var(--s-color-text-secondary, #616161)",
-              marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5,
-            }}>
-              Preview
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <span style={{
+                fontSize: 13, fontWeight: 600,
+                color: "var(--s-color-text-secondary, #616161)",
+                textTransform: "uppercase", letterSpacing: 0.5,
+              }}>
+                Preview
+              </span>
+              <div style={{ display: "inline-flex", borderRadius: 6, border: "1px solid var(--s-color-border, #ccc)", overflow: "hidden" }}>
+                <button type="button" onClick={() => setShowEmpty(false)}
+                  style={{ padding: "4px 10px", fontSize: 11, fontWeight: 500, border: "none", cursor: "pointer", fontFamily: "inherit",
+                    background: !showEmpty ? "var(--s-color-bg-surface-selected, #f1f1f1)" : "var(--s-color-bg-surface, #fff)",
+                    color: !showEmpty ? "var(--s-color-text, #1a1a1a)" : "var(--s-color-text-secondary, #616161)",
+                  }}>Filled</button>
+                <button type="button" onClick={() => setShowEmpty(true)}
+                  style={{ padding: "4px 10px", fontSize: 11, fontWeight: 500, border: "none", borderLeft: "1px solid var(--s-color-border, #ccc)", cursor: "pointer", fontFamily: "inherit",
+                    background: showEmpty ? "var(--s-color-bg-surface-selected, #f1f1f1)" : "var(--s-color-bg-surface, #fff)",
+                    color: showEmpty ? "var(--s-color-text, #1a1a1a)" : "var(--s-color-text-secondary, #616161)",
+                  }}>Empty</button>
+              </div>
             </div>
-            <CartPreview settings={settings} />
+            {showEmpty && (
+              <div style={{ fontSize: 11, color: "var(--s-color-text-secondary, #616161)", marginBottom: 6, fontStyle: "italic" }}>
+                Edit empty state text in "Text & Labels" section
+              </div>
+            )}
+            <div style={{ transform: "scale(0.78)", transformOrigin: "top right", position: "relative" }} data-preview-confetti>
+              <CartPreview settings={settings} showEmpty={showEmpty} />
+            </div>
           </div>
         </div>
       </s-page>
     </>
   );
 }
+
+const actionBtnStyle = {
+  padding: "7px 14px",
+  fontSize: 13,
+  fontWeight: 500,
+  background: "var(--s-color-bg-surface, #fff)",
+  border: "1px solid var(--s-color-border, #ccc)",
+  borderRadius: 8,
+  color: "var(--s-color-text, #1a1a1a)",
+  cursor: "pointer",
+  fontFamily: "inherit",
+};
 
 export function ErrorBoundary() {
   return boundary.error(useRouteError());

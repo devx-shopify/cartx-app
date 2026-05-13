@@ -43,6 +43,15 @@ export const OfferSchema = z.object({
       bundle_variants: z.array(z.string()).min(1),
       min_offer_quantity: z.number().int().min(1),
     }),
+    z.object({
+      type: z.literal('volume_discount'),
+      discount_mode: z.enum(['fixed_total', 'percentage']),
+      tiers: z.array(z.object({
+        quantity: z.number().int().min(1),
+        value: z.number().positive(),
+        message: z.string().optional(),
+      })).min(1),
+    }),
   ]),
   bar: BarSchema.optional(),
   audience: AudienceSchema,

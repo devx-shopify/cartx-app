@@ -170,6 +170,7 @@ export const action = async ({ request }) => {
     oos_message: oosMessage,
     available_coupons: availableCoupons,
     claim_gifts: claimGifts,
+    volume_discounts: offerResult.volume_discounts || [],
     _config: clientConfig,
     drawer: config.drawer,
     upsells: config.upsells?.enabled ? {

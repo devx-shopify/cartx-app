@@ -11,6 +11,7 @@ import {
 } from "../lib/config.server.js";
 import { fetchVariantData, enrichVariantData } from "../lib/graphql.server.js";
 import { syncClaimRulesToFunction } from "../lib/discount.server.js";
+import { syncVolumeDiscountConfig } from "../lib/volume-discount.server.js";
 import OfferForm from "../components/OfferForm.jsx";
 import CouponForm from "../components/CouponForm.jsx";
 import ClaimGiftForm from "../components/ClaimGiftForm.jsx";
@@ -74,6 +75,11 @@ export const action = async ({ request, params }) => {
   // Sync claim rules to discount function if a claim gift was updated
   if (type === "claim-gift") {
     await syncClaimRulesToFunction(admin, session.shop, config.claim_gifts);
+  }
+
+  // Sync volume discount config if an offer was updated
+  if (type === "offer") {
+    await syncVolumeDiscountConfig(admin, session.shop, config.offers);
   }
 
   return { ok: true };

@@ -39,6 +39,8 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
   const [minOfferQuantity, setMinOfferQuantity] = useState(offer?.reward?.min_offer_quantity ?? 1);
   const [bundleVariants, setBundleVariants] = useState(offer?.reward?.bundle_variants ?? []);
   const [bundleVariantDisplay, setBundleVariantDisplay] = useState(() => buildVariantDisplay(offer?.reward?.bundle_variants, variantDataMap));
+  const [discountMode, setDiscountMode] = useState(offer?.reward?.discount_mode ?? "fixed_total");
+  const [volumeTiers, setVolumeTiers] = useState(offer?.reward?.tiers ?? [{ quantity: 3, value: 999 }]);
   const [barShow, setBarShow] = useState(offer?.bar?.show ?? false);
   const [barLabel, setBarLabel] = useState(offer?.bar?.label ?? "");
   const [barSubLabel, setBarSubLabel] = useState(offer?.bar?.sub_label ?? "");
@@ -74,13 +76,15 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
   function validate() {
     const errs = {};
     if (!name.trim()) errs.name = "Name is required";
-    const handles = pageHandles.split(",").map((h) => h.trim()).filter(Boolean);
+    const handles = pageHandles.split(",").map((h) => h.trim().replace(/^["']+|["']+$/g, "")).filter(Boolean);
     if (handles.length === 0) errs.pageHandles = "At least one page required";
     const frozen = handles.find(isFrozenHandle);
     if (frozen) errs.pageHandles = `"${frozen}" is a reserved page`;
-    if (!isProductSource && !triggerValue) errs.trigger = "Threshold value is required";
+    if (!isProductSource && rewardType !== "volume_discount" && !triggerValue) errs.trigger = "Threshold value is required";
     if (rewardType === "auto_add_gift" && giftVariants.length === 0) errs.reward = "Select at least one gift variant";
     if (rewardType === "bundle" && bundleVariants.length === 0) errs.reward = "Select at least one bundle variant";
+    if (rewardType === "volume_discount" && volumeTiers.length === 0) errs.reward = "Add at least one volume tier";
+    if (rewardType === "volume_discount" && volumeTiers.some((t) => !t.quantity || !t.value)) errs.reward = "All tiers need quantity and value";
     if (barShow && !barLabel.trim()) errs.barLabel = "Bar label is required when bar is shown";
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -88,16 +92,20 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
 
   function handleSubmit() {
     if (!validate()) return;
-    const handles = pageHandles.split(",").map((h) => h.trim()).filter(Boolean);
+    const handles = pageHandles.split(",").map((h) => h.trim().replace(/^["']+|["']+$/g, "")).filter(Boolean);
     onSubmit({
       name, enabled,
       source: sourceType === "none" ? undefined : sourceType === "product" ? { type: "product", product_variant_ids: productVariantIds } : { type: "collection", collection_id: collectionId },
-      trigger: {
-        price_threshold: triggerType === "price" && triggerValue ? Number(triggerValue) : undefined,
-        quantity_threshold: triggerType === "quantity" && triggerValue ? Number(triggerValue) : undefined,
-      },
+      trigger: rewardType === "volume_discount"
+        ? { quantity_threshold: Math.min(...volumeTiers.map((t) => Number(t.quantity))) }
+        : {
+            price_threshold: triggerType === "price" && triggerValue ? Number(triggerValue) : undefined,
+            quantity_threshold: triggerType === "quantity" && triggerValue ? Number(triggerValue) : undefined,
+          },
       reward: rewardType === "auto_add_gift"
         ? { type: "auto_add_gift", gift_variants: giftVariants, quantity_per_variant: Number(quantityPerVariant), add_mode: addMode, min_offer_quantity: Number(minOfferQuantity) }
+        : rewardType === "volume_discount"
+        ? { type: "volume_discount", discount_mode: discountMode, tiers: volumeTiers.map((t) => ({ quantity: Number(t.quantity), value: Number(t.value), message: t.message || undefined })) }
         : { type: "bundle", bundle_variants: bundleVariants, min_offer_quantity: Number(minOfferQuantity) },
       bar: barShow ? { show: true, label: barLabel, sub_label: barSubLabel || undefined, top_message: barTopMessage || undefined, ribbon_message: barRibbonMessage || undefined, locked_message: barLockedMessage || undefined } : undefined,
       audience, page_handles: handles,
@@ -113,6 +121,90 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
         <s-stack direction="block" gap="400">
           <s-text-field label="Offer name" value={name} onInput={(e) => setName(e.target.value)} error={errors.name || ""} />
           <s-checkbox label="Enabled" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+        </s-stack>
+      </s-section>
+
+      {/* Reward — shown first so the form adapts based on reward type */}
+      <s-section heading="Reward">
+        <s-stack direction="block" gap="400">
+          <s-select label="Reward type" value={rewardType} onChange={(e) => setRewardType(e.target.value)}>
+            <s-option value="auto_add_gift">Auto-add free gift</s-option>
+            <s-option value="bundle">Bundle</s-option>
+            <s-option value="volume_discount">Volume discount</s-option>
+          </s-select>
+          {rewardType === "auto_add_gift" && (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <s-button onClick={pickGiftVariants}>{giftVariants.length > 0 ? "Change gift products" : "Select gift products"}</s-button>
+                {giftVariants.length > 0 && <span style={{ fontSize: 13, color: "#6d7175" }}>{giftVariants.length} variant(s)</span>}
+              </div>
+              <VariantList variants={giftVariantDisplay} onRemove={removeGiftVariant} />
+              <s-grid gridTemplateColumns="1fr 1fr" gap="400">
+                <s-number-field label="Quantity per variant" value={String(quantityPerVariant)} onInput={(e) => setQuantityPerVariant(e.target.value)} />
+                <s-select label="Add mode" value={addMode} onChange={(e) => setAddMode(e.target.value)}>
+                  <s-option value="auto">Auto add to cart</s-option>
+                  <s-option value="display">Show offer card only</s-option>
+                </s-select>
+              </s-grid>
+              <s-number-field label="Min offer quantity" value={String(minOfferQuantity)} onInput={(e) => setMinOfferQuantity(e.target.value)} />
+            </>
+          )}
+          {rewardType === "bundle" && (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <s-button onClick={pickBundleVariants}>{bundleVariants.length > 0 ? "Change bundle products" : "Select bundle products"}</s-button>
+                {bundleVariants.length > 0 && <span style={{ fontSize: 13, color: "#6d7175" }}>{bundleVariants.length} variant(s)</span>}
+              </div>
+              <VariantList variants={bundleVariantDisplay} onRemove={removeBundleVariant} />
+              <s-number-field label="Min offer quantity" value={String(minOfferQuantity)} onInput={(e) => setMinOfferQuantity(e.target.value)} />
+            </>
+          )}
+          {rewardType === "volume_discount" && (
+            <>
+              <s-select label="Discount mode" value={discountMode} onChange={(e) => setDiscountMode(e.target.value)}>
+                <s-option value="fixed_total">Fixed total (Buy 3 @ ₹999)</s-option>
+                <s-option value="percentage">Percentage off (Buy 3 get 10% off)</s-option>
+              </s-select>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Volume tiers</div>
+                {volumeTiers.map((tier, idx) => (
+                  <div key={idx} style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 8 }}>
+                    <s-number-field
+                      label="Quantity"
+                      value={String(tier.quantity)}
+                      onInput={(e) => { const t = [...volumeTiers]; t[idx] = { ...t[idx], quantity: e.target.value }; setVolumeTiers(t); }}
+                      min="1"
+                      style={{ flex: 1 }}
+                    />
+                    <s-number-field
+                      label={discountMode === "fixed_total" ? "Total price" : "% off"}
+                      value={String(tier.value)}
+                      onInput={(e) => { const t = [...volumeTiers]; t[idx] = { ...t[idx], value: e.target.value }; setVolumeTiers(t); }}
+                      min="0"
+                      style={{ flex: 1 }}
+                    />
+                    <s-text-field
+                      label="Message (optional)"
+                      value={tier.message || ""}
+                      onInput={(e) => { const t = [...volumeTiers]; t[idx] = { ...t[idx], message: e.target.value }; setVolumeTiers(t); }}
+                      placeholder={discountMode === "fixed_total" ? `Buy ${tier.quantity || "X"} @ ₹${tier.value || "Y"}` : `Buy ${tier.quantity || "X"} get ${tier.value || "Y"}% off`}
+                      style={{ flex: 2 }}
+                    />
+                    {volumeTiers.length > 1 && (
+                      <s-button tone="critical" variant="tertiary" onClick={() => setVolumeTiers(volumeTiers.filter((_, i) => i !== idx))}>Remove</s-button>
+                    )}
+                  </div>
+                ))}
+                <s-button onClick={() => setVolumeTiers([...volumeTiers, { quantity: "", value: "", message: "" }])}>
+                  Add tier
+                </s-button>
+              </div>
+              <s-banner tone="info">
+                Tiers are evaluated highest-first. The customer always gets the best deal they qualify for. Trigger threshold is auto-set to the lowest tier.
+              </s-banner>
+            </>
+          )}
+          {errors.reward && <s-banner tone="critical">{errors.reward}</s-banner>}
         </s-stack>
       </s-section>
 
@@ -142,8 +234,8 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
         </s-stack>
       </s-section>
 
-      {/* Trigger */}
-      {!isProductSource && (
+      {/* Trigger — hidden for product source and volume discount */}
+      {!isProductSource && rewardType !== "volume_discount" && (
         <s-section heading="Trigger">
           <s-stack direction="block" gap="400">
             <s-select label="Trigger type" value={triggerType} onChange={(e) => setTriggerType(e.target.value)}>
@@ -161,55 +253,20 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
         </s-section>
       )}
 
-      {/* Reward */}
-      <s-section heading="Reward">
-        <s-stack direction="block" gap="400">
-          <s-select label="Reward type" value={rewardType} onChange={(e) => setRewardType(e.target.value)}>
-            <s-option value="auto_add_gift">Auto-add free gift</s-option>
-            <s-option value="bundle">Bundle</s-option>
-          </s-select>
-          {rewardType === "auto_add_gift" && (
-            <>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <s-button onClick={pickGiftVariants}>{giftVariants.length > 0 ? "Change gift products" : "Select gift products"}</s-button>
-                {giftVariants.length > 0 && <span style={{ fontSize: 13, color: "#6d7175" }}>{giftVariants.length} variant(s)</span>}
-              </div>
-              <VariantList variants={giftVariantDisplay} onRemove={removeGiftVariant} />
-              <s-grid gridTemplateColumns="1fr 1fr" gap="400">
-                <s-number-field label="Quantity per variant" value={String(quantityPerVariant)} onInput={(e) => setQuantityPerVariant(e.target.value)} />
-                <s-select label="Add mode" value={addMode} onChange={(e) => setAddMode(e.target.value)}>
-                  <s-option value="auto">Auto add to cart</s-option>
-                  <s-option value="display">Show offer card only</s-option>
-                </s-select>
-              </s-grid>
-              <s-number-field label="Min offer quantity" value={String(minOfferQuantity)} onInput={(e) => setMinOfferQuantity(e.target.value)} />
-            </>
-          )}
-          {rewardType === "bundle" && (
-            <>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <s-button onClick={pickBundleVariants}>{bundleVariants.length > 0 ? "Change bundle products" : "Select bundle products"}</s-button>
-                {bundleVariants.length > 0 && <span style={{ fontSize: 13, color: "#6d7175" }}>{bundleVariants.length} variant(s)</span>}
-              </div>
-              <VariantList variants={bundleVariantDisplay} onRemove={removeBundleVariant} />
-              <s-number-field label="Min offer quantity" value={String(minOfferQuantity)} onInput={(e) => setMinOfferQuantity(e.target.value)} />
-            </>
-          )}
-          {errors.reward && <s-banner tone="critical">{errors.reward}</s-banner>}
-        </s-stack>
-      </s-section>
-
       {/* Progress Bar */}
-      {!isProductSource && (
+      {(!isProductSource || rewardType === "volume_discount") && (
         <s-section heading="Progress bar">
           <s-stack direction="block" gap="400">
             <s-checkbox label="Show on progress bar" checked={barShow} onChange={(e) => setBarShow(e.target.checked)} />
-            {barShow && (
+            {barShow && rewardType !== "volume_discount" && (
               <>
                 <s-text-field label="Bar label" value={barLabel} onInput={(e) => setBarLabel(e.target.value)} error={errors.barLabel || ""} details="Shown on the progress bar milestone" />
                 <s-text-field label="Top message" value={barTopMessage} onInput={(e) => setBarTopMessage(e.target.value)} details="Message above the bar. Use [[ price ]] for remaining amount" />
                 <s-text-field label="Ribbon message" value={barRibbonMessage} onInput={(e) => setBarRibbonMessage(e.target.value)} details="Shown in the bottom ribbon when this is the next milestone" />
               </>
+            )}
+            {barShow && rewardType === "volume_discount" && (
+              <s-text color="subdued">Labels and messages are auto-generated from your volume tiers (e.g. "Buy 3 @ 999")</s-text>
             )}
           </s-stack>
         </s-section>

@@ -29,6 +29,42 @@ function evaluateTrigger(offer, cart, adjustedTotal, adjustedQty) {
   return priceMet || qtyMet
 }
 
+// ── Volume discount helpers ─────────────────────────────────
+
+function countQualifyingItems(offer, cart) {
+  const items = cart.items || []
+  if (offer.source?.type === 'product') {
+    const ids = (offer.source.product_variant_ids || []).map(normalizeId)
+    return items.reduce((sum, item) => {
+      if (item.properties?.[LINE_PROPS.FREEBIE] === 'true') return sum
+      return ids.includes(normalizeId(item.variant_id)) ? sum + item.quantity : sum
+    }, 0)
+  }
+  // Collection or no source — count all non-freebie items
+  return items.reduce((sum, item) => {
+    if (item.properties?.[LINE_PROPS.FREEBIE] === 'true') return sum
+    return sum + item.quantity
+  }, 0)
+}
+
+function getActiveVolumeTier(offer, qualifyingQty) {
+  if (offer.reward.type !== 'volume_discount') return null
+  const tiers = (offer.reward.tiers || []).slice().sort((a, b) => b.quantity - a.quantity)
+  for (const tier of tiers) {
+    if (qualifyingQty >= tier.quantity) return tier
+  }
+  return null
+}
+
+function getNextVolumeTier(offer, qualifyingQty) {
+  if (offer.reward.type !== 'volume_discount') return null
+  const tiers = (offer.reward.tiers || []).slice().sort((a, b) => a.quantity - b.quantity)
+  for (const tier of tiers) {
+    if (qualifyingQty < tier.quantity) return tier
+  }
+  return null
+}
+
 function alreadyInCart(cart, variantId, offerId) {
   const normalizedVid = normalizeId(variantId)
   return cart.items.some(
@@ -52,8 +88,29 @@ export function evaluateOffers(
   const active = getActiveEntries(page, eligible)
   const toAdd = []
   const triggeredOfferIds = new Set()
+  const volumeDiscounts = []
 
   for (const offer of active) {
+    // Volume discount offers use their own trigger logic
+    if (offer.reward.type === 'volume_discount') {
+      const qualifyingQty = countQualifyingItems(offer, cart)
+      const activeTier = getActiveVolumeTier(offer, qualifyingQty)
+      const nextTier = getNextVolumeTier(offer, qualifyingQty)
+
+      if (activeTier) triggeredOfferIds.add(offer.id)
+
+      volumeDiscounts.push({
+        offer_id: offer.id,
+        name: offer.name,
+        discount_mode: offer.reward.discount_mode,
+        qualifying_qty: qualifyingQty,
+        active_tier: activeTier,
+        next_tier: nextTier,
+        tiers: offer.reward.tiers,
+      })
+      continue
+    }
+
     const triggered = evaluateTrigger(offer, cart, adjustedTotal, adjustedQty)
     if (!triggered) continue
 
@@ -99,5 +156,8 @@ export function evaluateOffers(
     to_add: toAdd,
     to_remove: toRemove,
     active_offer_ids: active.map((o) => o.id),
+    volume_discounts: volumeDiscounts,
   }
 }
+
+export { countQualifyingItems, getActiveVolumeTier, getNextVolumeTier }

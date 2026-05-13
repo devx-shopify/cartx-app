@@ -80,6 +80,26 @@ export const action = async ({ request }) => {
     return { ok: true, toast: "Promotions copied" };
   }
 
+  if (body._action === "copy_drawer") {
+    const planData = await getActivePlan(admin, session.shop);
+    if (!hasFeature(planData, "theme_switcher")) {
+      return { ok: false, error: "Upgrade to the Max plan to use the theme switcher" };
+    }
+    const preferred = await getSelectedTheme(session.shop);
+    const { shopId, themeId: currentThemeId } = await getShopAndTheme(admin, session, preferred);
+    const sourceThemeId = body.source_theme_id;
+
+    if (!sourceThemeId || sourceThemeId === currentThemeId) {
+      return { ok: false, error: "Source and target themes are the same" };
+    }
+
+    const sourceConfig = await loadConfig(shopId, sourceThemeId);
+    const targetConfig = await loadConfig(shopId, currentThemeId);
+    targetConfig.drawer = structuredClone(sourceConfig.drawer);
+    await saveConfig(shopId, currentThemeId, targetConfig);
+    return { ok: true, toast: "Drawer settings copied" };
+  }
+
   return { ok: false };
 };
 

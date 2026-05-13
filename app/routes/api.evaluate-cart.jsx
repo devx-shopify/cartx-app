@@ -170,6 +170,7 @@ export const action = async ({ request }) => {
     claim_gifts: claimGifts,
     unavailable_variants: [],
     cross_page_removal_notices: [],
+    volume_discounts: offerResult.volume_discounts || [],
     drawer: config.drawer,
   })
 }

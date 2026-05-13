@@ -245,7 +245,7 @@ function recomputeBar(serverBar, cart) {
   for (var i = 0; i < items.length; i++) {
     var it = items[i];
     if (it.properties && (it.properties['_freebie'] === 'true' || it.properties['_cartmax_claim'] === 'true')) continue;
-    adjTotal += (it.line_price || 0);
+    adjTotal += (it.original_line_price || it.line_price || 0);
     adjQty += (it.quantity || 0);
   }
   adjTotal /= 100;
