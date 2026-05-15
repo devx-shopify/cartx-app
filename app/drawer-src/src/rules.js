@@ -4,10 +4,7 @@
 // Used when config is cached — avoids server roundtrip.
 // =============================================================
 
-function normalizeId(id) {
-  var s = String(id);
-  return s.startsWith('gid://') ? s.split('/').pop() : s;
-}
+import { normalizeVariantId as normalizeId, formatMoneyTemplate } from './helpers';
 
 function isDiscountedItem(item) {
   return (item.properties && item.properties['_freebie'] === 'true') ||
@@ -145,12 +142,7 @@ function buildBar(config, adjTotal, adjQty, page, moneyFormat) {
       var segmentProgress = segmentRange > 0 ? (currentValue - prevThreshold) / segmentRange : 0;
       progress += segmentProgress * segmentWidth;
       if (tier.top_message) {
-        var amountStr = remaining.toFixed(2);
-        var formatted = moneyFormat
-          ? moneyFormat.replace(/\{\{\s*amount\s*\}\}/, amountStr)
-              .replace(/\{\{\s*amount_no_decimals\s*\}\}/, String(Math.round(remaining)))
-              .replace(/\{\{\s*amount_with_comma_separator\s*\}\}/, amountStr.replace('.', ','))
-          : '$' + amountStr;
+        var formatted = formatMoneyTemplate(moneyFormat, remaining);
         topMessage = tier.top_message.replace(/\[\[\s*price\s*\]\]/gi, formatted);
       }
     } else {

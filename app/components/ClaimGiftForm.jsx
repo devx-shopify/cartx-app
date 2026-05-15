@@ -1,12 +1,7 @@
 import { useState, forwardRef, useImperativeHandle } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
-import { FROZEN_PAGES, FROZEN_PAGE_PREFIXES } from "../lib/constants.js";
+import { isFrozenHandle } from "../lib/constants.js";
 import VariantList, { extractVariantData } from "./VariantList.jsx";
-
-function isFrozenHandle(handle) {
-  if (FROZEN_PAGES.includes(handle)) return true;
-  return FROZEN_PAGE_PREFIXES.some((p) => handle.startsWith(p));
-}
 
 function buildInitialDisplay(claimGift, variantDataMap) {
   if (claimGift?.claimable_variant_data?.length) {

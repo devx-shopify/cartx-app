@@ -182,6 +182,23 @@ export function applyDrawerSettings(settings) {
   }
 }
 
+// ── Shared utilities ────────────────────────────────────────
+
+export function normalizeVariantId(id) {
+  if (typeof id === 'string' && id.startsWith('gid://')) return id.split('/').pop();
+  return id;
+}
+
+export function formatMoneyTemplate(moneyFormat, amount) {
+  var amountStr = amount.toFixed(2);
+  var formatted = moneyFormat
+    ? moneyFormat.replace(/\{\{\s*amount\s*\}\}/, amountStr)
+        .replace(/\{\{\s*amount_no_decimals\s*\}\}/, String(Math.round(amount)))
+        .replace(/\{\{\s*amount_with_comma_separator\s*\}\}/, amountStr.replace('.', ','))
+    : '$' + amountStr;
+  return formatted;
+}
+
 // ── Focus trap for accessibility ────────────────────────────
 
 var FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';

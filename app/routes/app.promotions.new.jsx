@@ -1,6 +1,4 @@
-import { useNavigate, useFetcher, useSearchParams } from "react-router";
-import { useEffect, useRef, useCallback } from "react";
-import { useAppBridge } from "@shopify/app-bridge-react";
+import { useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
@@ -14,6 +12,7 @@ import { fetchVariantData, enrichVariantData } from "../lib/graphql.server.js";
 import { syncClaimRulesToFunction } from "../lib/discount.server.js";
 import { syncVolumeDiscountConfig } from "../lib/volume-discount.server.js";
 import { markStep } from "../lib/onboarding.server.js";
+import { usePromotionForm } from "../hooks/usePromotionForm.js";
 import OfferForm from "../components/OfferForm.jsx";
 import CouponForm from "../components/CouponForm.jsx";
 import ClaimGiftForm from "../components/ClaimGiftForm.jsx";
@@ -66,68 +65,16 @@ const TYPE_LABELS = {
   "claim-gift": "Create claim gift",
 };
 
+const SUCCESS_LABELS = {
+  offer: "Offer created",
+  coupon: "Coupon created",
+  "claim-gift": "Claim gift created",
+};
+
 export default function NewPromotion() {
   const [searchParams, setSearchParams] = useSearchParams();
   const type = searchParams.get("type") || "offer";
-  const fetcher = useFetcher();
-  const navigate = useNavigate();
-  const shopify = useAppBridge();
-  const submitting = fetcher.state !== "idle";
-  const formRef = useRef(null);
-
-  const handleSave = useCallback(() => {
-    formRef.current?.submit();
-  }, []);
-
-  const handleDiscard = useCallback(() => {
-    document.getElementById("promotion-save-bar")?.hide();
-    navigate("/app/promotions");
-  }, [navigate]);
-
-  // Show/hide save bar
-  useEffect(() => {
-    const saveBar = document.getElementById("promotion-save-bar");
-    saveBar?.show();
-    return () => saveBar?.hide();
-  }, []);
-
-  // Wire up save bar button events
-  useEffect(() => {
-    const saveBtn = document.getElementById("save-action");
-    const discardBtn = document.getElementById("discard-action");
-    saveBtn?.addEventListener("click", handleSave);
-    discardBtn?.addEventListener("click", handleDiscard);
-    return () => {
-      saveBtn?.removeEventListener("click", handleSave);
-      discardBtn?.removeEventListener("click", handleDiscard);
-    };
-  }, [handleSave, handleDiscard]);
-
-  // Sync loading state to save button
-  useEffect(() => {
-    const saveBtn = document.getElementById("save-action");
-    if (!saveBtn) return;
-    if (submitting) {
-      saveBtn.setAttribute("loading", "");
-      saveBtn.setAttribute("disabled", "");
-    } else {
-      saveBtn.removeAttribute("loading");
-      saveBtn.removeAttribute("disabled");
-    }
-  }, [submitting]);
-
-  useEffect(() => {
-    if (fetcher.data?.ok) {
-      document.getElementById("promotion-save-bar")?.hide();
-      const labels = { offer: "Offer created", coupon: "Coupon created", "claim-gift": "Claim gift created" };
-      shopify.toast.show(labels[type] || "Created");
-      navigate("/app/promotions");
-    }
-  }, [fetcher.data, navigate, shopify, type]);
-
-  function handleSubmit(data) {
-    fetcher.submit(JSON.stringify({ ...data, _type: type }), { method: "POST", encType: "application/json" });
-  }
+  const { formRef, submitting, handleSubmit } = usePromotionForm({ type, successLabels: SUCCESS_LABELS });
 
   return (
     <s-page heading={TYPE_LABELS[type] || "Create promotion"} backAction={{ url: "/app/promotions" }}>

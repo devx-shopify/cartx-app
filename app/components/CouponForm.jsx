@@ -1,11 +1,6 @@
 import { useState, useCallback, forwardRef, useImperativeHandle } from "react";
 import { useFetcher } from "react-router";
-import { FROZEN_PAGES, FROZEN_PAGE_PREFIXES } from "../lib/constants.js";
-
-function isFrozenHandle(handle) {
-  if (FROZEN_PAGES.includes(handle)) return true;
-  return FROZEN_PAGE_PREFIXES.some((p) => handle.startsWith(p));
-}
+import { isFrozenHandle } from "../lib/constants.js";
 
 export default forwardRef(function CouponForm({ coupon, onSubmit, submitting }, ref) {
   const [shopifyDiscountId, setShopifyDiscountId] = useState(coupon?.shopify_discount_id ?? "");

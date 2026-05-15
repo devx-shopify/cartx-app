@@ -100,21 +100,30 @@ function fireCanvasConfetti() {
 var _lottieLoaded = false;
 var _lottieLoading = false;
 
+var _lottieCallbacks = [];
+
 function ensureLottiePlayer(callback) {
   if (_lottieLoaded) { callback(); return; }
   if (_lottieLoading) {
-    // Wait for existing load
-    var check = setInterval(function () {
-      if (_lottieLoaded) { clearInterval(check); callback(); }
-    }, 50);
+    _lottieCallbacks.push(callback);
     return;
   }
   _lottieLoading = true;
   var script = document.createElement('script');
   script.src = 'https://unpkg.com/@dotlottie/player-component@2.7.12/dist/dotlottie-player.mjs';
   script.type = 'module';
-  script.onload = function () { _lottieLoaded = true; _lottieLoading = false; callback(); };
-  script.onerror = function () { _lottieLoading = false; callback(); };
+  script.onload = function () {
+    _lottieLoaded = true; _lottieLoading = false;
+    callback();
+    _lottieCallbacks.forEach(function (cb) { cb(); });
+    _lottieCallbacks = [];
+  };
+  script.onerror = function () {
+    _lottieLoading = false;
+    callback();
+    _lottieCallbacks.forEach(function (cb) { cb(); });
+    _lottieCallbacks = [];
+  };
   document.head.appendChild(script);
 }
 

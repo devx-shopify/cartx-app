@@ -118,7 +118,7 @@ export default class CartDrawer extends Component {
   }
 
   componentDidMount() {
-    window.addEventListener('cartmax:cart-changed', (e) => {
+    this._onCartChanged = (e) => {
       if (e.detail && e.detail.cart) {
         var cart = this._stabiliseOrder(e.detail.cart);
         this._currency = cart.currency || this._currency;
@@ -128,9 +128,9 @@ export default class CartDrawer extends Component {
         this.loadCart();
       }
       if (this._behavior.auto_open_on_add) this.openDrawer();
-    });
+    };
 
-    window.addEventListener('cartmax:eval-result', (e) => {
+    this._onEvalResult = (e) => {
       if (e.detail) {
         this.setState({ evalResult: e.detail });
         if (e.detail.drawer) {
@@ -141,9 +141,9 @@ export default class CartDrawer extends Component {
         }
         if (e.detail._server) this._checkConfetti(e.detail);
       }
-    });
+    };
 
-    window.addEventListener('cartmax:internal-reload', (e) => {
+    this._onInternalReload = (e) => {
       if (e.detail && e.detail.cart) {
         var newCart = this._stabiliseOrder(e.detail.cart);
         var newEval = e.detail.evalResult || this.state.evalResult;
@@ -187,22 +187,27 @@ export default class CartDrawer extends Component {
         this.announce('Cart updated');
         this._clearProcessingTimeout();
       }
-    });
+    };
 
-    // Optimistic cart update — instant UI before server responds
-    window.addEventListener('cartmax:optimistic-update', (e) => {
+    this._onOptimisticUpdate = (e) => {
       if (e.detail && e.detail.cart) {
         var optimisticCart = this._stabiliseOrder(e.detail.cart);
         this._currency = optimisticCart.currency || this._currency;
         this.setState({ cart: optimisticCart, pendingQty: {} });
         updateCartCount(optimisticCart.item_count);
       }
-    });
+    };
 
-    window.addEventListener('cartmax:gift-unavailable', (e) => {
+    this._onGiftUnavailable = (e) => {
       var variants = (e.detail && e.detail.variants) || [];
       this.setState({ unavailableGifts: variants });
-    });
+    };
+
+    window.addEventListener('cartmax:cart-changed', this._onCartChanged);
+    window.addEventListener('cartmax:eval-result', this._onEvalResult);
+    window.addEventListener('cartmax:internal-reload', this._onInternalReload);
+    window.addEventListener('cartmax:optimistic-update', this._onOptimisticUpdate);
+    window.addEventListener('cartmax:gift-unavailable', this._onGiftUnavailable);
 
     window.__cartmaxReady = true;
     if (window.__cartmaxQueue && window.__cartmaxQueue.length > 0) {
@@ -222,7 +227,7 @@ export default class CartDrawer extends Component {
     };
 
     // Cart icon click — open drawer
-    document.addEventListener('click', (e) => {
+    this._onDocClick = (e) => {
       var link = e.target.closest('a[href="/cart"], a[href="/cart/"], [data-cart-icon], #cart-icon-bubble');
       if (link) {
         e.preventDefault();
@@ -231,10 +236,11 @@ export default class CartDrawer extends Component {
         this.loadCart();
         this.openDrawer();
       }
-    }, true);
+    };
+    document.addEventListener('click', this._onDocClick, true);
 
     // Cart icon hover — prefetch cart data so open is instant
-    document.addEventListener('mouseover', (e) => {
+    this._onDocMouseover = (e) => {
       var link = e.target.closest('a[href="/cart"], a[href="/cart/"], [data-cart-icon], #cart-icon-bubble');
       if (link && !this._hoverPrefetched) {
         this._hoverPrefetched = true;
@@ -242,11 +248,26 @@ export default class CartDrawer extends Component {
         // Reset after 10s so next hover prefetches again
         setTimeout(() => { this._hoverPrefetched = false; }, 10000);
       }
-    }, { passive: true });
+    };
+    document.addEventListener('mouseover', this._onDocMouseover, { passive: true });
 
-    document.addEventListener('keydown', (e) => {
+    this._onDocKeydown = (e) => {
       if (e.key === 'Escape' && this.state.open && this._behavior.close_on_esc) this.close();
-    });
+    };
+    document.addEventListener('keydown', this._onDocKeydown);
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('cartmax:cart-changed', this._onCartChanged);
+    window.removeEventListener('cartmax:eval-result', this._onEvalResult);
+    window.removeEventListener('cartmax:internal-reload', this._onInternalReload);
+    window.removeEventListener('cartmax:optimistic-update', this._onOptimisticUpdate);
+    window.removeEventListener('cartmax:gift-unavailable', this._onGiftUnavailable);
+    document.removeEventListener('click', this._onDocClick, true);
+    document.removeEventListener('mouseover', this._onDocMouseover);
+    document.removeEventListener('keydown', this._onDocKeydown);
+    Object.values(this._debounceTimers).forEach(clearTimeout);
+    this._clearProcessingTimeout();
   }
 
   // ── Apply drawer config to instance properties ──────────

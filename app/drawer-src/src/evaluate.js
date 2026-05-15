@@ -4,7 +4,7 @@
 // Single /cart/update.js call for all cart mutations.
 // =============================================================
 
-import { internalFetch, fetchCart, cartUpdateAll, getContext } from './helpers';
+import { internalFetch, fetchCart, cartUpdateAll, getContext, normalizeVariantId, formatMoneyTemplate } from './helpers';
 import { localEvaluate } from './rules';
 
 var PROXY_URL = '/apps/cartmax/evaluate-cart';
@@ -60,11 +60,6 @@ async function callEvaluate(cart) {
 }
 
 // ── Helpers ───────────────────────────────────────────────
-
-function normalizeVariantId(id) {
-  if (typeof id === 'string' && id.startsWith('gid://')) return id.split('/').pop();
-  return id;
-}
 
 function simulateCart(cart, action) {
   if (!action || !cart || !cart.items) return cart;
@@ -229,7 +224,14 @@ async function applyResult(result, cart, pendingAction) {
         detail: { cart: freshCart, evalResult: _lastResult },
       }));
       return freshCart;
-    } catch (e) {}
+    } catch (e) {
+      // Push last known eval result so drawer doesn't stall
+      if (_lastResult) {
+        window.dispatchEvent(new CustomEvent('cartmax:eval-result', {
+          detail: Object.assign({}, _lastResult, { _server: true }),
+        }));
+      }
+    }
   }
 
   return null;
@@ -290,12 +292,7 @@ function recomputeBar(serverBar, cart) {
         var tmpl = findTopMessage(newTiers[m].id);
         if (tmpl) {
           var moneyFmt = (_cachedConfig && _cachedConfig.money_format) || '';
-          var amountStr = remaining.toFixed(2);
-          var formatted = moneyFmt
-            ? moneyFmt.replace(/\{\{\s*amount\s*\}\}/, amountStr)
-                .replace(/\{\{\s*amount_no_decimals\s*\}\}/, String(Math.round(remaining)))
-                .replace(/\{\{\s*amount_with_comma_separator\s*\}\}/, amountStr.replace('.', ','))
-            : '$' + amountStr;
+          var formatted = formatMoneyTemplate(moneyFmt, remaining);
           topMessage = tmpl.replace(/\[\[\s*price\s*\]\]/gi, formatted);
         } else {
           topMessage = serverBar.top_message;

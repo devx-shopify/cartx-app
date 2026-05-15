@@ -1,6 +1,11 @@
 export const FROZEN_PAGES = ['/cart', '/checkout']
 export const FROZEN_PAGE_PREFIXES = ['/checkouts/']
 
+export function isFrozenHandle(handle) {
+  if (FROZEN_PAGES.includes(handle)) return true
+  return FROZEN_PAGE_PREFIXES.some((p) => handle.startsWith(p))
+}
+
 export const LINE_PROPS = {
   FREEBIE: '_freebie',
   CLAIMED: '_claimed',

@@ -1,6 +1,4 @@
-import { useLoaderData, useNavigate, useFetcher } from "react-router";
-import { useEffect, useRef, useCallback } from "react";
-import { useAppBridge } from "@shopify/app-bridge-react";
+import { useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
@@ -12,6 +10,7 @@ import {
 import { fetchVariantData, enrichVariantData } from "../lib/graphql.server.js";
 import { syncClaimRulesToFunction } from "../lib/discount.server.js";
 import { syncVolumeDiscountConfig } from "../lib/volume-discount.server.js";
+import { usePromotionForm } from "../hooks/usePromotionForm.js";
 import OfferForm from "../components/OfferForm.jsx";
 import CouponForm from "../components/CouponForm.jsx";
 import ClaimGiftForm from "../components/ClaimGiftForm.jsx";
@@ -91,67 +90,15 @@ const TYPE_HEADINGS = {
   "claim-gift": "Edit claim gift",
 };
 
+const SUCCESS_LABELS = {
+  offer: "Offer updated",
+  coupon: "Coupon updated",
+  "claim-gift": "Claim gift updated",
+};
+
 export default function EditPromotion() {
   const { type, data, variantDataMap } = useLoaderData();
-  const fetcher = useFetcher();
-  const navigate = useNavigate();
-  const shopify = useAppBridge();
-  const submitting = fetcher.state !== "idle";
-  const formRef = useRef(null);
-
-  const handleSave = useCallback(() => {
-    formRef.current?.submit();
-  }, []);
-
-  const handleDiscard = useCallback(() => {
-    document.getElementById("promotion-save-bar")?.hide();
-    navigate("/app/promotions");
-  }, [navigate]);
-
-  // Show/hide save bar
-  useEffect(() => {
-    const saveBar = document.getElementById("promotion-save-bar");
-    saveBar?.show();
-    return () => saveBar?.hide();
-  }, []);
-
-  // Wire up save bar button events
-  useEffect(() => {
-    const saveBtn = document.getElementById("save-action");
-    const discardBtn = document.getElementById("discard-action");
-    saveBtn?.addEventListener("click", handleSave);
-    discardBtn?.addEventListener("click", handleDiscard);
-    return () => {
-      saveBtn?.removeEventListener("click", handleSave);
-      discardBtn?.removeEventListener("click", handleDiscard);
-    };
-  }, [handleSave, handleDiscard]);
-
-  // Sync loading state to save button
-  useEffect(() => {
-    const saveBtn = document.getElementById("save-action");
-    if (!saveBtn) return;
-    if (submitting) {
-      saveBtn.setAttribute("loading", "");
-      saveBtn.setAttribute("disabled", "");
-    } else {
-      saveBtn.removeAttribute("loading");
-      saveBtn.removeAttribute("disabled");
-    }
-  }, [submitting]);
-
-  useEffect(() => {
-    if (fetcher.data?.ok) {
-      document.getElementById("promotion-save-bar")?.hide();
-      const labels = { offer: "Offer updated", coupon: "Coupon updated", "claim-gift": "Claim gift updated" };
-      shopify.toast.show(labels[type] || "Updated");
-      navigate("/app/promotions");
-    }
-  }, [fetcher.data, navigate, shopify, type]);
-
-  function handleSubmit(formData) {
-    fetcher.submit(JSON.stringify({ ...formData, _type: type }), { method: "POST", encType: "application/json" });
-  }
+  const { formRef, submitting, handleSubmit } = usePromotionForm({ type, successLabels: SUCCESS_LABELS });
 
   return (
     <s-page heading={TYPE_HEADINGS[type] || "Edit promotion"} backAction={{ url: "/app/promotions" }}>
