@@ -458,6 +458,11 @@ cart-notification,
   transform: scale(0.99);
 }
 
+.cartmax-checkout-btn.cartmax-checkout-waiting {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
 /* --- Empty State --- */
 
 .cartmax-empty {

@@ -80,24 +80,48 @@ export function cartLinesDiscountsGenerateRun(input) {
     const activeTier = tiers.find((t) => totalQty >= t.quantity);
     if (!activeTier) continue;
 
+    const tierQty = activeTier.quantity;
     const message = offer.message || 'Volume Deal';
 
+    // Cap eligible quantity per line to tierQty total.
+    // Only tierQty items get the discount; extras stay at original price.
+    let remaining = tierQty;
+    let eligibleTotal = 0;
+    const eligibleLines = [];
+
+    for (const line of qualifyingLines) {
+      if (remaining <= 0) break;
+      const eligible = Math.min(line.quantity, remaining);
+      const eligibleAmount = eligible * line.unitPrice;
+      eligibleLines.push({ id: line.id, eligible, eligibleAmount });
+      eligibleTotal += eligibleAmount;
+      remaining -= eligible;
+    }
+
     if (offer.discount_mode === 'percentage') {
-      // Percentage — one candidate targeting all qualifying lines
+      // Percentage — only discount tierQty items, convert to fixed amounts
       const pct = Math.min(activeTier.value, 100);
-      const targets = qualifyingLines.map((l) => ({ cartLine: { id: l.id } }));
-      if (targets.length > 0) {
-        candidates.push({ message, targets, value: { percentage: { value: pct } } });
+      const totalDiscount = eligibleTotal * (pct / 100);
+
+      for (const line of eligibleLines) {
+        const lineShare = eligibleTotal > 0 ? (line.eligibleAmount / eligibleTotal) * totalDiscount : 0;
+        if (lineShare <= 0) continue;
+
+        candidates.push({
+          message,
+          targets: [{ cartLine: { id: line.id } }],
+          value: { fixedAmount: { amount: lineShare.toFixed(2) } },
+        });
       }
     } else {
-      // fixed_total — distribute discount proportionally across qualifying lines
+      // fixed_total — distribute discount proportionally across eligible lines only
       const targetTotal = activeTier.value;
-      if (targetTotal >= totalPrice) continue;
+      if (targetTotal >= eligibleTotal) continue;
 
-      const totalDiscount = totalPrice - targetTotal;
+      const totalDiscount = eligibleTotal - targetTotal;
 
-      for (const line of qualifyingLines) {
-        const lineShare = totalPrice > 0 ? (line.lineTotal / totalPrice) * totalDiscount : 0;
+      for (const line of eligibleLines) {
+        const lineShare = eligibleTotal > 0 ? (line.eligibleAmount / eligibleTotal) * totalDiscount : 0;
         if (lineShare <= 0) continue;
 
         candidates.push({

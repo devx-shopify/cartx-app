@@ -2,6 +2,7 @@
 import { h, Component } from 'preact';
 import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings } from './helpers';
 import { fireConfetti, setConfettiLottieUrl } from './confetti';
+import { waitForEvaluate } from './evaluate';
 
 // ── Timing constants ────────────────────────────────────────
 
@@ -1126,7 +1127,24 @@ export default class CartDrawer extends Component {
             <span>{this._text.total_label}</span>
             <span>{formatMoney(cart.total_price, curr)}</span>
           </div>
-          <a class="cartmax-checkout-btn" href="/checkout">{this._text.checkout_button}</a>
+          <a
+            class={'cartmax-checkout-btn' + (this.state.checkoutWaiting ? ' cartmax-checkout-waiting' : '')}
+            href="/checkout"
+            onClick={(e) => {
+              // If evaluate is in-flight, wait for it before navigating
+              // so gifts/discounts are applied before checkout
+              var isProcessing = Object.keys(this.state.updating).length > 0;
+              if (isProcessing || this.state.checkoutWaiting) {
+                e.preventDefault();
+                if (this.state.checkoutWaiting) return;
+                this.setState({ checkoutWaiting: true });
+                waitForEvaluate().then(() => {
+                  this.setState({ checkoutWaiting: false });
+                  window.location.href = '/checkout';
+                });
+              }
+            }}
+          >{this.state.checkoutWaiting ? 'Preparing...' : this._text.checkout_button}</a>
         </div>
         {this._text.continue_shopping && (
           <div style={{ textAlign: 'center', marginTop: '6px' }}>

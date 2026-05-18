@@ -61,22 +61,29 @@ async function callEvaluate(cart) {
 
 // ── Helpers ───────────────────────────────────────────────
 
-function simulateCart(cart, action) {
-  if (!action || !cart || !cart.items) return cart;
+function simulateCart(cart, actions) {
+  if (!actions || actions.length === 0 || !cart || !cart.items) return cart;
+  // Build a map of key → qty for all pending actions
+  var actionMap = {};
+  for (var a = 0; a < actions.length; a++) {
+    actionMap[actions[a].key] = actions[a].qty;
+  }
   var items = [];
   for (var i = 0; i < cart.items.length; i++) {
     var item = cart.items[i];
-    if (item.key === action.key) {
-      if (action.qty > 0) {
+    if (actionMap.hasOwnProperty(item.key)) {
+      var newQty = actionMap[item.key];
+      if (newQty > 0) {
         var unitPrice = item.quantity > 0 ? Math.round(item.price) : 0;
-        var linePrice = unitPrice * action.qty;
+        var linePrice = unitPrice * newQty;
         items.push(Object.assign({}, item, {
-          quantity: action.qty,
+          quantity: newQty,
           line_price: linePrice,
           final_line_price: linePrice,
           original_line_price: linePrice,
         }));
       }
+      // qty 0 = remove, so don't push
     } else {
       items.push(item);
     }
@@ -126,7 +133,7 @@ function clearAvailableGifts(cartItems) {
 
 // ── Apply result with single /cart/update.js call ─────────
 
-async function applyResult(result, cart, pendingAction) {
+async function applyResult(result, cart, pendingActions) {
   if (result.frozen) return null;
 
   var existingItems = cart.items || [];
@@ -135,9 +142,9 @@ async function applyResult(result, cart, pendingAction) {
   var updates = {};
   var hasUpdates = false;
 
-  // 1. User's pending action
-  if (pendingAction) {
-    updates[pendingAction.key] = pendingAction.qty;
+  // 1. User's pending actions (may be multiple from rapid clicks)
+  for (var pa = 0; pa < pendingActions.length; pa++) {
+    updates[pendingActions[pa].key] = pendingActions[pa].qty;
     hasUpdates = true;
   }
 
@@ -323,27 +330,49 @@ function findTopMessage(tierId) {
 var _lastResult = null;
 var _evaluating = false;
 var _pendingCart = null;
-var _pendingAction = null;
+var _pendingActions = [];
+var _evaluateResolvers = []; // Resolvers waiting for evaluate to settle
+
+// Returns a promise that resolves when all in-flight evaluations complete.
+// Resolves immediately if nothing is running.
+export function waitForEvaluate() {
+  if (!_evaluating && _pendingActions.length === 0 && !_pendingCart) {
+    return Promise.resolve();
+  }
+  return new Promise(function (resolve) {
+    _evaluateResolvers.push(resolve);
+  });
+}
+
+function _flushEvaluateResolvers() {
+  if (_evaluating || _pendingCart) return; // still working
+  var resolvers = _evaluateResolvers;
+  _evaluateResolvers = [];
+  for (var i = 0; i < resolvers.length; i++) resolvers[i]();
+}
 
 async function runEvaluate(cart, action) {
   if (!cart) return;
 
   if (_evaluating) {
     _pendingCart = cart;
-    _pendingAction = action || null;
+    if (action) _pendingActions.push(action);
     return;
   }
+
+  // Wrap single action into array for unified handling
+  var actions = action ? [action] : [];
 
   var ctx = getContext();
   if (!ctx.shopId || !ctx.themeId) return;
 
-  // Simulate cart with pending action for eval
-  var evalCart = action ? simulateCart(cart, action) : cart;
+  // Simulate cart with pending actions for eval
+  var evalCart = actions.length > 0 ? simulateCart(cart, actions) : cart;
 
   // ── FAST PATH: optimistic local eval ──
   // Push simulated cart + local eval result to drawer IMMEDIATELY
   // so user sees qty/price/bar changes with zero latency.
-  if (action) {
+  if (actions.length > 0) {
     window.dispatchEvent(new CustomEvent('cartmax:optimistic-update', {
       detail: { cart: evalCart },
     }));
@@ -373,7 +402,7 @@ async function runEvaluate(cart, action) {
     var result = await callEvaluate(evalCart);
     if (result) {
       _lastResult = result;
-      var updatedCart = await applyResult(result, cart, action || null);
+      var updatedCart = await applyResult(result, cart, actions);
       // If no cart mutations happened, push eval result directly
       if (!updatedCart) {
         window.dispatchEvent(new CustomEvent('cartmax:eval-result', {
@@ -387,13 +416,69 @@ async function runEvaluate(cart, action) {
     _evaluating = false;
   }
 
-  // Process queued cart
+  // Process queued actions (may be multiple from rapid clicks)
   if (_pendingCart) {
     var nextCart = _pendingCart;
-    var nextAction = _pendingAction;
+    var nextActions = _pendingActions;
     _pendingCart = null;
-    _pendingAction = null;
-    runEvaluate(nextCart, nextAction);
+    _pendingActions = [];
+    runEvaluateBatch(nextCart, nextActions);
+  } else {
+    _flushEvaluateResolvers();
+  }
+}
+
+// Process accumulated pending actions as a batch
+async function runEvaluateBatch(cart, actions) {
+  if (!cart) return;
+
+  var ctx = getContext();
+  if (!ctx.shopId || !ctx.themeId) return;
+
+  var evalCart = actions.length > 0 ? simulateCart(cart, actions) : cart;
+
+  if (actions.length > 0) {
+    window.dispatchEvent(new CustomEvent('cartmax:optimistic-update', {
+      detail: { cart: evalCart },
+    }));
+  }
+  if (isCacheValid()) {
+    var localResult = localEvaluate(_cachedConfig, evalCart);
+    if (localResult && _lastResult && _lastResult.bar) {
+      var optimistic = Object.assign({}, _lastResult, {
+        ribbon_message: localResult.ribbon_message,
+      });
+      optimistic.bar = recomputeBar(_lastResult.bar, evalCart);
+      window.dispatchEvent(new CustomEvent('cartmax:eval-result', { detail: optimistic }));
+    }
+  }
+
+  _evaluating = true;
+  try {
+    var result = await callEvaluate(evalCart);
+    if (result) {
+      _lastResult = result;
+      var updatedCart = await applyResult(result, cart, actions);
+      if (!updatedCart) {
+        window.dispatchEvent(new CustomEvent('cartmax:eval-result', {
+          detail: Object.assign({}, result, { _server: true }),
+        }));
+      }
+    }
+  } catch (err) {
+    console.error('[cartx] Evaluate error:', err);
+  } finally {
+    _evaluating = false;
+  }
+
+  if (_pendingCart) {
+    var nextCart = _pendingCart;
+    var nextActions = _pendingActions;
+    _pendingCart = null;
+    _pendingActions = [];
+    runEvaluateBatch(nextCart, nextActions);
+  } else {
+    _flushEvaluateResolvers();
   }
 }
 

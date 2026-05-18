@@ -290,13 +290,19 @@ export default function Dashboard() {
   const storeHandle = data.shopDomain?.replace(".myshopify.com", "");
   const previewUrl = storeHandle ? `https://${data.shopDomain}?cartx_preview=true` : null;
 
+  const features = [
+    { title: "Progress Bar", enabled: data.progressBarEnabled, action: "toggle_progress_bar", meta: `${data.milestonesCount} milestone${data.milestonesCount !== 1 ? "s" : ""}` },
+    { title: "Upsells", enabled: data.upsellsEnabled, action: "toggle_upsells", meta: `${data.upsellsCount} product${data.upsellsCount !== 1 ? "s" : ""}` },
+    { title: "Bottom Ribbon", enabled: data.bottomRibbonEnabled, action: "toggle_ribbon", meta: data.bottomRibbonEnabled ? "Enabled" : "Disabled" },
+  ];
+
   return (
     <s-page heading="cartx">
       <s-button slot="primary-action" variant="primary" onClick={() => navigate("/app/promotions/new?type=offer")}>
         Create promotion
       </s-button>
 
-      <s-stack direction="block" gap="600">
+      <s-stack direction="block" gap="base">
         {/* Theme switcher row — Max only */}
         {planData?.features?.theme_switcher && (
           <s-stack direction="inline" justifyContent="end">
@@ -320,27 +326,36 @@ export default function Dashboard() {
         {/* Dashboard */}
         {!showWizard && (
           <>
-            {/* Stats row */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 16 }}>
-              {[
-                { label: "Total", value: data.totalPromotions, footer: "Promotions" },
-                { label: "Active", value: data.activePromotions.length, footer: "Running now" },
-                { label: "Milestones", value: data.milestonesCount, footer: "Visual milestones" },
-                { label: "Upsells", value: data.upsellsCount, footer: data.upsellsEnabled ? "Enabled" : "Disabled" },
-              ].map((stat) => (
-                <s-section key={stat.label} padding="400">
-                  <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", color: "#6d7175" }}>{stat.label}</div>
-                  <div style={{ fontSize: 28, fontWeight: 600, margin: "6px 0 4px" }}>{stat.value}</div>
-                  <div style={{ fontSize: 12, color: "#6d7175" }}>{stat.footer}</div>
-                </s-section>
-              ))}
-            </div>
+            {/* Stats row — single card */}
+            <s-section padding="none">
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)" }}>
+                {[
+                  { label: "Promotions", value: data.totalPromotions },
+                  { label: "Active", value: data.activePromotions.length },
+                  { label: "Milestones", value: data.milestonesCount },
+                  { label: "Upsell Products", value: data.upsellsCount },
+                ].map((stat, i) => (
+                  <div
+                    key={stat.label}
+                    style={{
+                      padding: "20px 24px",
+                      borderRight: i < 3 ? "1px solid var(--s-color-border, #e3e3e3)" : "none",
+                    }}
+                  >
+                    <s-text color="subdued" variant="bodyXs">{stat.label}</s-text>
+                    <div style={{ marginTop: 4 }}>
+                      <s-text fontWeight="bold" variant="headingLg">{stat.value}</s-text>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </s-section>
 
-            {/* Main grid — use CSS grid directly for align-start */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 20, alignItems: "start" }}>
+            {/* Main grid */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 16, alignItems: "start" }}>
               {/* Active promotions */}
               <s-section padding="none">
-                <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--s-color-border, #e3e3e3)" }}>
+                <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--s-color-border, #e3e3e3)" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <s-text fontWeight="bold">Active promotions</s-text>
                     <s-button variant="tertiary" onClick={() => navigate("/app/promotions")}>View all</s-button>
@@ -353,13 +368,13 @@ export default function Dashboard() {
                         key={promo.id}
                         style={{
                           display: "flex", alignItems: "center", justifyContent: "space-between",
-                          padding: "14px 20px",
+                          padding: "12px 20px",
                           borderBottom: i < Math.min(data.activePromotions.length, 5) - 1 ? "1px solid var(--s-color-border, #e3e3e3)" : "none",
                         }}
                       >
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                           <span
-                            style={{ fontWeight: 600, fontSize: 14, cursor: "pointer" }}
+                            style={{ fontWeight: 600, fontSize: 13, cursor: "pointer" }}
                             onMouseEnter={(e) => { e.currentTarget.style.textDecoration = "underline"; }}
                             onMouseLeave={(e) => { e.currentTarget.style.textDecoration = "none"; }}
                             onClick={() => navigate(`/app/promotions/${promo.id}`)}
@@ -370,7 +385,7 @@ export default function Dashboard() {
                       </div>
                     ))}
                     {data.activePromotions.length > 5 && (
-                      <div style={{ textAlign: "center", padding: "14px 20px", borderTop: "1px solid var(--s-color-border, #e3e3e3)" }}>
+                      <div style={{ textAlign: "center", padding: "12px 20px", borderTop: "1px solid var(--s-color-border, #e3e3e3)" }}>
                         <s-button variant="tertiary" onClick={() => navigate("/app/promotions")}>
                           View all {data.activePromotions.length} promotions
                         </s-button>
@@ -378,11 +393,11 @@ export default function Dashboard() {
                     )}
                   </>
                 ) : (
-                  <div style={{ textAlign: "center", padding: "40px 20px" }}>
-                    <s-stack direction="block" gap="200" alignItems="center">
+                  <div style={{ textAlign: "center", padding: "48px 20px" }}>
+                    <s-stack direction="block" gap="300" alignItems="center">
                       <s-text fontWeight="semibold">No active promotions</s-text>
                       <s-text color="subdued">Enable an existing promotion or create a new one.</s-text>
-                      <div style={{ marginTop: 8 }}>
+                      <div style={{ marginTop: 4 }}>
                         <s-button variant="primary" onClick={() => navigate("/app/promotions/new?type=offer")}>Create promotion</s-button>
                       </div>
                     </s-stack>
@@ -390,16 +405,29 @@ export default function Dashboard() {
                 )}
               </s-section>
 
-              {/* Sidebar — feature toggles */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {[
-                  { title: "Progress Bar", enabled: data.progressBarEnabled, action: "toggle_progress_bar", meta: `${data.milestonesCount} visual milestone${data.milestonesCount !== 1 ? "s" : ""}` },
-                  { title: "Upsells", enabled: data.upsellsEnabled, action: "toggle_upsells", meta: data.upsellsEnabled ? `${data.upsellsCount} product${data.upsellsCount !== 1 ? "s" : ""}` : "Disabled" },
-                  { title: "Bottom Ribbon", enabled: data.bottomRibbonEnabled, action: "toggle_ribbon", meta: data.bottomRibbonEnabled ? "Enabled" : "Disabled" },
-                ].map((feature) => (
-                  <s-section key={feature.title} padding="400">
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                      <span style={{ fontWeight: 600, fontSize: 14 }}>{feature.title}</span>
+              {/* Sidebar — consolidated */}
+              <s-stack direction="block" gap="base">
+                {/* Quick settings — single card */}
+                <s-section padding="none">
+                  <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--s-color-border, #e3e3e3)" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <s-text fontWeight="bold">Quick settings</s-text>
+                      <s-button variant="tertiary" onClick={() => navigate("/app/settings")}>Settings</s-button>
+                    </div>
+                  </div>
+                  {features.map((feature, i) => (
+                    <div
+                      key={feature.title}
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        padding: "12px 20px",
+                        borderBottom: i < features.length - 1 ? "1px solid var(--s-color-border, #e3e3e3)" : "none",
+                      }}
+                    >
+                      <div>
+                        <s-text fontWeight="medium">{feature.title}</s-text>
+                        <div><s-text color="subdued" variant="bodyXs">{feature.meta}</s-text></div>
+                      </div>
                       <s-switch
                         label={feature.title}
                         labelAccessibilityVisibility="hidden"
@@ -407,35 +435,36 @@ export default function Dashboard() {
                         onChange={() => handleToggle(feature.action)}
                       />
                     </div>
-                    <div style={{ fontSize: 13, color: "#6d7175", marginBottom: 10 }}>{feature.meta}</div>
-                    <s-button variant="tertiary" onClick={() => navigate("/app/settings")}>Configure</s-button>
-                  </s-section>
-                ))}
-
-                <s-section padding="400">
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                    <span style={{ fontWeight: 600, fontSize: 14 }}>Gift Discount</span>
-                    {planData?.features?.discount_function ? (
-                      <s-badge tone={data.discountFunctionActive ? "success" : "warning"}>
-                        {data.discountFunctionActive ? "Active" : "Inactive"}
-                      </s-badge>
-                    ) : (
-                      <s-badge tone="warning">Basic</s-badge>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 13, color: "#6d7175", marginBottom: 10 }}>
-                    {planData?.features?.discount_function
-                      ? (data.discountFunctionActive ? "Auto-discounts gifts at checkout" : "Not configured")
-                      : "Upgrade to Basic to auto-discount gift items"
-                    }
-                  </div>
-                  {planData?.features?.discount_function ? (
-                    <s-button variant="tertiary" onClick={() => navigate("/app/promotions?tab=discount-function")}>Configure</s-button>
-                  ) : (
-                    <s-button variant="tertiary" onClick={() => navigate("/app/billing")}>Upgrade</s-button>
-                  )}
+                  ))}
                 </s-section>
-              </div>
+
+                {/* Gift Discount */}
+                <s-section padding="400">
+                  <s-stack direction="block" gap="200">
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <s-text fontWeight="semibold">Gift Discount</s-text>
+                      {planData?.features?.discount_function ? (
+                        <s-badge tone={data.discountFunctionActive ? "success" : "warning"}>
+                          {data.discountFunctionActive ? "Active" : "Inactive"}
+                        </s-badge>
+                      ) : (
+                        <s-badge tone="warning">Basic</s-badge>
+                      )}
+                    </div>
+                    <s-text color="subdued" variant="bodyXs">
+                      {planData?.features?.discount_function
+                        ? (data.discountFunctionActive ? "Auto-discounts gifts at checkout" : "Not configured")
+                        : "Upgrade to auto-discount gift items"
+                      }
+                    </s-text>
+                    {planData?.features?.discount_function ? (
+                      <s-button variant="tertiary" onClick={() => navigate("/app/promotions?tab=discount-function")}>Configure</s-button>
+                    ) : (
+                      <s-button variant="tertiary" onClick={() => navigate("/app/billing")}>Upgrade</s-button>
+                    )}
+                  </s-stack>
+                </s-section>
+              </s-stack>
             </div>
           </>
         )}

@@ -20,6 +20,7 @@ import {
   buildFunctionConfig,
   syncClaimRulesToFunction,
 } from "../lib/discount.server.js";
+import { syncVolumeDiscountConfig } from "../lib/volume-discount.server.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -118,7 +119,10 @@ export const action = async ({ request }) => {
 
   await saveConfig(shopId, themeId, config);
 
-  // Sync claim rules to discount function when claim gifts are modified
+  // Sync discount functions when promotions are modified
+  if (type === "offer") {
+    await syncVolumeDiscountConfig(admin, session.shop, config.offers);
+  }
   if (type === "claim-gift") {
     await syncClaimRulesToFunction(admin, session.shop, config.claim_gifts);
   }

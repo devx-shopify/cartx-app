@@ -136,7 +136,21 @@ export function evaluateOffers(
     }
   }
 
-  // Find gift items in cart whose offer is no longer triggered — remove them
+  // Build a set of ALL triggered offer IDs (across all pages, not just current page)
+  // so gifts from cross-page offers aren't removed on navigation
+  const allTriggeredOfferIds = new Set()
+  for (const offer of eligible) {
+    if (offer.reward.type === 'volume_discount') {
+      const qQty = countQualifyingItems(offer, cart)
+      if (getActiveVolumeTier(offer, qQty)) allTriggeredOfferIds.add(offer.id)
+    } else {
+      if (evaluateTrigger(offer, cart, adjustedTotal, adjustedQty)) {
+        allTriggeredOfferIds.add(offer.id)
+      }
+    }
+  }
+
+  // Find gift items in cart whose offer threshold is no longer met — remove them
   // Skip claimed gifts — those persist until manually removed
   const toRemove = []
   for (const item of cart.items || []) {
@@ -147,7 +161,7 @@ export function evaluateOffers(
       toRemove.push(item.key)
       continue
     }
-    if (!triggeredOfferIds.has(offerId)) {
+    if (!allTriggeredOfferIds.has(offerId)) {
       toRemove.push(item.key)
     }
   }
