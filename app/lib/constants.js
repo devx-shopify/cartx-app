@@ -25,6 +25,7 @@ export const DEFAULT_CONFIG = {
     all_complete_message: 'You unlocked all rewards!',
     collision_strategy: 'merge',
     visual_milestones: [],
+    tier_order: [],
   },
   bottom_ribbon: {
     enabled: true,

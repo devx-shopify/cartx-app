@@ -673,6 +673,24 @@ cart-notification,
   font-weight: 700;
 }
 
+.cartmax-milestone-label-main {
+  display: block;
+}
+
+.cartmax-milestone-sub-label {
+  display: block;
+  margin-top: 1px;
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--cartmax-secondary-text, #9ca3af);
+  line-height: 1.2;
+}
+
+.cartmax-milestone--active .cartmax-milestone-sub-label {
+  color: var(--cartmax-secondary-text, #6b7280);
+  font-weight: 500;
+}
+
 /* --- Bottom Ribbon --- */
 
 .cartmax-ribbon {

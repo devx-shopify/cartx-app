@@ -105,6 +105,7 @@ export default class CartDrawer extends Component {
     this._prevActiveTiers = {};
     this._confettiInitialized = false;
     this._confettiEnabled = true;
+    this._appliedDrawerHash = null;
     this._text = {
       cart_title: 'Your Cart', empty_title: 'Your cart is empty',
       empty_subtitle: "Looks like you haven't added anything yet",
@@ -134,12 +135,7 @@ export default class CartDrawer extends Component {
     this._onEvalResult = (e) => {
       if (e.detail) {
         this.setState({ evalResult: e.detail });
-        if (e.detail.drawer) {
-          applyDrawerSettings(e.detail.drawer);
-          this._applyDrawerConfig(e.detail.drawer);
-          var beh = e.detail.drawer.behavior;
-          if (beh && beh.confetti_lottie_url) setConfettiLottieUrl(beh.confetti_lottie_url);
-        }
+        this._maybeApplyDrawer(e.detail.drawer);
         if (e.detail._server) this._checkConfetti(e.detail);
       }
     };
@@ -150,10 +146,7 @@ export default class CartDrawer extends Component {
         var newEval = e.detail.evalResult || this.state.evalResult;
         this._currency = newCart.currency || this._currency;
         if (e.detail.evalResult) {
-          if (e.detail.evalResult.drawer) {
-            applyDrawerSettings(e.detail.evalResult.drawer);
-            this._applyDrawerConfig(e.detail.evalResult.drawer);
-          }
+          this._maybeApplyDrawer(e.detail.evalResult.drawer);
           this._checkConfetti(e.detail.evalResult);
         }
 
@@ -272,6 +265,22 @@ export default class CartDrawer extends Component {
   }
 
   // ── Apply drawer config to instance properties ──────────
+
+  // Gates the heavier drawer-config side effects (CSS vars, custom-CSS injection,
+  // font loading, lottie preload) so they only run when the config actually
+  // changes. Without this, every cart operation re-applies them and interrupts
+  // the .cartmax-progress-fill width transition, causing the bar to flicker.
+  _maybeApplyDrawer(drawer) {
+    if (!drawer) return;
+    var hash;
+    try { hash = JSON.stringify(drawer); } catch (_) { hash = null; }
+    if (hash !== null && hash === this._appliedDrawerHash) return;
+    this._appliedDrawerHash = hash;
+    applyDrawerSettings(drawer);
+    this._applyDrawerConfig(drawer);
+    var beh = drawer.behavior;
+    if (beh && beh.confetti_lottie_url) setConfettiLottieUrl(beh.confetti_lottie_url);
+  }
 
   _applyDrawerConfig(drawer) {
     if (!drawer) return;
@@ -566,7 +575,13 @@ export default class CartDrawer extends Component {
                   }
                 </div>
                 <div class="cartmax-milestone-label">
-                  {(tier.label || '').split('\n+ ')[0]}
+                  <div class="cartmax-milestone-label-main">
+                    {(tier.label || '').split('\n+ ')[0]}
+                  </div>
+                  {tier.sub_label
+                    ? <div class="cartmax-milestone-sub-label">{tier.sub_label}</div>
+                    : null
+                  }
                 </div>
               </div>
             );

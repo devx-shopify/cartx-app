@@ -957,48 +957,79 @@
       adjQty += it.quantity || 0;
     }
     adjTotal /= 100;
-    var currentValue = serverBar.mode === "price" ? adjTotal : adjQty;
     var tiers = serverBar.tiers;
     var n2 = tiers.length;
-    var segmentWidth = 100 / n2;
-    var progress = 0;
-    var prevThreshold = 0;
-    var nextFound = false;
-    var newTiers = [];
-    for (var t2 = 0; t2 < n2; t2++) {
-      var tier = tiers[t2];
-      var state;
-      if (currentValue >= tier.threshold) {
-        state = "active";
-        progress += segmentWidth;
-      } else if (!nextFound) {
-        state = "next";
-        nextFound = true;
-        var segmentRange = tier.threshold - prevThreshold;
-        progress += segmentRange > 0 ? (currentValue - prevThreshold) / segmentRange * segmentWidth : 0;
-      } else {
-        state = "inactive";
-      }
-      prevThreshold = tier.threshold;
-      newTiers.push(Object.assign({}, tier, { state }));
+    var mode = serverBar.mode;
+    function tierType(tier) {
+      return tier.trigger_type || (mode === "price" ? "price" : "quantity");
     }
-    var topMessage = null;
-    if (!nextFound) {
+    var stated = tiers.map(function(tier) {
+      var ttype = tierType(tier);
+      var cv = ttype === "price" ? adjTotal : adjQty;
+      return Object.assign({}, tier, {
+        state: cv >= tier.threshold ? "active" : "inactive"
+      });
+    });
+    var nextIds = {};
+    ["price", "quantity"].forEach(function(ttype) {
+      var sameType = stated.filter(function(t2) {
+        return tierType(t2) === ttype && t2.state === "inactive";
+      });
+      if (sameType.length === 0) return;
+      sameType.sort(function(a2, b2) {
+        return a2.threshold - b2.threshold;
+      });
+      nextIds[sameType[0].id] = true;
+    });
+    var newTiers = stated.map(function(t2) {
+      return nextIds[t2.id] ? Object.assign({}, t2, { state: "next" }) : t2;
+    });
+    var segmentWidth = 100 / n2;
+    var activeCount = 0;
+    for (var ac = 0; ac < newTiers.length; ac++) {
+      if (newTiers[ac].state === "active") activeCount++;
+    }
+    var progress = activeCount * segmentWidth;
+    var nextTier = null;
+    for (var nx = 0; nx < newTiers.length; nx++) {
+      if (newTiers[nx].state === "next") {
+        nextTier = newTiers[nx];
+        break;
+      }
+    }
+    if (nextTier) {
+      var ttypeN = tierType(nextTier);
+      var cvN = ttypeN === "price" ? adjTotal : adjQty;
+      var sameTypeSorted = newTiers.filter(function(t2) {
+        return tierType(t2) === ttypeN;
+      }).slice().sort(function(a2, b2) {
+        return a2.threshold - b2.threshold;
+      });
+      var prevThreshold = 0;
+      for (var p2 = 0; p2 < sameTypeSorted.length; p2++) {
+        if (sameTypeSorted[p2].id === nextTier.id) break;
+        prevThreshold = sameTypeSorted[p2].threshold;
+      }
+      var segmentRange = nextTier.threshold - prevThreshold;
+      if (segmentRange > 0) {
+        var partial = (cvN - prevThreshold) / segmentRange;
+        progress += Math.max(0, Math.min(1, partial)) * segmentWidth;
+      }
+    }
+    var topMessage;
+    if (!nextTier) {
       topMessage = _cachedConfig && _cachedConfig.progress_bar && _cachedConfig.progress_bar.all_complete_message || serverBar.top_message;
     } else {
-      for (var m2 = 0; m2 < newTiers.length; m2++) {
-        if (newTiers[m2].state === "next") {
-          var remaining = newTiers[m2].threshold - currentValue;
-          var tmpl = findTopMessage(newTiers[m2].id);
-          if (tmpl) {
-            var moneyFmt = _cachedConfig && _cachedConfig.money_format || "";
-            var formatted = formatMoneyTemplate(moneyFmt, remaining);
-            topMessage = tmpl.replace(/\[\[\s*price\s*\]\]/gi, formatted);
-          } else {
-            topMessage = serverBar.top_message;
-          }
-          break;
-        }
+      var ttypeT = tierType(nextTier);
+      var cvT = ttypeT === "price" ? adjTotal : adjQty;
+      var remaining = nextTier.threshold - cvT;
+      var tmpl = findTopMessage(nextTier.id);
+      if (tmpl) {
+        var moneyFmt = _cachedConfig && _cachedConfig.money_format || "";
+        var formatted = formatMoneyTemplate(moneyFmt, remaining);
+        topMessage = tmpl.replace(/\[\[\s*price\s*\]\]/gi, formatted);
+      } else {
+        topMessage = serverBar.top_message;
       }
     }
     return Object.assign({}, serverBar, {
@@ -1209,6 +1240,7 @@
       this._prevActiveTiers = {};
       this._confettiInitialized = false;
       this._confettiEnabled = true;
+      this._appliedDrawerHash = null;
       this._text = {
         cart_title: "Your Cart",
         empty_title: "Your cart is empty",
@@ -1241,12 +1273,7 @@
       this._onEvalResult = (e2) => {
         if (e2.detail) {
           this.setState({ evalResult: e2.detail });
-          if (e2.detail.drawer) {
-            applyDrawerSettings(e2.detail.drawer);
-            this._applyDrawerConfig(e2.detail.drawer);
-            var beh = e2.detail.drawer.behavior;
-            if (beh && beh.confetti_lottie_url) setConfettiLottieUrl(beh.confetti_lottie_url);
-          }
+          this._maybeApplyDrawer(e2.detail.drawer);
           if (e2.detail._server) this._checkConfetti(e2.detail);
         }
       };
@@ -1256,10 +1283,7 @@
           var newEval = e2.detail.evalResult || this.state.evalResult;
           this._currency = newCart.currency || this._currency;
           if (e2.detail.evalResult) {
-            if (e2.detail.evalResult.drawer) {
-              applyDrawerSettings(e2.detail.evalResult.drawer);
-              this._applyDrawerConfig(e2.detail.evalResult.drawer);
-            }
+            this._maybeApplyDrawer(e2.detail.evalResult.drawer);
             this._checkConfetti(e2.detail.evalResult);
           }
           var oldItems = this.state.cart && this.state.cart.items || [];
@@ -1375,6 +1399,25 @@
       this._clearProcessingTimeout();
     }
     // ── Apply drawer config to instance properties ──────────
+    // Gates the heavier drawer-config side effects (CSS vars, custom-CSS injection,
+    // font loading, lottie preload) so they only run when the config actually
+    // changes. Without this, every cart operation re-applies them and interrupts
+    // the .cartmax-progress-fill width transition, causing the bar to flicker.
+    _maybeApplyDrawer(drawer) {
+      if (!drawer) return;
+      var hash;
+      try {
+        hash = JSON.stringify(drawer);
+      } catch (_2) {
+        hash = null;
+      }
+      if (hash !== null && hash === this._appliedDrawerHash) return;
+      this._appliedDrawerHash = hash;
+      applyDrawerSettings(drawer);
+      this._applyDrawerConfig(drawer);
+      var beh = drawer.behavior;
+      if (beh && beh.confetti_lottie_url) setConfettiLottieUrl(beh.confetti_lottie_url);
+    }
     _applyDrawerConfig(drawer) {
       if (!drawer) return;
       var t2 = drawer.text || {};
@@ -1619,7 +1662,7 @@
         var isActive = tier.state === "active";
         if (isActive) cls += " cartmax-milestone--active";
         else if (tier.state === "next") cls += " cartmax-milestone--next";
-        return /* @__PURE__ */ k("div", { class: cls, style: { left: pos + "%" }, key: i2 }, /* @__PURE__ */ k("div", { class: "cartmax-milestone-dot" }, isActive ? /* @__PURE__ */ k("svg", { width: "10", height: "10", viewBox: "0 0 24 24", fill: "none", stroke: "#fff", "stroke-width": "3", "stroke-linecap": "round", "stroke-linejoin": "round" }, /* @__PURE__ */ k("path", { d: "M20 6 9 17l-5-5" })) : /* @__PURE__ */ k("span", { class: "visually-hidden" }, "Milestone")), /* @__PURE__ */ k("div", { class: "cartmax-milestone-label" }, (tier.label || "").split("\n+ ")[0]));
+        return /* @__PURE__ */ k("div", { class: cls, style: { left: pos + "%" }, key: i2 }, /* @__PURE__ */ k("div", { class: "cartmax-milestone-dot" }, isActive ? /* @__PURE__ */ k("svg", { width: "10", height: "10", viewBox: "0 0 24 24", fill: "none", stroke: "#fff", "stroke-width": "3", "stroke-linecap": "round", "stroke-linejoin": "round" }, /* @__PURE__ */ k("path", { d: "M20 6 9 17l-5-5" })) : /* @__PURE__ */ k("span", { class: "visually-hidden" }, "Milestone")), /* @__PURE__ */ k("div", { class: "cartmax-milestone-label" }, /* @__PURE__ */ k("div", { class: "cartmax-milestone-label-main" }, (tier.label || "").split("\n+ ")[0]), tier.sub_label ? /* @__PURE__ */ k("div", { class: "cartmax-milestone-sub-label" }, tier.sub_label) : null));
       })));
     }
     // ── Render: Ribbon ────────────────────────────────────────

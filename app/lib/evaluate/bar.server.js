@@ -170,6 +170,7 @@ function computeBarState(tiers, currentValue, allCompleteMsg, moneyFormat) {
       id: t.id,
       source: t.source,
       threshold: t.threshold,
+      trigger_type: t.trigger_type,
       label: t.label,
       sub_label: t.sub_label,
       icon_url: t.icon_url,
@@ -210,11 +211,31 @@ function computeTierStates(tiers, currentValue) {
   })
 }
 
+function applyTierOrder(tiers, tierOrder) {
+  if (!Array.isArray(tierOrder) || tierOrder.length === 0) return tiers
+  const byId = new Map(tiers.map((t) => [t.id, t]))
+  const seen = new Set()
+  const ordered = []
+  for (const id of tierOrder) {
+    const t = byId.get(id)
+    if (t && !seen.has(id)) {
+      ordered.push(t)
+      seen.add(id)
+    }
+  }
+  for (const t of tiers) {
+    if (!seen.has(t.id)) ordered.push(t)
+  }
+  return ordered
+}
+
 export function buildBar(config, page, customer, adjustedTotal, adjustedQty, moneyFormat) {
   if (!config.progress_bar.enabled) return null
 
   const entries = collectBarEntries(config, page, customer)
   if (entries.length === 0) return null
+
+  const tierOrder = config.progress_bar.tier_order || []
 
   // Separate entries by trigger type
   const priceEntries = entries.filter((e) => e.trigger_type === 'price')
@@ -230,7 +251,7 @@ export function buildBar(config, page, customer, adjustedTotal, adjustedQty, mon
     qtyMerged.sort((a, b) => a.threshold - b.threshold)
     const qtyTiers = computeTierStates(qtyMerged, adjustedQty)
 
-    const allTiers = [...priceTiers, ...qtyTiers]
+    const allTiers = applyTierOrder([...priceTiers, ...qtyTiers], tierOrder)
     const nextTier = allTiers.find((t) => t.state === 'next')
     const allComplete = allTiers.every((t) => t.state === 'active')
 
@@ -253,6 +274,7 @@ export function buildBar(config, page, customer, adjustedTotal, adjustedQty, mon
       top_message: nextTier?._top_message || (allComplete ? config.progress_bar.all_complete_message : null),
       tiers: allTiers.map((t) => ({
         id: t.id, source: t.source, threshold: t.threshold,
+        trigger_type: t._trigger_type || t.trigger_type,
         label: t.label, sub_label: t.sub_label, icon_url: t.icon_url,
         state: t.state, ribbon_message: t.ribbon_message || null,
       })),
@@ -266,12 +288,16 @@ export function buildBar(config, page, customer, adjustedTotal, adjustedQty, mon
   merged.sort((a, b) => a.threshold - b.threshold)
 
   const currentValue = mode === 'price' ? adjustedTotal : adjustedQty
-  return computeBarState(
+  const bar = computeBarState(
     merged,
     currentValue,
     config.progress_bar.all_complete_message,
     moneyFormat
   )
+  if (bar && bar.tiers) {
+    bar.tiers = applyTierOrder(bar.tiers, tierOrder)
+  }
+  return bar
 }
 
 /** Get the ribbon message from the next locked bar tier */

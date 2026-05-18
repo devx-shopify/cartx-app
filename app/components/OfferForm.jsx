@@ -256,6 +256,7 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
             {barShow && rewardType !== "volume_discount" && (
               <>
                 <s-text-field label="Bar label" value={barLabel} onInput={(e) => setBarLabel(e.target.value)} error={errors.barLabel || ""} details="Shown on the progress bar milestone" />
+                <s-text-field label="Bar sub label" value={barSubLabel} onInput={(e) => setBarSubLabel(e.target.value)} details="Optional smaller text shown below the bar label" />
                 <s-text-field label="Top message" value={barTopMessage} onInput={(e) => setBarTopMessage(e.target.value)} details="Message above the bar. Use [[ price ]] for remaining amount" />
                 <s-text-field label="Ribbon message" value={barRibbonMessage} onInput={(e) => setBarRibbonMessage(e.target.value)} details="Shown in the bottom ribbon when this is the next milestone" />
               </>

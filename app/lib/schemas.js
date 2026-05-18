@@ -213,6 +213,7 @@ export const ConfigSchema = z.object({
     all_complete_message: z.string(),
     collision_strategy: z.literal('merge'),
     visual_milestones: z.array(VisualMilestoneSchema),
+    tier_order: z.array(z.string()).default([]),
   }),
   bottom_ribbon: z.object({
     enabled: z.boolean(),

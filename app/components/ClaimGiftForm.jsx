@@ -127,6 +127,7 @@ export default forwardRef(function ClaimGiftForm({ claimGift, variantDataMap, on
           {barShow ? (
             <>
               <s-text-field label="Bar label" value={barLabel} onInput={(e) => setBarLabel(e.target.value)} error={errors.barLabel || ""} details="Shown on the progress bar milestone" />
+              <s-text-field label="Bar sub label" value={barSubLabel} onInput={(e) => setBarSubLabel(e.target.value)} details="Optional smaller text shown below the bar label" />
               <s-text-field label="Top message" value={barLockedMessage} onInput={(e) => setBarLockedMessage(e.target.value)} details="Message above the bar when this is the next milestone. Use [[ price ]] for remaining amount" />
             </>
           ) : (

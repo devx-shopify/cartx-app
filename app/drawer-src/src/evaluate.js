@@ -259,53 +259,91 @@ function recomputeBar(serverBar, cart) {
   }
   adjTotal /= 100;
 
-  var currentValue = serverBar.mode === 'price' ? adjTotal : adjQty;
   var tiers = serverBar.tiers;
   var n = tiers.length;
-  var segmentWidth = 100 / n;
-  var progress = 0;
-  var prevThreshold = 0;
-  var nextFound = false;
-  var newTiers = [];
+  var mode = serverBar.mode;
 
-  for (var t = 0; t < n; t++) {
-    var tier = tiers[t];
-    var state;
-    if (currentValue >= tier.threshold) {
-      state = 'active';
-      progress += segmentWidth;
-    } else if (!nextFound) {
-      state = 'next';
-      nextFound = true;
-      var segmentRange = tier.threshold - prevThreshold;
-      progress += segmentRange > 0 ? ((currentValue - prevThreshold) / segmentRange) * segmentWidth : 0;
-    } else {
-      state = 'inactive';
-    }
-    prevThreshold = tier.threshold;
-    newTiers.push(Object.assign({}, tier, { state: state }));
+  // Per-tier trigger type. Older server responses may not include it — fall back
+  // to bar.mode (which only works for single-mode bars, so a mixed bar without
+  // per-tier types degenerates to the old buggy behaviour and gets corrected by
+  // the server roundtrip).
+  function tierType(tier) {
+    return tier.trigger_type || (mode === 'price' ? 'price' : 'quantity');
   }
 
-  // Resolve top_message from the "next" tier using cached config
-  var topMessage = null;
-  if (!nextFound) {
+  // First pass: compare each tier against its own current value (price vs qty).
+  var stated = tiers.map(function (tier) {
+    var ttype = tierType(tier);
+    var cv = ttype === 'price' ? adjTotal : adjQty;
+    return Object.assign({}, tier, {
+      state: cv >= tier.threshold ? 'active' : 'inactive',
+    });
+  });
+
+  // Promote the lowest-threshold inactive tier of EACH type to "next".
+  // (Mixed-mode bars can have two "next" tiers — one per type — matching the
+  // server's behaviour.)
+  var nextIds = {};
+  ['price', 'quantity'].forEach(function (ttype) {
+    var sameType = stated.filter(function (t) {
+      return tierType(t) === ttype && t.state === 'inactive';
+    });
+    if (sameType.length === 0) return;
+    sameType.sort(function (a, b) { return a.threshold - b.threshold; });
+    nextIds[sameType[0].id] = true;
+  });
+  var newTiers = stated.map(function (t) {
+    return nextIds[t.id] ? Object.assign({}, t, { state: 'next' }) : t;
+  });
+
+  // Compute progress: full segment per active tier + partial segment for the
+  // first "next" tier in render order. Partial is computed within the same
+  // type's threshold band, matching the server's prevThreshold logic.
+  var segmentWidth = 100 / n;
+  var activeCount = 0;
+  for (var ac = 0; ac < newTiers.length; ac++) {
+    if (newTiers[ac].state === 'active') activeCount++;
+  }
+  var progress = activeCount * segmentWidth;
+
+  var nextTier = null;
+  for (var nx = 0; nx < newTiers.length; nx++) {
+    if (newTiers[nx].state === 'next') { nextTier = newTiers[nx]; break; }
+  }
+  if (nextTier) {
+    var ttypeN = tierType(nextTier);
+    var cvN = ttypeN === 'price' ? adjTotal : adjQty;
+    var sameTypeSorted = newTiers
+      .filter(function (t) { return tierType(t) === ttypeN; })
+      .slice()
+      .sort(function (a, b) { return a.threshold - b.threshold; });
+    var prevThreshold = 0;
+    for (var p = 0; p < sameTypeSorted.length; p++) {
+      if (sameTypeSorted[p].id === nextTier.id) break;
+      prevThreshold = sameTypeSorted[p].threshold;
+    }
+    var segmentRange = nextTier.threshold - prevThreshold;
+    if (segmentRange > 0) {
+      var partial = (cvN - prevThreshold) / segmentRange;
+      progress += Math.max(0, Math.min(1, partial)) * segmentWidth;
+    }
+  }
+
+  // Resolve top_message
+  var topMessage;
+  if (!nextTier) {
     topMessage = (_cachedConfig && _cachedConfig.progress_bar && _cachedConfig.progress_bar.all_complete_message) || serverBar.top_message;
   } else {
-    // Find the next tier and resolve its message
-    for (var m = 0; m < newTiers.length; m++) {
-      if (newTiers[m].state === 'next') {
-        var remaining = newTiers[m].threshold - currentValue;
-        // Try to find the message template from cached config offers
-        var tmpl = findTopMessage(newTiers[m].id);
-        if (tmpl) {
-          var moneyFmt = (_cachedConfig && _cachedConfig.money_format) || '';
-          var formatted = formatMoneyTemplate(moneyFmt, remaining);
-          topMessage = tmpl.replace(/\[\[\s*price\s*\]\]/gi, formatted);
-        } else {
-          topMessage = serverBar.top_message;
-        }
-        break;
-      }
+    var ttypeT = tierType(nextTier);
+    var cvT = ttypeT === 'price' ? adjTotal : adjQty;
+    var remaining = nextTier.threshold - cvT;
+    var tmpl = findTopMessage(nextTier.id);
+    if (tmpl) {
+      var moneyFmt = (_cachedConfig && _cachedConfig.money_format) || '';
+      var formatted = formatMoneyTemplate(moneyFmt, remaining);
+      topMessage = tmpl.replace(/\[\[\s*price\s*\]\]/gi, formatted);
+    } else {
+      topMessage = serverBar.top_message;
     }
   }
 
