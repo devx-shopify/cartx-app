@@ -1,6 +1,6 @@
 import { EvaluateCartRequestSchema } from '../lib/schemas.js'
 import { loadConfig } from '../lib/config.server.js'
-import { adjustedTotal, adjustedQty, isFrozenPage } from '../lib/helpers.server.js'
+import { adjustedTotal, adjustedQty, isFrozenPage, computeTotalSavings } from '../lib/helpers.server.js'
 import { evaluateOffers } from '../lib/evaluate/triggers.server.js'
 import { buildBar, getRibbonFromBar } from '../lib/evaluate/bar.server.js'
 import { resolveAvailableCoupons } from '../lib/evaluate/coupons.server.js'
@@ -75,6 +75,7 @@ export const action = async ({ request }) => {
       frozen: true,
       to_add: [],
       to_remove: [],
+      offer_displays: [],
       bar: null,
       ribbon_message: null,
       ribbon_code: null,
@@ -118,7 +119,7 @@ export const action = async ({ request }) => {
     customer
   )
   const appliedCoupons = availableCoupons.filter((c) => c.applied)
-  const totalSavings = cart.total_discount || 0
+  const totalSavings = computeTotalSavings(cart)
 
   // 10. Claim gifts
   const claimGifts = resolveClaimGifts(
@@ -160,6 +161,7 @@ export const action = async ({ request }) => {
     frozen: false,
     to_add: offerResult.to_add,
     to_remove: toRemove,
+    offer_displays: offerResult.to_display || [],
     bar,
     ribbon_message,
     ribbon_code,

@@ -32,6 +32,8 @@ async function callEvaluate(cart) {
       cart: {
         items: cart.items || [],
         total_price: cart.total_price || 0,
+        original_total_price: cart.original_total_price || 0,
+        total_discount: cart.total_discount || 0,
         item_count: cart.item_count || 0,
         currency: cart.currency || '',
         cart_level_discount_applications: cart.cart_level_discount_applications || [],
@@ -89,14 +91,18 @@ function simulateCart(cart, actions) {
     }
   }
   var totalPrice = 0;
+  var originalTotal = 0;
   var itemCount = 0;
   for (var j = 0; j < items.length; j++) {
     totalPrice += (items[j].final_line_price || 0);
+    originalTotal += (items[j].original_line_price || items[j].line_price || 0);
     itemCount += (items[j].quantity || 0);
   }
   return Object.assign({}, cart, {
     items: items,
     total_price: totalPrice,
+    original_total_price: originalTotal,
+    total_discount: Math.max(0, originalTotal - totalPrice),
     item_count: itemCount,
     items_subtotal_price: totalPrice,
   });
@@ -223,6 +229,16 @@ async function applyResult(result, cart, pendingActions) {
       }
 
       clearAvailableGifts(freshCart.items);
+
+      // The server's eval ran against the *simulated* cart, which loses the
+      // changed line's discount info (simulateCart flattens original/final
+      // line prices). After Shopify processes the real update, freshCart has
+      // the authoritative totals — recompute savings from those.
+      var freshSavings = Math.max(
+        0,
+        (freshCart.original_total_price || 0) - (freshCart.total_price || 0)
+      );
+      _lastResult = Object.assign({}, _lastResult, { total_savings: freshSavings });
 
       window.dispatchEvent(new CustomEvent('cartmax:gift-unavailable', {
         detail: { variants: _unavailableGifts.slice() },

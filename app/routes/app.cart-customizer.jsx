@@ -140,6 +140,7 @@ function SectionToggles({ sections, onToggle }) {
   var toggles = [
     { key: "show_progress_bar", label: "Progress Bar", settingsHint: "Configure milestones" },
     { key: "show_claim_gifts", label: "Claim Gifts" },
+    { key: "show_offer_cards", label: "Free Gift Offer Cards" },
     { key: "show_coupons", label: "Discount Codes" },
     { key: "show_upsells", label: "Upsell Products", settingsHint: "Configure products" },
     { key: "show_ribbon", label: "Announcement Ribbon" },
@@ -267,6 +268,11 @@ export default function CartCustomizer() {
                   <ColorField label="Border" value={s.colors.border} onChange={(v) => update("colors.border", v)} />
                 </s-grid>
                 <ColorField label="Accent (free gifts, discounts)" value={s.colors.accent} onChange={(v) => update("colors.accent", v)} />
+                <s-grid gridTemplateColumns="1fr 1fr" gap="300">
+                  <ColorField label="Savings ribbon background" value={s.colors.savings_bg} onChange={(v) => update("colors.savings_bg", v)} />
+                  <ColorField label="Savings ribbon text" value={s.colors.savings_text} onChange={(v) => update("colors.savings_text", v)} />
+                </s-grid>
+                <ColorField label="Savings amount color" value={s.colors.savings_amount} onChange={(v) => update("colors.savings_amount", v)} />
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 550, marginBottom: 4 }}>
                     Overlay opacity: {s.colors.overlay_opacity}
@@ -351,6 +357,18 @@ export default function CartCustomizer() {
                   <s-text-field label="Total label" value={s.text.total_label} onInput={(e) => update("text.total_label", e.target.value)} />
                   <s-text-field label="Subtotal label" value={s.text.subtotal_label} onInput={(e) => update("text.subtotal_label", e.target.value)} />
                 </s-grid>
+                <s-text-field
+                  label="Savings ribbon text"
+                  helpText="Shown above the total when the cart has savings. Use {amount} for the saved value. Leave empty to hide."
+                  value={s.text.savings_label}
+                  onInput={(e) => update("text.savings_label", e.target.value)}
+                />
+                <s-text-field
+                  label="Free gift offer card heading"
+                  helpText='Shown above the gift cards for offers with reward mode "Show offer card only".'
+                  value={s.text.offer_cards_heading}
+                  onInput={(e) => update("text.offer_cards_heading", e.target.value)}
+                />
                 <s-text-field label="Continue shopping text" value={s.text.continue_shopping} onInput={(e) => update("text.continue_shopping", e.target.value)} />
                 <s-text-field
                   label="Continue shopping URL"

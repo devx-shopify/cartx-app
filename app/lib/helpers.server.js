@@ -23,6 +23,23 @@ export function adjustedQty(cartItems) {
   }, 0)
 }
 
+export function computeTotalSavings(cart) {
+  if (!cart) return 0
+  // original_total_price is the cart total before any discount is applied;
+  // total_price is the final amount after all discounts. Their difference
+  // is the authoritative "amount saved" the customer pays less.
+  const totals = (cart.original_total_price ?? 0) - (cart.total_price ?? 0)
+  if (totals > 0) return totals
+
+  // Fallback for payloads missing the top-level totals: sum per-line deltas.
+  const items = cart.items || []
+  return items.reduce((sum, item) => {
+    const orig = item.original_line_price ?? item.line_price ?? 0
+    const fin = item.final_line_price ?? item.line_price ?? 0
+    return sum + Math.max(0, orig - fin)
+  }, 0)
+}
+
 export function pageMatch(entryHandles, currentPath) {
   const path = currentPath.split('?')[0]
   if (entryHandles.includes('/')) return true

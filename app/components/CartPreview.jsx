@@ -46,6 +46,9 @@ export default function CartPreview({ settings, showEmpty }) {
   const primary = c.primary || "#1a1a1a";
   const primaryText = c.primary_text || "#ffffff";
   const accent = c.accent || "#16a34a";
+  const savingsBg = c.savings_bg || "#d4ff00";
+  const savingsText = c.savings_text || "#1a1a1a";
+  const savingsAmount = c.savings_amount || "#1d3fbf";
 
   const btnBase = {
     borderRadius: radius,
@@ -551,23 +554,6 @@ export default function CartPreview({ settings, showEmpty }) {
 
       )}
 
-      {/* ── Ribbon ── */}
-      {sec.show_ribbon !== false && (<div
-        style={{
-          padding: "7px 12px",
-          margin: "4px 16px 8px",
-          background: primary,
-          color: primaryText,
-          fontSize: 11,
-          fontWeight: 600,
-          textAlign: "center",
-          borderRadius: `calc(${radius} * 0.75)`,
-          letterSpacing: 0.3,
-        }}
-      >
-        Free shipping on orders over $50!
-      </div>)}
-
       {/* ── Upsells ── */}
       {sec.show_upsells !== false && (
         <div style={{ padding: "8px 16px", borderTop: `1px solid ${border}`, background: bg }}>
@@ -595,11 +581,36 @@ export default function CartPreview({ settings, showEmpty }) {
       {/* ── Footer ── */}
       <div
         style={{
-          padding: "10px 16px 14px",
           borderTop: `1px solid ${border}`,
           background: bg,
         }}
       >
+        {tx.savings_label ? (() => {
+          const parts = tx.savings_label.split("{amount}");
+          return (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: 4,
+                padding: "10px 16px",
+                background: savingsBg,
+                color: savingsText,
+                fontSize: 13,
+                fontWeight: 600,
+                textAlign: "center",
+                lineHeight: 1.3,
+              }}
+            >
+              <span>{parts[0]}</span>
+              <span style={{ color: savingsAmount, fontWeight: 700 }}>$15.00</span>
+              <span>{parts[1] || ""}</span>
+            </div>
+          );
+        })() : null}
+        <div style={{ padding: "10px 16px 14px" }}>
         <div
           style={{
             display: "flex",
@@ -659,6 +670,7 @@ export default function CartPreview({ settings, showEmpty }) {
             </span>
           </div>
         )}
+        </div>
       </div>
       </>)}
     </div>

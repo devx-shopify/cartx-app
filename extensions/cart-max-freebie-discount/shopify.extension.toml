@@ -17,5 +17,5 @@ description = "t:description"
   path = "dist/function.wasm"
 
   [extensions.ui.paths]
-  create = "/app/promotions?tab=discount-function"
-  details = "/app/promotions?tab=discount-function"
+  create = "/app/promotions?tab=offer"
+  details = "/app/promotions?tab=offer"

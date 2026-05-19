@@ -458,7 +458,7 @@ export default function Dashboard() {
                       }
                     </s-text>
                     {planData?.features?.discount_function ? (
-                      <s-button variant="tertiary" onClick={() => navigate("/app/promotions?tab=discount-function")}>Configure</s-button>
+                      <s-button variant="tertiary" onClick={() => navigate("/app/promotions?tab=offer")}>Manage offers</s-button>
                     ) : (
                       <s-button variant="tertiary" onClick={() => navigate("/app/billing")}>Upgrade</s-button>
                     )}

@@ -15,6 +15,13 @@ const BarSchema = z.object({
   unlocked_message: z.string().optional(),
 })
 
+export const OfferDiscountSchema = z.object({
+  type: z.enum(['percentage', 'fixed_amount', 'fixed_price']),
+  value: z.number().min(0),
+  message: z.string().min(1).default('Free Gift'),
+  max_cap: z.number().min(0).nullable().optional(),
+})
+
 export const OfferSchema = z.object({
   id: z.string().min(1),
   enabled: z.boolean(),
@@ -30,10 +37,16 @@ export const OfferSchema = z.object({
     price_threshold: z.number().positive().optional(),
     quantity_threshold: z.number().int().positive().optional(),
   }),
+  discount: OfferDiscountSchema.optional(),
   reward: z.discriminatedUnion('type', [
     z.object({
       type: z.literal('auto_add_gift'),
       gift_variants: z.array(z.string()).min(1),
+      gift_variant_data: z.array(z.object({
+        variant_id: z.string(),
+        title: z.string(),
+        image: z.string(),
+      })).optional(),
       quantity_per_variant: z.number().int().min(1),
       add_mode: z.enum(['auto', 'display']),
       min_offer_quantity: z.number().int().min(1),
@@ -119,6 +132,8 @@ export const EvaluateCartRequestSchema = z.object({
   cart: z.object({
     items: z.array(z.any()),
     total_price: z.number(),
+    original_total_price: z.number().optional(),
+    total_discount: z.number().optional(),
     item_count: z.number(),
     currency: z.string().optional(),
     cart_level_discount_applications: z.array(z.any()).optional(),
@@ -147,6 +162,9 @@ export const DrawerConfigSchema = z.object({
     border: z.string().default('#f0f0f0'),
     accent: z.string().default('#16a34a'),
     overlay_opacity: z.number().min(0).max(1).default(0.45),
+    savings_bg: z.string().default('#d4ff00'),
+    savings_text: z.string().default('#1a1a1a'),
+    savings_amount: z.string().default('#1d3fbf'),
   }).default({}),
   shape: z.object({
     border_radius: z.enum(['none', 'small', 'medium', 'large', 'pill']).default('medium'),
@@ -169,6 +187,8 @@ export const DrawerConfigSchema = z.object({
     coupon_placeholder: z.string().default('Discount code'),
     total_label: z.string().default('Total'),
     subtotal_label: z.string().default('Subtotal'),
+    savings_label: z.string().default('Congrats! You saved {amount} on this order.'),
+    offer_cards_heading: z.string().default('Pick your free gift'),
   }).default({}),
   layout: z.object({
     drawer_width: z.number().min(320).max(560).default(420),
@@ -186,8 +206,9 @@ export const DrawerConfigSchema = z.object({
     show_progress_bar: z.boolean().default(true),
     show_ribbon: z.boolean().default(true),
     show_claim_gifts: z.boolean().default(true),
+    show_offer_cards: z.boolean().default(true),
     order: z.array(z.string()).default([
-      'progress_bar', 'claim_gifts', 'line_items', 'coupons', 'upsells', 'ribbon',
+      'progress_bar', 'claim_gifts', 'offer_cards', 'line_items', 'coupons', 'upsells', 'ribbon',
     ]),
   }).default({}),
   behavior: z.object({

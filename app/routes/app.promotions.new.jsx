@@ -9,7 +9,10 @@ import {
 } from "../lib/config.server.js";
 import { generateId } from "../lib/helpers.server.js";
 import { fetchVariantData, enrichVariantData } from "../lib/graphql.server.js";
-import { syncClaimRulesToFunction } from "../lib/discount.server.js";
+import {
+  migrateLegacyDiscountRules,
+  syncFreebieDiscountFromConfig,
+} from "../lib/discount.server.js";
 import { syncVolumeDiscountConfig } from "../lib/volume-discount.server.js";
 import { markStep } from "../lib/onboarding.server.js";
 import { usePromotionForm } from "../hooks/usePromotionForm.js";
@@ -27,11 +30,19 @@ export const action = async ({ request }) => {
   const preferred = await getSelectedTheme(session.shop);
   const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
+  await migrateLegacyDiscountRules(config, session.shop);
   const body = await request.json();
   const type = body._type;
   delete body._type;
 
   if (type === "offer") {
+    // Enrich gift variants so the drawer can show titles + images on the
+    // "Show offer card only" cards without an extra storefront fetch.
+    if (body.reward?.type === "auto_add_gift" && body.reward.add_mode === "display") {
+      const vids = body.reward.gift_variants || [];
+      const variantDataMap = await fetchVariantData(admin, vids);
+      body.reward.gift_variant_data = enrichVariantData(vids, variantDataMap);
+    }
     config.offers.push({ id: generateId(), ...body });
   } else if (type === "coupon") {
     config.coupons.push({ id: generateId(), ...body });
@@ -43,9 +54,10 @@ export const action = async ({ request }) => {
 
   await saveConfig(shopId, themeId, config);
 
-  // Sync claim rules to discount function if a claim gift was created
-  if (type === "claim-gift") {
-    await syncClaimRulesToFunction(admin, session.shop, config.claim_gifts);
+  // Keep the freebie Shopify Function in sync with the latest config.
+  // Auto-activates on the first save that needs it.
+  if (type === "offer" || type === "claim-gift") {
+    await syncFreebieDiscountFromConfig(admin, session.shop, config);
   }
 
   // Sync volume discount config if an offer was created

@@ -87,6 +87,7 @@ export function evaluateOffers(
   )
   const active = getActiveEntries(page, eligible)
   const toAdd = []
+  const toDisplay = []
   const triggeredOfferIds = new Set()
   const volumeDiscounts = []
 
@@ -116,22 +117,41 @@ export function evaluateOffers(
 
     triggeredOfferIds.add(offer.id)
 
-    if (
-      offer.reward.type === 'auto_add_gift' &&
-      offer.reward.add_mode === 'auto'
-    ) {
-      for (const variantId of offer.reward.gift_variants) {
-        if (!alreadyInCart(cart, variantId, offer.id)) {
-          toAdd.push({
-            variant_id: variantId,
-            quantity: offer.reward.quantity_per_variant,
-            properties: {
-              [LINE_PROPS.FREEBIE]: 'true',
-              [LINE_PROPS.ACQUIRED_ON_PAGE]: page,
-              [LINE_PROPS.OFFER_ID]: offer.id,
-            },
-          })
+    if (offer.reward.type === 'auto_add_gift') {
+      if (offer.reward.add_mode === 'auto') {
+        for (const variantId of offer.reward.gift_variants) {
+          if (!alreadyInCart(cart, variantId, offer.id)) {
+            toAdd.push({
+              variant_id: variantId,
+              quantity: offer.reward.quantity_per_variant,
+              properties: {
+                [LINE_PROPS.FREEBIE]: 'true',
+                [LINE_PROPS.ACQUIRED_ON_PAGE]: page,
+                [LINE_PROPS.OFFER_ID]: offer.id,
+              },
+            })
+          }
         }
+      } else if (offer.reward.add_mode === 'display') {
+        const variantData = offer.reward.gift_variant_data || []
+        const gifts = (offer.reward.gift_variants || []).map((vid) => {
+          const data = variantData.find(
+            (d) => normalizeId(d.variant_id) === normalizeId(vid)
+          )
+          return {
+            variant_id: vid,
+            title: data?.title || '',
+            image: data?.image || '',
+            in_cart: alreadyInCart(cart, vid, offer.id),
+            available: true,
+          }
+        })
+        toDisplay.push({
+          offer_id: offer.id,
+          offer_name: offer.name,
+          quantity_per_variant: offer.reward.quantity_per_variant,
+          gifts,
+        })
       }
     }
   }
@@ -168,6 +188,7 @@ export function evaluateOffers(
 
   return {
     to_add: toAdd,
+    to_display: toDisplay,
     to_remove: toRemove,
     active_offer_ids: active.map((o) => o.id),
     volume_discounts: volumeDiscounts,

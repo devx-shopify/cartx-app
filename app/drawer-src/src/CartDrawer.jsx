@@ -91,6 +91,7 @@ export default class CartDrawer extends Component {
       removing: {},
       pendingQty: {},
       evalResult: null,
+      savings: 0,
       unavailableGifts: [],
     };
     this.close = this.close.bind(this);
@@ -112,10 +113,12 @@ export default class CartDrawer extends Component {
       empty_button: 'Continue shopping', checkout_button: 'Checkout',
       continue_shopping: 'Continue shopping', continue_shopping_url: '',
       coupon_placeholder: 'Discount code', total_label: 'Total', subtotal_label: 'Subtotal',
+      savings_label: 'Congrats! You saved {amount} on this order.',
+      offer_cards_heading: 'Pick your free gift',
     };
     this._layout = { drawer_position: 'right', image_style: 'rounded', qty_style: 'bordered', show_variant_title: true, show_vendor: false };
     this._shape = { button_style: 'solid' };
-    this._sections = { show_progress_bar: true, show_claim_gifts: true, show_coupons: true, show_upsells: true, show_ribbon: true };
+    this._sections = { show_progress_bar: true, show_claim_gifts: true, show_offer_cards: true, show_coupons: true, show_upsells: true, show_ribbon: true };
     this._behavior = { auto_open_on_add: true, animation_style: 'slide', close_on_overlay_click: true, close_on_esc: true };
   }
 
@@ -134,7 +137,14 @@ export default class CartDrawer extends Component {
 
     this._onEvalResult = (e) => {
       if (e.detail) {
-        this.setState({ evalResult: e.detail });
+        var patch = { evalResult: e.detail };
+        // Only update savings when the result actually carries one (server
+        // responses do; optimistic local evals don't). This keeps the ribbon
+        // stable between cart change and the next server response.
+        if (typeof e.detail.total_savings === 'number') {
+          patch.savings = e.detail.total_savings;
+        }
+        this.setState(patch);
         this._maybeApplyDrawer(e.detail.drawer);
         if (e.detail._server) this._checkConfetti(e.detail);
       }
@@ -159,18 +169,23 @@ export default class CartDrawer extends Component {
           if (!newKeys[item.key]) removing[item.key] = true;
         });
 
+        var newSavings = (newEval && typeof newEval.total_savings === 'number')
+          ? newEval.total_savings
+          : this.state.savings;
+
         if (Object.keys(removing).length > 0) {
           // DEFER evalResult until after remove animation completes
           // so progress bar doesn't jump while items are fading out
           this.setState({ removing: removing, updating: {}, pendingQty: {}, loading: false });
           setTimeout(() => {
-            this.setState({ cart: newCart, removing: {}, evalResult: newEval });
+            this.setState({ cart: newCart, removing: {}, evalResult: newEval, savings: newSavings });
             updateCartCount(newCart.item_count);
           }, REMOVE_ANIM_DELAY);
         } else {
           this.setState({
             cart: newCart,
             evalResult: newEval,
+            savings: newSavings,
             loading: false,
             updating: {},
             removing: {},
@@ -300,6 +315,7 @@ export default class CartDrawer extends Component {
     this._sections = {
       show_progress_bar: sec.show_progress_bar !== false,
       show_claim_gifts: sec.show_claim_gifts !== false,
+      show_offer_cards: sec.show_offer_cards !== false,
       show_coupons: sec.show_coupons !== false,
       show_upsells: sec.show_upsells !== false,
       show_ribbon: sec.show_ribbon !== false,
@@ -630,7 +646,7 @@ export default class CartDrawer extends Component {
           <div class="cartmax-line-title">{item.product_title}</div>
           {this._layout.show_variant_title && item.variant_title ? <div class="cartmax-line-variant">{item.variant_title}</div> : null}
           <div class="cartmax-line-price">
-            {isFreebie
+            {isFreebie && item.final_line_price === 0
               ? <span class="cartmax-line-price-free">
                   <span class="cartmax-gift-badge"><IconGift /> FREE</span>
                 </span>
@@ -762,6 +778,88 @@ export default class CartDrawer extends Component {
     });
     if (!line) return;
     this.handleRemove(line.key);
+  }
+
+  // Display-mode offer: customer manually adds the gift from a card.
+  async handleOfferDisplayAdd(variantId, offerId, quantity) {
+    var key = 'offer_' + variantId;
+    var updating = Object.assign({}, this.state.updating);
+    updating[key] = true;
+    this.setState({ updating: updating });
+    try {
+      await internalFetch('/cart/add.js', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: Number(variantId),
+          quantity: quantity || 1,
+          properties: {
+            _freebie: 'true',
+            _offer_id: offerId,
+            _acquired_on_page: window.location.pathname,
+          },
+        }),
+      });
+      var cart = await fetchCart();
+      this._currency = cart.currency || this._currency;
+      this.setState({ cart: cart });
+      updateCartCount(cart.item_count);
+      window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: { cart: cart } }));
+    } catch (err) {
+      console.error('[cartx] Offer display add error:', err);
+    } finally {
+      var newUpdating = Object.assign({}, this.state.updating);
+      delete newUpdating[key];
+      this.setState({ updating: newUpdating });
+    }
+  }
+
+  renderOfferDisplays() {
+    var result = this.state.evalResult;
+    if (!result) return null;
+    var groups = result.offer_displays || [];
+    if (groups.length === 0) return null;
+
+    var self = this;
+    var heading = this._text.offer_cards_heading || 'Pick your free gift';
+
+    return (
+      <div class="cartmax-claims cartmax-offer-cards">
+        <div class="cartmax-claims-heading">{heading}</div>
+        <div class="cartmax-claims-scroll">
+          {groups.flatMap(function (group) {
+            return (group.gifts || []).map(function (g) {
+              var vid = String(g.variant_id);
+              if (vid.startsWith('gid://')) vid = vid.split('/').pop();
+              var isAdding = self.state.updating['offer_' + vid];
+              var inCart = g.in_cart;
+              return (
+                <div class={'cartmax-claim-card' + (inCart ? ' cartmax-claim-card--in-cart' : '')} key={group.offer_id + ':' + vid}>
+                  {g.image
+                    ? <img class="cartmax-claim-img" src={resizeImage(g.image, 96)} alt={g.title} loading="lazy" />
+                    : <div class="cartmax-claim-img-placeholder"><span class="visually-hidden">No image</span></div>
+                  }
+                  <div class="cartmax-claim-info">
+                    {g.title ? <div class="cartmax-claim-title">{g.title}</div> : null}
+                    {inCart
+                      ? <button
+                          class="cartmax-claim-btn cartmax-claim-btn--remove"
+                          onClick={function () { self.handleClaimRemove(vid); }}
+                        >Remove</button>
+                      : <button
+                          class="cartmax-claim-btn cartmax-claim-btn--add"
+                          onClick={function () { self.handleOfferDisplayAdd(vid, group.offer_id, group.quantity_per_variant); }}
+                          disabled={isAdding || !g.available}
+                        >{isAdding ? 'Adding...' : (!g.available ? 'Unavailable' : 'Add')}</button>
+                    }
+                  </div>
+                </div>
+              );
+            });
+          })}
+        </div>
+      </div>
+    );
   }
 
   renderClaimGifts() {
@@ -1116,9 +1214,20 @@ export default class CartDrawer extends Component {
     var curr = this._currency;
     var hasDiscount = cart.total_discount > 0;
     var discounts = cart.cart_level_discount_applications || [];
+    var savings = Number(this.state.savings) || 0;
+    var savingsParts = (savings > 0 && this._text.savings_label)
+      ? this._text.savings_label.split('{amount}')
+      : null;
 
     return (
       <div class="cartmax-footer">
+        {savingsParts ? (
+          <div class="cartmax-footer-savings">
+            <span>{savingsParts[0]}</span>
+            <span class="cartmax-footer-savings-amount">{formatMoney(savings, curr)}</span>
+            <span>{savingsParts[1] || ''}</span>
+          </div>
+        ) : null}
         {/* Only show subtotal + discount rows when there's a discount, otherwise just total */}
         {hasDiscount ? (
           <div class="cartmax-totals">
@@ -1243,6 +1352,9 @@ export default class CartDrawer extends Component {
 
             {/* Claim gifts */}
             {hasItems && sec.show_claim_gifts ? this.renderClaimGifts() : null}
+
+            {/* Display-mode offer cards */}
+            {hasItems && sec.show_offer_cards ? this.renderOfferDisplays() : null}
 
             {/* Body */}
             {loading

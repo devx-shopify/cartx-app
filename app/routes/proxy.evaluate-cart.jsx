@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { EvaluateCartRequestSchema } from "../lib/schemas.js";
 import { checkRateLimit } from "../lib/rate-limit.server.js";
 import { loadConfig } from "../lib/config.server.js";
-import { adjustedTotal, adjustedQty, isFrozenPage } from "../lib/helpers.server.js";
+import { adjustedTotal, adjustedQty, isFrozenPage, computeTotalSavings } from "../lib/helpers.server.js";
 import { evaluateOffers } from "../lib/evaluate/triggers.server.js";
 import { buildBar, getRibbonFromBar } from "../lib/evaluate/bar.server.js";
 import { resolveAvailableCoupons } from "../lib/evaluate/coupons.server.js";
@@ -88,6 +88,7 @@ export const action = async ({ request }) => {
       frozen: true,
       to_add: [],
       to_remove: [],
+      offer_displays: [],
       bar: null,
       ribbon_message: null,
       oos_message: null,
@@ -95,6 +96,7 @@ export const action = async ({ request }) => {
       available_coupons: [],
       claim_gifts: null,
       upsells: null,
+      total_savings: 0,
     });
   }
 
@@ -147,6 +149,8 @@ export const action = async ({ request }) => {
       ? config.bottom_ribbon.oos_message_override || null
       : null;
 
+  const totalSavings = computeTotalSavings(cart);
+
   // Build lightweight config for client-side caching
   const clientConfig = {
     offers: (config.offers || []).filter((o) => o.enabled).map((o) => ({
@@ -165,11 +169,13 @@ export const action = async ({ request }) => {
     frozen: false,
     to_add: offerResult.to_add,
     to_remove: [...(offerResult.to_remove || []), ...claimRemovals],
+    offer_displays: offerResult.to_display || [],
     bar,
     ribbon_message,
     oos_message: oosMessage,
     available_coupons: availableCoupons,
     claim_gifts: claimGifts,
+    total_savings: totalSavings,
     volume_discounts: offerResult.volume_discounts || [],
     _config: clientConfig,
     drawer: config.drawer,

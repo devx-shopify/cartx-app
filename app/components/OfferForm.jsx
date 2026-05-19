@@ -36,6 +36,14 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
   const [bundleVariantDisplay, setBundleVariantDisplay] = useState(() => buildVariantDisplay(offer?.reward?.bundle_variants, variantDataMap));
   const [discountMode, setDiscountMode] = useState(offer?.reward?.discount_mode ?? "fixed_total");
   const [volumeTiers, setVolumeTiers] = useState(offer?.reward?.tiers ?? [{ quantity: 3, value: 999 }]);
+  const [discountType, setDiscountType] = useState(offer?.discount?.type ?? "percentage");
+  const [discountValue, setDiscountValue] = useState(
+    offer?.discount?.value != null ? String(offer.discount.value) : "100"
+  );
+  const [discountMessage, setDiscountMessage] = useState(offer?.discount?.message ?? "Free Gift");
+  const [discountMaxCap, setDiscountMaxCap] = useState(
+    offer?.discount?.max_cap != null ? String(offer.discount.max_cap) : ""
+  );
   const [barShow, setBarShow] = useState(offer?.bar?.show ?? false);
   const [barLabel, setBarLabel] = useState(offer?.bar?.label ?? "");
   const [barSubLabel, setBarSubLabel] = useState(offer?.bar?.sub_label ?? "");
@@ -88,6 +96,7 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
   function handleSubmit() {
     if (!validate()) return;
     const handles = pageHandles.split(",").map((h) => h.trim().replace(/^["']+|["']+$/g, "")).filter(Boolean);
+    const carriesFreebie = rewardType === "auto_add_gift" || rewardType === "bundle";
     onSubmit({
       name, enabled,
       source: sourceType === "none" ? undefined : sourceType === "product" ? { type: "product", product_variant_ids: productVariantIds } : { type: "collection", collection_id: collectionId },
@@ -97,6 +106,14 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
             price_threshold: triggerType === "price" && triggerValue ? Number(triggerValue) : undefined,
             quantity_threshold: triggerType === "quantity" && triggerValue ? Number(triggerValue) : undefined,
           },
+      discount: carriesFreebie
+        ? {
+            type: discountType,
+            value: Number(discountValue),
+            message: discountMessage.trim() || "Free Gift",
+            max_cap: discountMaxCap ? Number(discountMaxCap) : null,
+          }
+        : undefined,
       reward: rewardType === "auto_add_gift"
         ? { type: "auto_add_gift", gift_variants: giftVariants, quantity_per_variant: Number(quantityPerVariant), add_mode: addMode, min_offer_quantity: Number(minOfferQuantity) }
         : rewardType === "volume_discount"
@@ -202,6 +219,45 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
           {errors.reward && <s-banner tone="critical">{errors.reward}</s-banner>}
         </s-stack>
       </s-section>
+
+      {/* Discount at checkout — only for offers that ship a gift line item */}
+      {(rewardType === "auto_add_gift" || rewardType === "bundle") && (
+        <s-section
+          heading="Discount at checkout"
+          description="Applied to the gift line item by an automatic Shopify discount. Activated automatically when this offer is saved."
+        >
+          <s-stack direction="block" gap="400">
+            <s-grid gridTemplateColumns="1fr 1fr" gap="400">
+              <s-select label="Discount type" value={discountType} onChange={(e) => setDiscountType(e.target.value)}>
+                <s-option value="percentage">Percentage off</s-option>
+                <s-option value="fixed_amount">Fixed amount off</s-option>
+                <s-option value="fixed_price">Fixed price (customer pays)</s-option>
+              </s-select>
+              <s-number-field
+                label={discountType === "percentage" ? "Percentage" : discountType === "fixed_amount" ? "Amount off" : "Customer pays"}
+                value={String(discountValue)}
+                onInput={(e) => setDiscountValue(e.target.value)}
+                min="0"
+              />
+            </s-grid>
+            <s-text-field
+              label="Discount message"
+              value={discountMessage}
+              onInput={(e) => setDiscountMessage(e.target.value)}
+              placeholder="Free Gift"
+              details="Shown next to the discounted line item at checkout"
+            />
+            <s-number-field
+              label="Maximum discount cap"
+              value={String(discountMaxCap)}
+              onInput={(e) => setDiscountMaxCap(e.target.value)}
+              placeholder="No limit"
+              min="0"
+              details="Optional. Leave empty for no cap."
+            />
+          </s-stack>
+        </s-section>
+      )}
 
       {/* Source */}
       <s-section heading="Source">

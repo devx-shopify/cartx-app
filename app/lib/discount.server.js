@@ -61,6 +61,13 @@ async function findFunction(admin) {
 
 // ── Public API ───────────────────────────────────────────
 
+const DEFAULT_RULE = {
+  type: "percentage",
+  value: 100,
+  message: "Free Gift",
+  max_cap: null,
+};
+
 /**
  * Build the metafield JSON config from stored rules.
  */
@@ -68,13 +75,47 @@ export function buildFunctionConfig(rules, defaultRule, claimRules) {
   return JSON.stringify({
     rules: rules ?? [],
     claim_rules: claimRules ?? [],
-    default_rule: defaultRule ?? {
-      type: "percentage",
-      value: 100,
-      message: "Free Gift",
-      max_cap: null,
-    },
+    default_rule: defaultRule ?? DEFAULT_RULE,
   });
+}
+
+/**
+ * Derive metafield `rules[]` from offers that ship a freebie line item.
+ * Only offers whose `discount` differs from the default are written —
+ * the function falls back to `default_rule` for any offer not listed here.
+ */
+export function buildRulesFromOffers(offers) {
+  const rules = [];
+  for (const offer of offers || []) {
+    if (!offer.enabled) continue;
+    if (!offer.discount) continue;
+    const rewardType = offer.reward?.type;
+    if (rewardType !== "auto_add_gift" && rewardType !== "bundle") continue;
+    rules.push({
+      offer_id: offer.id,
+      type: offer.discount.type,
+      value: Number(offer.discount.value),
+      message: offer.discount.message || "Free Gift",
+      max_cap: offer.discount.max_cap ?? null,
+    });
+  }
+  return rules;
+}
+
+/**
+ * Returns true if the function should be installed for this shop —
+ * i.e. there's at least one enabled freebie-bearing offer or claim gift.
+ */
+export function shouldHaveFreebieDiscount(config) {
+  const offers = config?.offers || [];
+  const claimGifts = config?.claim_gifts || [];
+  const hasOfferFreebie = offers.some(
+    (o) =>
+      o.enabled &&
+      (o.reward?.type === "auto_add_gift" || o.reward?.type === "bundle")
+  );
+  const hasClaimGift = claimGifts.some((g) => g.enabled);
+  return hasOfferFreebie || hasClaimGift;
 }
 
 /**
@@ -352,6 +393,96 @@ export async function syncClaimRulesToFunction(admin, shopId, claimGifts) {
   );
   await updateDiscountMetafield(admin, record.discountId, functionConfig);
   await saveDiscountRecord(shopId, { ...record, functionConfig });
+}
+
+/**
+ * Move legacy `discount_function.rules[]` (keyed by offer_id) into per-offer
+ * `offer.discount` fields. Idempotent — after the first run, the legacy rules
+ * array is emptied on the discount record so subsequent calls no-op.
+ *
+ * Mutates `config` in place. Returns true if anything was migrated, signalling
+ * that the caller should save the config.
+ */
+export async function migrateLegacyDiscountRules(config, shopId) {
+  const record = await loadDiscountRecord(shopId);
+  if (!record?.functionConfig) return false;
+
+  let parsed;
+  try {
+    parsed = JSON.parse(record.functionConfig);
+  } catch {
+    return false;
+  }
+  const legacyRules = Array.isArray(parsed?.rules) ? parsed.rules : [];
+  if (legacyRules.length === 0) return false;
+
+  let touched = false;
+  for (const rule of legacyRules) {
+    if (!rule?.offer_id) continue;
+    const offer = (config.offers || []).find((o) => o.id === rule.offer_id);
+    if (!offer) continue;
+    if (offer.discount) continue;
+    const rewardType = offer.reward?.type;
+    if (rewardType !== "auto_add_gift" && rewardType !== "bundle") continue;
+    offer.discount = {
+      type: rule.type ?? "percentage",
+      value: Number(rule.value ?? 100),
+      message: rule.message || "Free Gift",
+      max_cap: rule.max_cap ?? null,
+    };
+    touched = true;
+  }
+
+  // Clear legacy rules so we don't try to migrate again.
+  const updatedRecord = {
+    ...record,
+    functionConfig: JSON.stringify({ ...parsed, rules: [] }),
+  };
+  await saveDiscountRecord(shopId, updatedRecord);
+
+  return touched;
+}
+
+/**
+ * One-shot sync of the freebie discount function from the full app config.
+ *
+ * - If the shop has at least one enabled freebie-bearing offer or claim gift,
+ *   ensure the Shopify Function discount is installed and its metafield matches
+ *   `config.offers[].discount` + `config.claim_gifts[].claim_price`.
+ * - If nothing needs the function, leaves an existing installation intact
+ *   (zero rules + zero claim_rules → function is a no-op) — merchants can
+ *   remove it manually if they want.
+ * - Tolerates a missing Shopify Function (not yet deployed); callers must
+ *   not rely on this throwing.
+ */
+export async function syncFreebieDiscountFromConfig(admin, shopId, config) {
+  const rules = buildRulesFromOffers(config.offers);
+  const claimRules = buildClaimRules(config.claim_gifts);
+  const functionConfig = buildFunctionConfig(rules, DEFAULT_RULE, claimRules);
+
+  const record = await loadDiscountRecord(shopId);
+
+  // Already installed → just refresh the metafield.
+  if (record?.discountId) {
+    try {
+      await updateDiscountMetafield(admin, record.discountId, functionConfig);
+      await saveDiscountRecord(shopId, { ...record, functionConfig });
+    } catch (err) {
+      console.error("[cartx] syncFreebieDiscountFromConfig update failed:", err);
+    }
+    return;
+  }
+
+  // Not installed — only create if the shop actually needs it now.
+  if (!shouldHaveFreebieDiscount(config)) return;
+
+  try {
+    await ensureFreebieDiscount(admin, shopId, functionConfig);
+  } catch (err) {
+    // Function not deployed yet, or Shopify rejected the mutation — surface
+    // in logs but don't break the save flow.
+    console.error("[cartx] syncFreebieDiscountFromConfig install failed:", err);
+  }
 }
 
 /**

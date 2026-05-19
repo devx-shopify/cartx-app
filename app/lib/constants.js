@@ -48,6 +48,9 @@ export const DEFAULT_CONFIG = {
       border: '#f0f0f0',
       accent: '#16a34a',
       overlay_opacity: 0.45,
+      savings_bg: '#d4ff00',
+      savings_text: '#1a1a1a',
+      savings_amount: '#1d3fbf',
     },
     shape: {
       border_radius: 'medium',
@@ -70,6 +73,8 @@ export const DEFAULT_CONFIG = {
       coupon_placeholder: 'Discount code',
       total_label: 'Total',
       subtotal_label: 'Subtotal',
+      savings_label: 'Congrats! You saved {amount} on this order.',
+      offer_cards_heading: 'Pick your free gift',
     },
     layout: {
       drawer_width: 420,
@@ -87,7 +92,8 @@ export const DEFAULT_CONFIG = {
       show_progress_bar: true,
       show_ribbon: true,
       show_claim_gifts: true,
-      order: ['progress_bar', 'claim_gifts', 'line_items', 'coupons', 'upsells', 'ribbon'],
+      show_offer_cards: true,
+      order: ['progress_bar', 'claim_gifts', 'offer_cards', 'line_items', 'coupons', 'upsells', 'ribbon'],
     },
     behavior: {
       auto_open_on_add: true,
