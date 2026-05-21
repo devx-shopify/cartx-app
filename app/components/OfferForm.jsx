@@ -89,7 +89,7 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
     if (rewardType === "bundle" && bundleVariants.length === 0) errs.reward = "Select at least one bundle variant";
     if (rewardType === "volume_discount" && volumeTiers.length === 0) errs.reward = "Add at least one volume tier";
     if (rewardType === "volume_discount" && volumeTiers.some((t) => !t.quantity || !t.value)) errs.reward = "All tiers need quantity and value";
-    if (barShow && !barLabel.trim()) errs.barLabel = "Bar label is required when bar is shown";
+    if (barShow && rewardType !== "volume_discount" && !barLabel.trim()) errs.barLabel = "Bar label is required when bar is shown";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -97,6 +97,9 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
   function handleSubmit() {
     if (!validate()) return;
     const carriesFreebie = rewardType === "auto_add_gift" || rewardType === "bundle";
+    const lowestTier = rewardType === "volume_discount"
+      ? [...volumeTiers].sort((a, b) => Number(a.quantity) - Number(b.quantity))[0]
+      : null;
     onSubmit({
       name, enabled,
       source: sourceType === "none" ? undefined : sourceType === "product" ? { type: "product", product_variant_ids: productVariantIds } : { type: "collection", collection_id: collectionId },
@@ -119,7 +122,7 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
         : rewardType === "volume_discount"
         ? { type: "volume_discount", discount_mode: discountMode, tiers: volumeTiers.map((t) => ({ quantity: Number(t.quantity), value: Number(t.value), message: t.message || undefined })) }
         : { type: "bundle", bundle_variants: bundleVariants, min_offer_quantity: Number(minOfferQuantity) },
-      bar: barShow ? { show: true, label: barLabel, sub_label: barSubLabel || undefined, top_message: barTopMessage || undefined, ribbon_message: barRibbonMessage || undefined, locked_message: barLockedMessage || undefined } : undefined,
+      bar: barShow ? { show: true, label: (rewardType === "volume_discount" && !barLabel.trim()) ? (lowestTier?.message?.trim() || (discountMode === "fixed_total" ? `Buy ${lowestTier?.quantity} @ ₹${lowestTier?.value}` : `Buy ${lowestTier?.quantity} get ${lowestTier?.value}% off`) || name) : barLabel, sub_label: barSubLabel || undefined, top_message: barTopMessage || undefined, ribbon_message: barRibbonMessage || undefined, locked_message: barLockedMessage || undefined } : undefined,
       page_handles: pageHandles,
       page_targets: pageTargets,
     });
