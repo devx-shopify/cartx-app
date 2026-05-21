@@ -57,12 +57,14 @@ export const action = async ({ request }) => {
 // Client-safe plan display data
 const CLIENT_PLANS = {
   free: { name: "Free", amount: 0, amountAnnual: 0, trialDays: 0 },
-  basic: { name: "Basic", amount: 150, amountAnnual: 1440, trialDays: 7 },
-  max: { name: "Max", amount: 200, amountAnnual: 1920, trialDays: 7 },
+  pro: { name: "Pro", amount: 150, amountAnnual: 1440, trialDays: 7 },
+  enterprise: { name: "Enterprise", isEnterprise: true },
 };
 
-const PLAN_ORDER = ["free", "basic", "max"];
+// Pricing page shows Pro + Enterprise; free users see them as upgrade options.
+const PLAN_ORDER = ["pro", "enterprise"];
 const ANNUAL_DISCOUNT_PCT = 20;
+const ENTERPRISE_EMAIL = "ansh.varshney@devxlabs.ai";
 
 const FEATURE_LIST = [
   { key: "drawer", label: "Cart drawer (progress bar, upsells, coupons)" },
@@ -71,10 +73,16 @@ const FEATURE_LIST = [
   { key: "theme_switcher", label: "Multi-theme configuration" },
 ];
 
+const ENTERPRISE_EXTRAS = [
+  "Custom pricing & invoicing",
+  "Priority support & SLA",
+  "Onboarding assistance",
+];
+
 const PLAN_FEATURES = {
   free: { drawer: true, promotions: true, discount_function: false, theme_switcher: false },
-  basic: { drawer: true, promotions: true, discount_function: true, theme_switcher: false },
-  max: { drawer: true, promotions: true, discount_function: true, theme_switcher: true },
+  pro: { drawer: true, promotions: true, discount_function: true, theme_switcher: true },
+  enterprise: { drawer: true, promotions: true, discount_function: true, theme_switcher: true },
 };
 
 export default function BillingPage() {
@@ -119,14 +127,14 @@ export default function BillingPage() {
     });
   }
 
-  // Legacy stores see a simple message
+  // Legacy / Enterprise stores see a simple message
   if (planData.isLegacy) {
     return (
       <s-page heading="Plans & Billing" backAction={{ url: "/app" }}>
         <div style={{ maxWidth: 600, margin: "0 auto" }}>
           <s-section>
             <VStack gap={400} style={{ alignItems: "center", textAlign: "center" }}>
-              <s-badge tone="success">Max Plan</s-badge>
+              <s-badge tone="success">Enterprise Plan</s-badge>
               <s-text fontWeight="bold">Your plan is managed externally</s-text>
               <s-paragraph color="subdued">
                 You have full access to all cartx features. Your billing is handled outside of Shopify. If you have questions about your plan, please contact our team.
@@ -137,8 +145,6 @@ export default function BillingPage() {
       </s-page>
     );
   }
-
-  const currentIdx = PLAN_ORDER.indexOf(currentPlan);
 
   return (
     <s-page heading="Plans & Billing" backAction={{ url: "/app" }}>
@@ -157,17 +163,15 @@ export default function BillingPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr 1fr",
+              gridTemplateColumns: "1fr 1fr",
               gap: 16,
             }}
           >
             {PLAN_ORDER.map((planKey) => {
               const plan = CLIENT_PLANS[planKey];
+              const isEnterprise = plan.isEnterprise === true;
               const isCurrent = currentPlan === planKey;
-              const planIdx = PLAN_ORDER.indexOf(planKey);
-              const isUpgrade = planIdx > currentIdx;
-              const isDowngrade = planIdx < currentIdx;
-              const isRecommended = planKey === "basic";
+              const isRecommended = planKey === "pro" && currentPlan === "free";
 
               return (
                 <div
@@ -187,7 +191,7 @@ export default function BillingPage() {
                     overflow: "hidden",
                   }}
                 >
-                  {isRecommended && !isCurrent && (
+                  {isRecommended && (
                     <div
                       style={{
                         position: "absolute",
@@ -210,7 +214,7 @@ export default function BillingPage() {
 
                   <div
                     style={{
-                      paddingTop: isRecommended && !isCurrent ? 16 : 0,
+                      paddingTop: isRecommended ? 16 : 0,
                       display: "flex",
                       flexDirection: "column",
                       flex: 1,
@@ -222,8 +226,8 @@ export default function BillingPage() {
                     </div>
 
                     <div style={{ marginBottom: 4 }}>
-                      {plan.amount === 0 ? (
-                        <span style={{ fontSize: 32, fontWeight: 700, color: "#1a1a1a" }}>$0</span>
+                      {isEnterprise ? (
+                        <span style={{ fontSize: 32, fontWeight: 700, color: "#1a1a1a" }}>Custom</span>
                       ) : billingCycle === "annual" ? (
                         <>
                           <span style={{ fontSize: 32, fontWeight: 700, color: "#1a1a1a" }}>
@@ -240,8 +244,8 @@ export default function BillingPage() {
                     </div>
 
                     <div style={{ fontSize: 13, color: "#6d7175", marginBottom: 20, minHeight: 20 }}>
-                      {plan.amount === 0 ? (
-                        "Free forever"
+                      {isEnterprise ? (
+                        "Tailored pricing for high-volume stores"
                       ) : billingCycle === "annual" ? (
                         <span>Billed annually as <strong style={{ color: "#1a1a1a" }}>${plan.amountAnnual}</strong></span>
                       ) : plan.trialDays > 0 ? (
@@ -269,34 +273,56 @@ export default function BillingPage() {
                           </div>
                         );
                       })}
+                      {isEnterprise && ENTERPRISE_EXTRAS.map((extra) => (
+                        <div key={extra} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
+                            <path d="M13.3 4.3a1 1 0 0 1 0 1.4l-6 6a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4L6.6 9.6l5.3-5.3a1 1 0 0 1 1.4 0Z" fill="#1a8c33" />
+                          </svg>
+                          <span style={{ fontSize: 13, lineHeight: "18px", color: "#1a1a1a" }}>{extra}</span>
+                        </div>
+                      ))}
                     </div>
 
                     <div style={{ marginTop: "auto", paddingTop: 24 }}>
-                      {isCurrent ? (
-                        currentPlan !== "free" ? (
-                          billingCycle !== currentCycle ? (
-                            <s-button
-                              variant="primary"
-                              onClick={() => handleSubscribe(planKey)}
-                              fullWidth
-                              {...(activePlanAction === planKey ? { loading: true, disabled: true } : submitting ? { disabled: true } : {})}
-                            >
-                              Switch to {billingCycle === "annual" ? "annual" : "monthly"} billing
-                            </s-button>
-                          ) : (
-                            <s-button
-                              tone="critical"
-                              onClick={handleCancel}
-                              fullWidth
-                              {...(activePlanAction === "free" ? { loading: true, disabled: true } : submitting ? { disabled: true } : {})}
-                            >
-                              Cancel subscription
-                            </s-button>
-                          )
+                      {isEnterprise ? (
+                        <a
+                          href={`mailto:${ENTERPRISE_EMAIL}?subject=${encodeURIComponent("cartx Enterprise inquiry")}&body=${encodeURIComponent("Hi cartx team,\n\nI'd like to learn more about the Enterprise plan for our store.\n\nStore: \nEstimated monthly orders: \n\nThanks!")}`}
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            padding: "10px 16px",
+                            textAlign: "center",
+                            background: "#1a1a1a",
+                            color: "#fff",
+                            borderRadius: 8,
+                            fontSize: 14,
+                            fontWeight: 600,
+                            textDecoration: "none",
+                          }}
+                        >
+                          Contact us
+                        </a>
+                      ) : isCurrent ? (
+                        billingCycle !== currentCycle ? (
+                          <s-button
+                            variant="primary"
+                            onClick={() => handleSubscribe(planKey)}
+                            fullWidth
+                            {...(activePlanAction === planKey ? { loading: true, disabled: true } : submitting ? { disabled: true } : {})}
+                          >
+                            Switch to {billingCycle === "annual" ? "annual" : "monthly"} billing
+                          </s-button>
                         ) : (
-                          <s-button disabled fullWidth>Current plan</s-button>
+                          <s-button
+                            tone="critical"
+                            onClick={handleCancel}
+                            fullWidth
+                            {...(activePlanAction === "free" ? { loading: true, disabled: true } : submitting ? { disabled: true } : {})}
+                          >
+                            Cancel subscription
+                          </s-button>
                         )
-                      ) : isUpgrade ? (
+                      ) : (
                         <s-button
                           variant="primary"
                           onClick={() => handleSubscribe(planKey)}
@@ -305,25 +331,7 @@ export default function BillingPage() {
                         >
                           {currentPlan === "free" ? "Start free trial" : `Upgrade to ${plan.name}`}
                         </s-button>
-                      ) : isDowngrade ? (
-                        planKey === "free" ? (
-                          <s-button
-                            onClick={handleCancel}
-                            fullWidth
-                            {...(activePlanAction === "free" ? { loading: true, disabled: true } : submitting ? { disabled: true } : {})}
-                          >
-                            Downgrade to Free
-                          </s-button>
-                        ) : (
-                          <s-button
-                            onClick={() => handleSubscribe(planKey)}
-                            fullWidth
-                            {...(activePlanAction === planKey ? { loading: true, disabled: true } : submitting ? { disabled: true } : {})}
-                          >
-                            Switch to {plan.name}
-                          </s-button>
-                        )
-                      ) : null}
+                      )}
                     </div>
                   </div>
                 </div>

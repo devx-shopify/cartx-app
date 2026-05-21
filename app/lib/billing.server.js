@@ -13,20 +13,10 @@ export const PLANS = {
       theme_switcher: false,
     },
   },
-  basic: {
-    name: "Basic",
+  pro: {
+    name: "Pro",
     amount: 150.0,
     amountAnnual: 1440.0, // 150 × 12 × 0.8
-    trialDays: 7,
-    features: {
-      discount_function: true,
-      theme_switcher: false,
-    },
-  },
-  max: {
-    name: "Max",
-    amount: 200.0,
-    amountAnnual: 1920.0, // 200 × 12 × 0.8
     trialDays: 7,
     features: {
       discount_function: true,
@@ -34,6 +24,8 @@ export const PLANS = {
     },
   },
 };
+
+export const ENTERPRISE_CONTACT_EMAIL = "ansh.varshney@devxlabs.ai";
 
 const INTERVAL_BY_CYCLE = {
   monthly: "EVERY_30_DAYS",
@@ -44,10 +36,10 @@ function amountForCycle(plan, cycle) {
   return cycle === "annual" ? plan.amountAnnual : plan.amount;
 }
 
-// Legacy stores get max features at no charge
+// Legacy / Enterprise stores get all features at custom pricing
 const LEGACY_PLAN = {
-  plan: "max",
-  name: "Max",
+  plan: "enterprise",
+  name: "Enterprise",
   amount: 0,
   isLegacy: true,
   billingMethod: "invoice",
@@ -120,14 +112,10 @@ export async function getActivePlan(admin, shopDomain) {
   const amount = parseFloat(pricing?.price?.amount ?? "0");
   const billingCycle = pricing?.interval === "ANNUAL" ? "annual" : "monthly";
 
-  const maxThreshold = amountForCycle(PLANS.max, billingCycle);
-  const basicThreshold = amountForCycle(PLANS.basic, billingCycle);
+  const proThreshold = amountForCycle(PLANS.pro, billingCycle);
 
-  if (amount >= maxThreshold) {
-    return { plan: "max", subscriptionId: active.id, isLegacy: false, billingCycle, ...PLANS.max };
-  }
-  if (amount >= basicThreshold) {
-    return { plan: "basic", subscriptionId: active.id, isLegacy: false, billingCycle, ...PLANS.basic };
+  if (amount >= proThreshold) {
+    return { plan: "pro", subscriptionId: active.id, isLegacy: false, billingCycle, ...PLANS.pro };
   }
 
   return { plan: "free", isLegacy: false, billingCycle: "monthly", ...PLANS.free };
@@ -216,13 +204,11 @@ export function hasFeature(planData, feature) {
 
 export function requireFeature(planData, feature) {
   if (!hasFeature(planData, feature)) {
-    const needed =
-      feature === "theme_switcher" ? "Max" : "Basic";
     throw new Response(
       JSON.stringify({
-        error: `This feature requires the ${needed} plan`,
+        error: "This feature requires the Pro plan",
         upgrade_required: true,
-        required_plan: needed.toLowerCase(),
+        required_plan: "pro",
       }),
       { status: 403, headers: { "Content-Type": "application/json" } }
     );
