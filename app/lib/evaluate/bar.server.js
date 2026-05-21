@@ -1,12 +1,12 @@
-import { audienceFilter, pageMatch, getActiveEntries } from '../helpers.server.js'
+import { pageMatch, getActiveEntries } from '../helpers.server.js'
 import { resolveTemplate } from './messages.server.js'
 
-function collectBarEntries(config, page, customer) {
+function collectBarEntries(config, page) {
   const entries = []
 
   // Use getActiveEntries for offers — page-specific offers take priority over global ones
   const eligibleOffers = (config.offers || []).filter(
-    (o) => o.enabled && o.bar?.show && audienceFilter(o, customer)
+    (o) => o.enabled && o.bar?.show,
   )
   const activeOffers = getActiveEntries(page, eligibleOffers)
   const activeOfferIds = new Set(activeOffers.map((o) => o.id))
@@ -61,7 +61,7 @@ function collectBarEntries(config, page, customer) {
 
   // Use getActiveEntries for claims — but suppress if page-specific offers exist
   const eligibleClaims = (config.claim_gifts || []).filter(
-    (c) => c.enabled && c.bar?.show && audienceFilter(c, customer)
+    (c) => c.enabled && c.bar?.show,
   )
   const activeClaims = hasPageSpecificOffers ? [] : getActiveEntries(page, eligibleClaims)
   const activeClaimIds = new Set(activeClaims.map((c) => c.id))
@@ -82,7 +82,7 @@ function collectBarEntries(config, page, customer) {
 
   for (const m of config.progress_bar.visual_milestones) {
     if (hasPageSpecificOffers) continue
-    if (!m.enabled || !audienceFilter(m, customer)) continue
+    if (!m.enabled) continue
     if (!pageMatch(m.page_handles, page)) continue
     entries.push({
       id: m.id,
@@ -229,10 +229,10 @@ function applyTierOrder(tiers, tierOrder) {
   return ordered
 }
 
-export function buildBar(config, page, customer, adjustedTotal, adjustedQty, moneyFormat) {
+export function buildBar(config, page, adjustedTotal, adjustedQty, moneyFormat) {
   if (!config.progress_bar.enabled) return null
 
-  const entries = collectBarEntries(config, page, customer)
+  const entries = collectBarEntries(config, page)
   if (entries.length === 0) return null
 
   const tierOrder = config.progress_bar.tier_order || []

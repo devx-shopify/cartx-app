@@ -12,6 +12,8 @@ import {
 } from "../lib/config.server.js";
 import { generateId } from "../lib/helpers.server.js";
 import { markStep } from "../lib/onboarding.server.js";
+import TargetingSection from "../components/TargetingSection.jsx";
+import VStack from "../components/VStack.jsx";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -110,8 +112,10 @@ export const action = async ({ request }) => {
       label: body.label,
       sub_label: body.sub_label || undefined,
       icon_url: body.icon_url || undefined,
-      page_handles: body.page_handles.split(",").map((h) => h.trim()).filter(Boolean),
-      audience: body.audience,
+      page_handles: Array.isArray(body.page_handles)
+        ? body.page_handles
+        : body.page_handles.split(",").map((h) => h.trim()).filter(Boolean),
+      page_targets: body.page_targets,
     });
     await saveConfig(shopId, themeId, config);
     return { ok: true };
@@ -133,8 +137,10 @@ export const action = async ({ request }) => {
       milestone.label = body.label;
       milestone.sub_label = body.sub_label || undefined;
       milestone.trigger = { type: body.trigger_type, threshold: Number(body.threshold) };
-      milestone.page_handles = body.page_handles.split(",").map((h) => h.trim()).filter(Boolean);
-      milestone.audience = body.audience;
+      milestone.page_handles = Array.isArray(body.page_handles)
+        ? body.page_handles
+        : body.page_handles.split(",").map((h) => h.trim()).filter(Boolean);
+      milestone.page_targets = body.page_targets;
       if (typeof body.icon_url === "string") milestone.icon_url = body.icon_url || undefined;
     }
     await saveConfig(shopId, themeId, config);
@@ -190,51 +196,47 @@ function MilestoneFormFields({ initial, onSubmit, onCancel, submitting, submitLa
   const [subLabel, setSubLabel] = useState(initial?.sub_label ?? "");
   const [triggerType, setTriggerType] = useState(initial?.trigger?.type ?? "price");
   const [threshold, setThreshold] = useState(String(initial?.trigger?.threshold ?? ""));
-  const [pageHandles, setPageHandles] = useState(
-    initial ? (initial.page_handles ?? []).join(",") : "/"
-  );
-  const [audience, setAudience] = useState(initial?.audience ?? "all");
+  const [pageHandles, setPageHandles] = useState(initial?.page_handles?.length ? initial.page_handles : ["/"]);
+  const [pageTargets, setPageTargets] = useState(initial?.page_targets);
 
   function handleSubmit() {
     if (!label.trim() || !threshold) return;
+    if (!Array.isArray(pageHandles) || pageHandles.length === 0) return;
     onSubmit({
       label,
       sub_label: subLabel,
       trigger_type: triggerType,
       threshold,
       page_handles: pageHandles,
-      audience,
+      page_targets: pageTargets,
     });
   }
 
   return (
     <div style={{ padding: "16px 0 0" }}>
-      <s-stack direction="block" gap="400">
-        <s-grid gridTemplateColumns="1fr 1fr" gap="400">
+      <VStack gap={400}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           <s-text-field label="Label" value={label} onInput={(e) => setLabel(e.target.value)} placeholder="Free Shipping" />
           <s-text-field label="Sub label" value={subLabel} onInput={(e) => setSubLabel(e.target.value)} />
-        </s-grid>
-        <s-grid gridTemplateColumns="1fr 1fr" gap="400">
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           <s-select label="Trigger type" value={triggerType} onChange={(e) => setTriggerType(e.target.value)}>
             <s-option value="price">Price</s-option>
             <s-option value="quantity">Quantity</s-option>
           </s-select>
           <s-number-field label="Threshold" value={String(threshold)} onInput={(e) => setThreshold(e.target.value)} />
-        </s-grid>
-        <s-grid gridTemplateColumns="1fr 1fr" gap="400">
-          <s-text-field label="Page handles" value={pageHandles} onInput={(e) => setPageHandles(e.target.value)} details="Comma-separated" />
-          <s-select label="Audience" value={audience} onChange={(e) => setAudience(e.target.value)}>
-            <s-option value="all">Everyone</s-option>
-            <s-option value="signed_in">Signed-in customers</s-option>
-            <s-option value="guest">Guests only</s-option>
-            <s-option value="vip_tag">VIP customers</s-option>
-          </s-select>
-        </s-grid>
-        <s-stack direction="inline" gap="200">
+        </div>
+        <TargetingSection
+          pageHandles={pageHandles}
+          pageTargets={pageTargets}
+          onChange={({ page_handles, page_targets }) => { setPageHandles(page_handles); setPageTargets(page_targets); }}
+          heading="Milestone targeting"
+        />
+        <div style={{ display: "flex", gap: 8 }}>
           <s-button onClick={handleSubmit} {...(submitting ? { disabled: true } : {})}>{submitLabel ?? "Save"}</s-button>
           <s-button variant="tertiary" onClick={onCancel}>Cancel</s-button>
-        </s-stack>
-      </s-stack>
+        </div>
+      </VStack>
     </div>
   );
 }

@@ -217,9 +217,9 @@ export default function PromotionsIndex() {
 
       {/* Theme switcher — Max only */}
       {planData?.features?.theme_switcher && (
-        <s-stack direction="inline" justifyContent="end">
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
           <ThemeSwitcher themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
-        </s-stack>
+        </div>
       )}
 
       {/* Full-page empty state when no promotions exist */}

@@ -305,9 +305,9 @@ export default function Dashboard() {
       <s-stack direction="block" gap="base">
         {/* Theme switcher row — Max only */}
         {planData?.features?.theme_switcher && (
-          <s-stack direction="inline" justifyContent="end">
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <ThemeSwitcher themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
-          </s-stack>
+          </div>
         )}
 
         {/* Onboarding setup guide */}

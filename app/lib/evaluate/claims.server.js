@@ -1,4 +1,4 @@
-import { audienceFilter, pageMatch } from '../helpers.server.js'
+import { pageMatch } from '../helpers.server.js'
 import { LINE_PROPS } from '../constants.js'
 
 function normalizeId(id) {
@@ -22,12 +22,10 @@ export function resolveClaimGifts(
   cart,
   adjustedTotal,
   adjustedQty,
-  page,
-  customer
+  page
 ) {
   const matching = claimGifts.filter(
-    (g) =>
-      g.enabled && audienceFilter(g, customer) && pageMatch(g.page_handles, page)
+    (g) => g.enabled && pageMatch(g.page_handles, page),
   )
 
   if (matching.length === 0) return null

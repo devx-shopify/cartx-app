@@ -2,6 +2,8 @@ import { useState, forwardRef, useImperativeHandle } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { isFrozenHandle } from "../lib/constants.js";
 import VariantList, { extractVariantData } from "./VariantList.jsx";
+import TargetingSection from "./TargetingSection.jsx";
+import VStack from "./VStack.jsx";
 
 function buildInitialDisplay(claimGift, variantDataMap) {
   if (claimGift?.claimable_variant_data?.length) {
@@ -34,8 +36,8 @@ export default forwardRef(function ClaimGiftForm({ claimGift, variantDataMap, on
   const [barLabel, setBarLabel] = useState(claimGift?.bar?.label ?? "");
   const [barSubLabel, setBarSubLabel] = useState(claimGift?.bar?.sub_label ?? "");
   const [barLockedMessage, setBarLockedMessage] = useState(claimGift?.bar?.locked_message ?? "");
-  const [audience, setAudience] = useState(claimGift?.audience ?? "all");
-  const [pageHandles, setPageHandles] = useState(claimGift?.page_handles?.join(", ") ?? "/");
+  const [pageHandles, setPageHandles] = useState(claimGift?.page_handles?.length ? claimGift.page_handles : ["/"]);
+  const [pageTargets, setPageTargets] = useState(claimGift?.page_targets);
   const [errors, setErrors] = useState({});
 
   async function pickClaimableProducts() {
@@ -50,9 +52,8 @@ export default forwardRef(function ClaimGiftForm({ claimGift, variantDataMap, on
     if (!sectionHeading.trim()) errs.sectionHeading = "Section heading is required";
     if (!threshold || Number(threshold) <= 0) errs.threshold = "Threshold must be a positive number";
     if (claimableVariants.length === 0) errs.variants = "Select at least one claimable product";
-    const handles = pageHandles.split(",").map((h) => h.trim()).filter(Boolean);
-    if (handles.length === 0) errs.pageHandles = "At least one page required";
-    const frozen = handles.find(isFrozenHandle);
+    if (!Array.isArray(pageHandles) || pageHandles.length === 0) errs.pageHandles = "Select at least one page";
+    const frozen = (pageHandles || []).find(isFrozenHandle);
     if (frozen) errs.pageHandles = `"${frozen}" is a reserved page`;
     if (barShow && !barLabel.trim()) errs.barLabel = "Bar label is required when bar is shown";
     setErrors(errs);
@@ -61,7 +62,6 @@ export default forwardRef(function ClaimGiftForm({ claimGift, variantDataMap, on
 
   function handleSubmit() {
     if (!validate()) return;
-    const handles = pageHandles.split(",").map((h) => h.trim()).filter(Boolean);
     onSubmit({
       name, section_heading: sectionHeading, enabled,
       trigger: { type: triggerType, threshold: Number(threshold) },
@@ -69,7 +69,7 @@ export default forwardRef(function ClaimGiftForm({ claimGift, variantDataMap, on
       claim_price: Number(claimPrice),
       max_claims: maxClaims ? Number(maxClaims) : undefined,
       bar: barShow ? { show: true, label: barLabel, sub_label: barSubLabel || undefined, locked_message: barLockedMessage || undefined } : undefined,
-      audience, page_handles: handles,
+      page_handles: pageHandles, page_targets: pageTargets,
     });
   }
 
@@ -79,27 +79,27 @@ export default forwardRef(function ClaimGiftForm({ claimGift, variantDataMap, on
     <>
       {/* Basic Info */}
       <s-section heading="Basic info">
-        <s-stack direction="block" gap="400">
+        <VStack gap={400}>
           <s-text-field label="Name" value={name} onInput={(e) => setName(e.target.value)} error={errors.name || ""} details="Internal label, not shown to customers" />
           <s-text-field label="Section heading" value={sectionHeading} onInput={(e) => setSectionHeading(e.target.value)} error={errors.sectionHeading || ""} placeholder="Add freebies at Rs.1" details="Shown above the claim section in the cart drawer" />
           <s-checkbox label="Enabled" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-        </s-stack>
+        </VStack>
       </s-section>
 
       {/* Trigger */}
       <s-section heading="Trigger">
-        <s-grid gridTemplateColumns="1fr 1fr" gap="400">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           <s-select label="Threshold type" value={triggerType} onChange={(e) => setTriggerType(e.target.value)}>
             <s-option value="price">Price</s-option>
             <s-option value="quantity">Quantity</s-option>
           </s-select>
           <s-number-field label={triggerType === "price" ? "Minimum cart total" : "Minimum items"} value={String(threshold)} onInput={(e) => setThreshold(e.target.value)} error={errors.threshold || ""} />
-        </s-grid>
+        </div>
       </s-section>
 
       {/* Claimable Products */}
       <s-section heading="Claimable products">
-        <s-stack direction="block" gap="400">
+        <VStack gap={400}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <s-button onClick={pickClaimableProducts}>{claimableVariants.length > 0 ? "Change products" : "Select products"}</s-button>
             {claimableVariants.length > 0 && <span style={{ fontSize: 13, color: "#6d7175" }}>{claimableVariants.length} variant(s)</span>}
@@ -107,7 +107,7 @@ export default forwardRef(function ClaimGiftForm({ claimGift, variantDataMap, on
           <VariantList variants={claimableDisplay} onRemove={removeClaimableVariant} />
           <s-paragraph color="subdued">Customers can pick from these products once threshold is met. Out-of-stock products are hidden automatically.</s-paragraph>
           {errors.variants && <s-banner tone="critical">{errors.variants}</s-banner>}
-          <s-grid gridTemplateColumns="1fr 1fr" gap="400">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             <s-select label="Customer pays" value={String(claimPrice)} onChange={(e) => setClaimPrice(e.target.value)}>
               <s-option value="0">Free (Rs.0)</s-option>
               <s-option value="1">Nominal (Rs.1)</s-option>
@@ -116,13 +116,13 @@ export default forwardRef(function ClaimGiftForm({ claimGift, variantDataMap, on
               <s-option value="99">Rs.99</s-option>
             </s-select>
             <s-number-field label="Max gifts per customer" value={String(maxClaims)} onInput={(e) => setMaxClaims(e.target.value)} placeholder={String(claimableVariants.length || 1)} details="Leave empty for all" />
-          </s-grid>
-        </s-stack>
+          </div>
+        </VStack>
       </s-section>
 
       {/* Progress Bar */}
       <s-section heading="Progress bar">
-        <s-stack direction="block" gap="400">
+        <VStack gap={400}>
           <s-checkbox label="Show on progress bar" checked={barShow} onChange={(e) => setBarShow(e.target.checked)} />
           {barShow ? (
             <>
@@ -133,21 +133,16 @@ export default forwardRef(function ClaimGiftForm({ claimGift, variantDataMap, on
           ) : (
             <s-banner tone="info">Bar tier is hidden on pages where this claim gift isn&apos;t displayed.</s-banner>
           )}
-        </s-stack>
+        </VStack>
       </s-section>
 
       {/* Targeting */}
-      <s-section heading="Targeting">
-        <s-stack direction="block" gap="400">
-          <s-select label="Who can see this claim gift?" value={audience} onChange={(e) => setAudience(e.target.value)}>
-            <s-option value="all">Everyone</s-option>
-            <s-option value="signed_in">Signed-in customers</s-option>
-            <s-option value="guest">Guests only</s-option>
-            <s-option value="vip_tag">VIP customers</s-option>
-          </s-select>
-          <s-text-field label="Active on pages" value={pageHandles} onInput={(e) => setPageHandles(e.target.value)} details="Controls where the claim section appears. Claimed items persist across pages." error={errors.pageHandles || ""} />
-        </s-stack>
-      </s-section>
+      <TargetingSection
+        pageHandles={pageHandles}
+        pageTargets={pageTargets}
+        onChange={({ page_handles, page_targets }) => { setPageHandles(page_handles); setPageTargets(page_targets); }}
+      />
+      {errors.pageHandles && <s-banner tone="critical">{errors.pageHandles}</s-banner>}
     </>
   );
 });

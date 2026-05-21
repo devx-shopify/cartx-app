@@ -4,6 +4,7 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import db from "../db.server.js";
+import VStack from "../components/VStack.jsx";
 
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
@@ -141,9 +142,9 @@ export default function InternalAdmin() {
         Add store
       </s-button>
 
-      <s-stack direction="block" gap="400">
+      <VStack gap={400}>
         {/* Stats row */}
-        <s-grid gridTemplateColumns="1fr 1fr 1fr 1fr" gap="300">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
           {[
             { value: stores.length, label: "Total stores" },
             { value: legacyCount, label: "Legacy (invoice)" },
@@ -151,20 +152,20 @@ export default function InternalAdmin() {
             { value: paidCount, label: "Paid (Shopify)" },
           ].map((stat) => (
             <s-section key={stat.label} padding="400">
-              <s-stack direction="block" gap="100">
+              <VStack gap={100}>
                 <s-text fontWeight="bold" fontSize="heading-lg">{stat.value}</s-text>
                 <s-text color="subdued">{stat.label}</s-text>
-              </s-stack>
+              </VStack>
             </s-section>
           ))}
-        </s-grid>
+        </div>
 
         {/* Stores table */}
         <s-section padding="none" accessibilityLabel="Stores list">
           <s-table>
             {/* Filter tabs */}
             <s-box slot="filters" paddingInline="small" paddingBlock="small-200" borderBlockEnd="base">
-              <s-stack direction="inline" gap="small-200">
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {[
                   { id: "all", label: `All (${stores.length})` },
                   { id: "legacy", label: `Legacy (${legacyCount})` },
@@ -179,7 +180,7 @@ export default function InternalAdmin() {
                     {tab.label}
                   </s-button>
                 ))}
-              </s-stack>
+              </div>
             </s-box>
 
             {/* Search */}
@@ -210,14 +211,14 @@ export default function InternalAdmin() {
                 <s-table-row>
                   <s-table-cell colSpan="6">
                     <s-box padding="800">
-                      <s-stack direction="block" gap="200" alignItems="center">
+                      <VStack gap={200} style={{ alignItems: "center", textAlign: "center" }}>
                         <s-text fontWeight="semibold">
                           {search ? "No stores match your search" : "No stores yet"}
                         </s-text>
                         <s-text color="subdued">
                           {search ? "Try a different search term." : "Stores appear here when merchants install the app."}
                         </s-text>
-                      </s-stack>
+                      </VStack>
                     </s-box>
                   </s-table-cell>
                 </s-table-row>
@@ -225,12 +226,12 @@ export default function InternalAdmin() {
                 filtered.map((store) => (
                   <s-table-row key={store.id}>
                     <s-table-cell>
-                      <s-stack direction="block" gap="extra-small">
+                      <VStack gap={100}>
                         <s-text fontWeight="semibold">{store.storeDomain}</s-text>
                         {store.legacyPrice ? (
                           <s-text color="subdued">${store.legacyPrice}/mo invoice</s-text>
                         ) : null}
-                      </s-stack>
+                      </VStack>
                     </s-table-cell>
                     <s-table-cell>
                       <s-badge tone={TIER_TONE[store.planTier] || "info"}>
@@ -264,7 +265,7 @@ export default function InternalAdmin() {
             </s-table-body>
           </s-table>
         </s-section>
-      </s-stack>
+      </VStack>
 
       {/* Modal */}
       {modalOpen && (
@@ -312,7 +313,7 @@ function StoreModal({ store, onSave, onDelete, onClose, shopify }) {
 
   return (
     <s-modal id="store-modal" heading={isEdit ? `Edit ${store.storeDomain}` : "Add Store"} onHide={onClose}>
-      <s-stack direction="block" gap="400">
+      <VStack gap={400}>
         <s-text-field
           label="Store domain"
           value={domain}
@@ -322,7 +323,7 @@ function StoreModal({ store, onSave, onDelete, onClose, shopify }) {
           details={isEdit ? "" : "The full .myshopify.com domain"}
         />
 
-        <s-grid gridTemplateColumns="1fr 1fr" gap="400">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           <s-select label="Plan tier" value={tier} onChange={(e) => setTier(e.target.value)}>
             <s-option value="free">Free</s-option>
             <s-option value="basic">Basic ($150/mo)</s-option>
@@ -333,9 +334,9 @@ function StoreModal({ store, onSave, onDelete, onClose, shopify }) {
             <s-option value="invoice">External invoice</s-option>
             <s-option value="none">None</s-option>
           </s-select>
-        </s-grid>
+        </div>
 
-        <s-grid gridTemplateColumns="1fr 1fr" gap="400">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           <s-select label="Legacy store" value={legacy} onChange={(e) => setLegacy(e.target.value)}>
             <s-option value="false">No</s-option>
             <s-option value="true">Yes — full features, no Shopify charge</s-option>
@@ -348,7 +349,7 @@ function StoreModal({ store, onSave, onDelete, onClose, shopify }) {
             min="0"
             details="For your records only"
           />
-        </s-grid>
+        </div>
 
         <s-text-field
           label="Internal notes"
@@ -362,17 +363,17 @@ function StoreModal({ store, onSave, onDelete, onClose, shopify }) {
             This store will get Max plan features for free. No Shopify billing prompt will be shown.
           </s-banner>
         )}
-      </s-stack>
+      </VStack>
 
-      <s-button slot="footer-primary" variant="primary" onClick={handleSave}>
+      <s-button slot="primary-action" variant="primary" onClick={handleSave}>
         {isEdit ? "Save changes" : "Add store"}
       </s-button>
       {isEdit && (
-        <s-button slot="footer-secondary" tone="critical" onClick={handleDelete}>
+        <s-button slot="secondary-actions" tone="critical" onClick={handleDelete}>
           Delete store
         </s-button>
       )}
-      <s-button slot="footer-secondary" onClick={() => { shopify.modal.hide("store-modal"); onClose(); }}>
+      <s-button slot="secondary-actions" onClick={() => { shopify.modal.hide("store-modal"); onClose(); }}>
         Cancel
       </s-button>
     </s-modal>

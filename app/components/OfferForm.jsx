@@ -2,6 +2,8 @@ import { useState, forwardRef, useImperativeHandle } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { isFrozenHandle } from "../lib/constants.js";
 import VariantList, { extractVariantData } from "./VariantList.jsx";
+import TargetingSection from "./TargetingSection.jsx";
+import VStack from "./VStack.jsx";
 
 function buildVariantDisplay(ids, dataMap) {
   if (!ids || !dataMap) return [];
@@ -50,8 +52,8 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
   const [barTopMessage, setBarTopMessage] = useState(offer?.bar?.top_message ?? "");
   const [barRibbonMessage, setBarRibbonMessage] = useState(offer?.bar?.ribbon_message ?? "");
   const [barLockedMessage, setBarLockedMessage] = useState(offer?.bar?.locked_message ?? "");
-  const [audience, setAudience] = useState(offer?.audience ?? "all");
-  const [pageHandles, setPageHandles] = useState(offer?.page_handles?.join(", ") ?? "/");
+  const [pageHandles, setPageHandles] = useState(offer?.page_handles?.length ? offer.page_handles : ["/"]);
+  const [pageTargets, setPageTargets] = useState(offer?.page_targets);
   const [errors, setErrors] = useState({});
 
   const isProductSource = sourceType === "product";
@@ -79,9 +81,8 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
   function validate() {
     const errs = {};
     if (!name.trim()) errs.name = "Name is required";
-    const handles = pageHandles.split(",").map((h) => h.trim().replace(/^["']+|["']+$/g, "")).filter(Boolean);
-    if (handles.length === 0) errs.pageHandles = "At least one page required";
-    const frozen = handles.find(isFrozenHandle);
+    if (!Array.isArray(pageHandles) || pageHandles.length === 0) errs.pageHandles = "Select at least one page";
+    const frozen = (pageHandles || []).find(isFrozenHandle);
     if (frozen) errs.pageHandles = `"${frozen}" is a reserved page`;
     if (!isProductSource && rewardType !== "volume_discount" && !triggerValue) errs.trigger = "Threshold value is required";
     if (rewardType === "auto_add_gift" && giftVariants.length === 0) errs.reward = "Select at least one gift variant";
@@ -95,7 +96,6 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
 
   function handleSubmit() {
     if (!validate()) return;
-    const handles = pageHandles.split(",").map((h) => h.trim().replace(/^["']+|["']+$/g, "")).filter(Boolean);
     const carriesFreebie = rewardType === "auto_add_gift" || rewardType === "bundle";
     onSubmit({
       name, enabled,
@@ -120,7 +120,8 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
         ? { type: "volume_discount", discount_mode: discountMode, tiers: volumeTiers.map((t) => ({ quantity: Number(t.quantity), value: Number(t.value), message: t.message || undefined })) }
         : { type: "bundle", bundle_variants: bundleVariants, min_offer_quantity: Number(minOfferQuantity) },
       bar: barShow ? { show: true, label: barLabel, sub_label: barSubLabel || undefined, top_message: barTopMessage || undefined, ribbon_message: barRibbonMessage || undefined, locked_message: barLockedMessage || undefined } : undefined,
-      audience, page_handles: handles,
+      page_handles: pageHandles,
+      page_targets: pageTargets,
     });
   }
 
@@ -130,15 +131,15 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
     <>
       {/* Details */}
       <s-section heading="Offer details">
-        <s-stack direction="block" gap="400">
+        <VStack gap={400}>
           <s-text-field label="Offer name" value={name} onInput={(e) => setName(e.target.value)} error={errors.name || ""} />
           <s-checkbox label="Enabled" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-        </s-stack>
+        </VStack>
       </s-section>
 
       {/* Reward — shown first so the form adapts based on reward type */}
       <s-section heading="Reward">
-        <s-stack direction="block" gap="400">
+        <VStack gap={400}>
           <s-select label="Reward type" value={rewardType} onChange={(e) => setRewardType(e.target.value)}>
             <s-option value="auto_add_gift">Auto-add free gift</s-option>
             <s-option value="bundle">Bundle</s-option>
@@ -151,13 +152,13 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
                 {giftVariants.length > 0 && <span style={{ fontSize: 13, color: "#6d7175" }}>{giftVariants.length} variant(s)</span>}
               </div>
               <VariantList variants={giftVariantDisplay} onRemove={removeGiftVariant} />
-              <s-grid gridTemplateColumns="1fr 1fr" gap="400">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                 <s-number-field label="Quantity per variant" value={String(quantityPerVariant)} onInput={(e) => setQuantityPerVariant(e.target.value)} />
                 <s-select label="Add mode" value={addMode} onChange={(e) => setAddMode(e.target.value)}>
                   <s-option value="auto">Auto add to cart</s-option>
                   <s-option value="display">Show offer card only</s-option>
                 </s-select>
-              </s-grid>
+              </div>
               <s-number-field label="Min offer quantity" value={String(minOfferQuantity)} onInput={(e) => setMinOfferQuantity(e.target.value)} />
             </>
           )}
@@ -217,7 +218,7 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
             </>
           )}
           {errors.reward && <s-banner tone="critical">{errors.reward}</s-banner>}
-        </s-stack>
+        </VStack>
       </s-section>
 
       {/* Discount at checkout — only for offers that ship a gift line item */}
@@ -226,8 +227,8 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
           heading="Discount at checkout"
           description="Applied to the gift line item by an automatic Shopify discount. Activated automatically when this offer is saved."
         >
-          <s-stack direction="block" gap="400">
-            <s-grid gridTemplateColumns="1fr 1fr" gap="400">
+          <VStack gap={400}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
               <s-select label="Discount type" value={discountType} onChange={(e) => setDiscountType(e.target.value)}>
                 <s-option value="percentage">Percentage off</s-option>
                 <s-option value="fixed_amount">Fixed amount off</s-option>
@@ -239,7 +240,7 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
                 onInput={(e) => setDiscountValue(e.target.value)}
                 min="0"
               />
-            </s-grid>
+            </div>
             <s-text-field
               label="Discount message"
               value={discountMessage}
@@ -255,13 +256,13 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
               min="0"
               details="Optional. Leave empty for no cap."
             />
-          </s-stack>
+          </VStack>
         </s-section>
       )}
 
       {/* Source */}
       <s-section heading="Source">
-        <s-stack direction="block" gap="400">
+        <VStack gap={400}>
           <s-select label="What does this offer apply to?" value={sourceType} onChange={(e) => setSourceType(e.target.value)}>
             <s-option value="none">Entire cart (cart total)</s-option>
             <s-option value="product">Specific products</s-option>
@@ -282,13 +283,13 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
               {collectionId && <s-badge tone="success">Collection selected</s-badge>}
             </div>
           )}
-        </s-stack>
+        </VStack>
       </s-section>
 
       {/* Trigger — hidden for product source and volume discount */}
       {!isProductSource && rewardType !== "volume_discount" && (
         <s-section heading="Trigger">
-          <s-stack direction="block" gap="400">
+          <VStack gap={400}>
             <s-select label="Trigger type" value={triggerType} onChange={(e) => setTriggerType(e.target.value)}>
               <s-option value="price">Cart total (price)</s-option>
               <s-option value="quantity">Item count (quantity)</s-option>
@@ -300,14 +301,14 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
               error={errors.trigger || ""}
               min="0"
             />
-          </s-stack>
+          </VStack>
         </s-section>
       )}
 
       {/* Progress Bar */}
       {(!isProductSource || rewardType === "volume_discount") && (
         <s-section heading="Progress bar">
-          <s-stack direction="block" gap="400">
+          <VStack gap={400}>
             <s-checkbox label="Show on progress bar" checked={barShow} onChange={(e) => setBarShow(e.target.checked)} />
             {barShow && rewardType !== "volume_discount" && (
               <>
@@ -320,25 +321,17 @@ export default forwardRef(function OfferForm({ offer, variantDataMap, onSubmit, 
             {barShow && rewardType === "volume_discount" && (
               <s-text color="subdued">Labels and messages are auto-generated from your volume tiers (e.g. "Buy 3 @ 999")</s-text>
             )}
-          </s-stack>
+          </VStack>
         </s-section>
       )}
 
       {/* Targeting */}
-      <s-section heading="Targeting">
-        <s-stack direction="block" gap="400">
-          <s-select label="Who can see this offer?" value={audience} onChange={(e) => setAudience(e.target.value)}>
-            <s-option value="all">Everyone</s-option>
-            <s-option value="signed_in">Signed-in customers</s-option>
-            <s-option value="guest">Guests only</s-option>
-            <s-option value="vip_tag">VIP customers</s-option>
-          </s-select>
-          <s-text-field label="Active on pages" value={pageHandles} onInput={(e) => setPageHandles(e.target.value)} error={errors.pageHandles || ""} details={'Use "/" for all pages, or comma-separated paths like "/collections/sale"'} />
-          {pageHandles.includes("/") && pageHandles.split(",").filter((h) => h.trim() && h.trim() !== "/").length > 0 && (
-            <s-banner tone="warning">&quot;/&quot; is a wildcard — specific handles are redundant when &quot;/&quot; is set</s-banner>
-          )}
-        </s-stack>
-      </s-section>
+      <TargetingSection
+        pageHandles={pageHandles}
+        pageTargets={pageTargets}
+        onChange={({ page_handles, page_targets }) => { setPageHandles(page_handles); setPageTargets(page_targets); }}
+      />
+      {errors.pageHandles && <s-banner tone="critical">{errors.pageHandles}</s-banner>}
     </>
   );
 });

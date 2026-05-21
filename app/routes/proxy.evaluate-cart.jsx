@@ -114,11 +114,11 @@ export const action = async ({ request }) => {
 
   let offerResult, bar, ribbon_message, availableCoupons, claimGifts;
   try {
-    offerResult = evaluateOffers(config.offers || [], cart, adjTotal, adjQty, page, customer);
-    bar = buildBar(config, page, customer, adjTotal, adjQty, moneyFormat);
+    offerResult = evaluateOffers(config.offers || [], cart, adjTotal, adjQty, page);
+    bar = buildBar(config, page, adjTotal, adjQty, moneyFormat);
     ({ ribbon_message } = getRibbonFromBar(bar));
-    availableCoupons = resolveAvailableCoupons(config.coupons || [], cart, page, customer);
-    claimGifts = resolveClaimGifts(config.claim_gifts || [], cart, adjTotal, adjQty, page, customer);
+    availableCoupons = resolveAvailableCoupons(config.coupons || [], cart, page);
+    claimGifts = resolveClaimGifts(config.claim_gifts || [], cart, adjTotal, adjQty, page);
   } catch (err) {
     console.error('[cartx] Evaluate pipeline error:', err);
     return Response.json({ error: "Evaluation failed", message: err.message }, { status: 500 });
@@ -158,7 +158,6 @@ export const action = async ({ request }) => {
       trigger: o.trigger,
       reward: { type: o.reward.type, gift_variants: o.reward.gift_variants, quantity_per_variant: o.reward.quantity_per_variant, add_mode: o.reward.add_mode },
       page_handles: o.page_handles,
-      audience: o.audience,
       bar: o.bar,
     })),
     progress_bar: config.progress_bar,

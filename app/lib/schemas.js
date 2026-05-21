@@ -1,6 +1,12 @@
 import { z } from 'zod'
 
-const AudienceSchema = z.enum(['all', 'signed_in', 'guest', 'vip_tag'])
+// Optional display metadata for page_handles entries, so the targeting UI
+// can show product/collection names instead of raw paths.
+const PageTargetSchema = z.object({
+  handle: z.string().min(1), // matches a value in page_handles
+  label: z.string().min(1),
+  kind: z.enum(['page', 'product', 'collection']).optional(),
+})
 
 const BarSchema = z.object({
   show: z.boolean(),
@@ -67,8 +73,8 @@ export const OfferSchema = z.object({
     }),
   ]),
   bar: BarSchema.optional(),
-  audience: AudienceSchema,
   page_handles: z.array(z.string()).min(1),
+  page_targets: z.array(PageTargetSchema).optional(),
 }).passthrough()
 
 export const CouponSchema = z.object({
@@ -80,8 +86,8 @@ export const CouponSchema = z.object({
   title: z.string().min(1),
   is_automatic: z.boolean().optional(),
   display_message: z.string().optional(),
-  audience: AudienceSchema,
   page_handles: z.array(z.string()).min(1),
+  page_targets: z.array(PageTargetSchema).optional(),
 }).passthrough()
 
 export const ClaimGiftSchema = z.object({
@@ -100,8 +106,8 @@ export const ClaimGiftSchema = z.object({
   })).optional(),
   max_claims: z.number().int().min(1).optional(),
   section_heading: z.string().min(1),
-  audience: AudienceSchema,
   page_handles: z.array(z.string()).min(1),
+  page_targets: z.array(PageTargetSchema).optional(),
   bar: BarSchema.optional(),
 }).passthrough()
 
@@ -116,7 +122,7 @@ export const VisualMilestoneSchema = z.object({
   sub_label: z.string().optional(),
   icon_url: z.string().optional(),
   page_handles: z.array(z.string()).min(1),
-  audience: AudienceSchema,
+  page_targets: z.array(PageTargetSchema).optional(),
 })
 
 export const UpsellProductSchema = z.object({

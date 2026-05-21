@@ -167,16 +167,56 @@ export function ThemeSwitcher({ themes, activeThemeId, mainThemeId }) {
 
   return (
     <div style={{ position: "relative" }} ref={ref}>
-      <s-button
+      <button
+        type="button"
         onClick={() => { if (!busy) { setOpen(!open); setShowCopy(false); } }}
-        {...(busy ? { loading: true, disabled: true } : {})}
-        accessibilityLabel={`Theme: ${activeTheme?.name || "Default"}`}
+        disabled={busy}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Theme: ${activeTheme?.name || "Default"}`}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "6px 10px 6px 12px",
+          borderRadius: 999,
+          border: "1px solid var(--s-color-border, #e3e3e3)",
+          background: open ? "var(--s-color-bg-surface-secondary, #f6f6f7)" : "var(--s-color-bg-surface, #ffffff)",
+          color: "var(--s-color-text, #1a1a1a)",
+          fontSize: 13,
+          fontWeight: 500,
+          cursor: busy ? "default" : "pointer",
+          opacity: busy ? 0.6 : 1,
+          transition: "background 0.12s ease, border-color 0.12s ease",
+        }}
+        onMouseOver={(e) => { if (!busy && !open) e.currentTarget.style.background = "var(--s-color-bg-surface-secondary, #f6f6f7)"; }}
+        onMouseOut={(e) => { if (!busy && !open) e.currentTarget.style.background = "var(--s-color-bg-surface, #ffffff)"; }}
       >
-        Theme
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="3" />
+          <path d="M3 9h18M9 21V9" />
+        </svg>
+        <span style={{ color: "var(--s-color-text-secondary, #6d7175)" }}>Theme</span>
+        <span style={{ fontWeight: 600 }}>{activeTheme?.name || "Default"}</span>
         {!isMain && !busy && (
-          <s-badge tone="warning" style={{ marginLeft: 4 }}>Draft</s-badge>
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              lineHeight: 1,
+              padding: "3px 7px",
+              borderRadius: 999,
+              background: "#fff4d6",
+              color: "#7a5a00",
+            }}
+          >
+            Draft
+          </span>
         )}
-      </s-button>
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M3 4.5l3 3 3-3" />
+        </svg>
+      </button>
 
       {open && (
         <div

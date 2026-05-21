@@ -1,6 +1,8 @@
 import { useState, useCallback, forwardRef, useImperativeHandle } from "react";
 import { useFetcher } from "react-router";
 import { isFrozenHandle } from "../lib/constants.js";
+import TargetingSection from "./TargetingSection.jsx";
+import VStack from "./VStack.jsx";
 
 export default forwardRef(function CouponForm({ coupon, onSubmit, submitting }, ref) {
   const [shopifyDiscountId, setShopifyDiscountId] = useState(coupon?.shopify_discount_id ?? "");
@@ -10,8 +12,8 @@ export default forwardRef(function CouponForm({ coupon, onSubmit, submitting }, 
   const [isAutomatic, setIsAutomatic] = useState(coupon?.is_automatic ?? false);
   const [enabled, setEnabled] = useState(coupon?.enabled ?? true);
   const [displayMessage, setDisplayMessage] = useState(coupon?.display_message ?? "");
-  const [audience, setAudience] = useState(coupon?.audience ?? "all");
-  const [pageHandles, setPageHandles] = useState(coupon?.page_handles?.join(", ") ?? "/");
+  const [pageHandles, setPageHandles] = useState(coupon?.page_handles?.length ? coupon.page_handles : ["/"]);
+  const [pageTargets, setPageTargets] = useState(coupon?.page_targets);
   const [errors, setErrors] = useState({});
   const [pickerOpen, setPickerOpen] = useState(false);
   const discountFetcher = useFetcher();
@@ -34,9 +36,8 @@ export default forwardRef(function CouponForm({ coupon, onSubmit, submitting }, 
   function validate() {
     const errs = {};
     if (!title.trim() && !code.trim()) errs.code = "Select a discount first";
-    const handles = pageHandles.split(",").map((h) => h.trim()).filter(Boolean);
-    if (handles.length === 0) errs.pageHandles = "At least one page required";
-    const frozen = handles.find(isFrozenHandle);
+    if (!Array.isArray(pageHandles) || pageHandles.length === 0) errs.pageHandles = "Select at least one page";
+    const frozen = (pageHandles || []).find(isFrozenHandle);
     if (frozen) errs.pageHandles = `"${frozen}" is a reserved page`;
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -44,11 +45,10 @@ export default forwardRef(function CouponForm({ coupon, onSubmit, submitting }, 
 
   function handleSubmit() {
     if (!validate()) return;
-    const handles = pageHandles.split(",").map((h) => h.trim()).filter(Boolean);
     onSubmit({
       shopify_discount_id: shopifyDiscountId, code: code.trim(), type_label: typeLabel,
       title, is_automatic: isAutomatic, enabled, display_message: displayMessage || undefined,
-      audience, page_handles: handles,
+      page_handles: pageHandles, page_targets: pageTargets,
     });
   }
 
@@ -58,7 +58,7 @@ export default forwardRef(function CouponForm({ coupon, onSubmit, submitting }, 
     <>
       {/* Shopify Discount */}
       <s-section heading="Shopify Discount">
-        <s-stack direction="block" gap="400">
+        <VStack gap={400}>
           {hasDiscount && !pickerOpen ? (
             <>
               <s-box padding="400" border="base" borderRadius="200" background="bg-surface-secondary">
@@ -108,29 +108,24 @@ export default forwardRef(function CouponForm({ coupon, onSubmit, submitting }, 
               <s-button variant="tertiary" onClick={() => setPickerOpen(false)}>Cancel</s-button>
             </>
           )}
-        </s-stack>
+        </VStack>
       </s-section>
 
       {/* Display Settings */}
       <s-section heading="Display settings">
-        <s-stack direction="block" gap="400">
+        <VStack gap={400}>
           <s-text-field label="Custom message" value={displayMessage} onInput={(e) => setDisplayMessage(e.target.value)} placeholder="Use this code for 20% off your order!" details="Shown on the coupon card in the cart drawer" />
           <s-checkbox label="Enabled" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-        </s-stack>
+        </VStack>
       </s-section>
 
       {/* Targeting */}
-      <s-section heading="Targeting">
-        <s-stack direction="block" gap="400">
-          <s-select label="Who can see this coupon?" value={audience} onChange={(e) => setAudience(e.target.value)}>
-            <s-option value="all">Everyone</s-option>
-            <s-option value="signed_in">Signed-in customers</s-option>
-            <s-option value="guest">Guests only</s-option>
-            <s-option value="vip_tag">VIP customers</s-option>
-          </s-select>
-          <s-text-field label="Show on pages" value={pageHandles} onInput={(e) => setPageHandles(e.target.value)} details="Controls where the coupon card appears in the cart drawer" error={errors.pageHandles || ""} />
-        </s-stack>
-      </s-section>
+      <TargetingSection
+        pageHandles={pageHandles}
+        pageTargets={pageTargets}
+        onChange={({ page_handles, page_targets }) => { setPageHandles(page_handles); setPageTargets(page_targets); }}
+      />
+      {errors.pageHandles && <s-banner tone="critical">{errors.pageHandles}</s-banner>}
     </>
   );
 });

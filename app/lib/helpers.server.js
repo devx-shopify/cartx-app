@@ -56,21 +56,6 @@ export function getActiveEntries(currentPath, allEntries) {
   return allEntries.filter((e) => e.page_handles.includes('/'))
 }
 
-export function audienceFilter(entry, customer) {
-  switch (entry.audience) {
-    case 'all':
-      return true
-    case 'signed_in':
-      return !!customer
-    case 'guest':
-      return !customer
-    case 'vip_tag':
-      return customer?.tags?.includes('VIP') ?? false
-    default:
-      return true
-  }
-}
-
 export function isFrozenPage(path) {
   const clean = path.split('?')[0]
   if (FROZEN_PAGES.includes(clean)) return true

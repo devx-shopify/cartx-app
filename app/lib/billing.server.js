@@ -2,6 +2,8 @@ import db from "../db.server.js";
 
 // ── Plan Definitions ─────────────────────────────────────
 
+// Annual prices = monthly × 12 × 0.8 (20% discount).
+// Amounts are sent to Shopify as USD decimals.
 export const PLANS = {
   free: {
     name: "Free",
@@ -14,7 +16,7 @@ export const PLANS = {
   basic: {
     name: "Basic",
     amount: 150.0,
-    interval: "EVERY_30_DAYS",
+    amountAnnual: 1440.0, // 150 × 12 × 0.8
     trialDays: 7,
     features: {
       discount_function: true,
@@ -24,7 +26,7 @@ export const PLANS = {
   max: {
     name: "Max",
     amount: 200.0,
-    interval: "EVERY_30_DAYS",
+    amountAnnual: 1920.0, // 200 × 12 × 0.8
     trialDays: 7,
     features: {
       discount_function: true,
@@ -32,6 +34,15 @@ export const PLANS = {
     },
   },
 };
+
+const INTERVAL_BY_CYCLE = {
+  monthly: "EVERY_30_DAYS",
+  annual: "ANNUAL",
+};
+
+function amountForCycle(plan, cycle) {
+  return cycle === "annual" ? plan.amountAnnual : plan.amount;
+}
 
 // Legacy stores get max features at no charge
 const LEGACY_PLAN = {
@@ -102,30 +113,36 @@ export async function getActivePlan(admin, shopDomain) {
   );
 
   if (!active) {
-    return { plan: "free", isLegacy: false, ...PLANS.free };
+    return { plan: "free", isLegacy: false, billingCycle: "monthly", ...PLANS.free };
   }
 
-  const amount = parseFloat(
-    active.lineItems?.[0]?.plan?.pricingDetails?.price?.amount ?? "0"
-  );
+  const pricing = active.lineItems?.[0]?.plan?.pricingDetails;
+  const amount = parseFloat(pricing?.price?.amount ?? "0");
+  const billingCycle = pricing?.interval === "ANNUAL" ? "annual" : "monthly";
 
-  if (amount >= PLANS.max.amount) {
-    return { plan: "max", subscriptionId: active.id, isLegacy: false, ...PLANS.max };
+  const maxThreshold = amountForCycle(PLANS.max, billingCycle);
+  const basicThreshold = amountForCycle(PLANS.basic, billingCycle);
+
+  if (amount >= maxThreshold) {
+    return { plan: "max", subscriptionId: active.id, isLegacy: false, billingCycle, ...PLANS.max };
   }
-  if (amount >= PLANS.basic.amount) {
-    return { plan: "basic", subscriptionId: active.id, isLegacy: false, ...PLANS.basic };
+  if (amount >= basicThreshold) {
+    return { plan: "basic", subscriptionId: active.id, isLegacy: false, billingCycle, ...PLANS.basic };
   }
 
-  return { plan: "free", isLegacy: false, ...PLANS.free };
+  return { plan: "free", isLegacy: false, billingCycle: "monthly", ...PLANS.free };
 }
 
 // ── Create Subscription ──────────────────────────────────
 
-export async function createSubscription(admin, planKey, returnUrl) {
+export async function createSubscription(admin, planKey, returnUrl, billingCycle = "monthly") {
   const plan = PLANS[planKey];
   if (!plan || plan.amount === 0) {
     throw new Error("Cannot create subscription for free plan");
   }
+  const cycle = billingCycle === "annual" ? "annual" : "monthly";
+  const amount = amountForCycle(plan, cycle);
+  const interval = INTERVAL_BY_CYCLE[cycle];
 
   const res = await admin.graphql(
     `#graphql
@@ -150,11 +167,11 @@ export async function createSubscription(admin, planKey, returnUrl) {
     }`,
     {
       variables: {
-        name: `cartx ${plan.name}`,
+        name: `cartx ${plan.name} (${cycle === "annual" ? "Annual" : "Monthly"})`,
         returnUrl,
         trialDays: plan.trialDays,
-        amount: plan.amount,
-        interval: plan.interval,
+        amount,
+        interval,
       },
     }
   );

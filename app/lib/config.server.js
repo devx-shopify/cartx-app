@@ -79,8 +79,29 @@ export async function loadConfig(shopId, themeId) {
     ? deepMerge(DEFAULT_CONFIG, JSON.parse(record.config))
     : { ...DEFAULT_CONFIG }
 
+  stripLegacyTargetingFields(config)
+
   setCache(shopId, normalizedThemeId, config)
   return structuredClone(config)
+}
+
+// Drop legacy `audience` enum and short-lived `eligibility` discriminated
+// union from saved entries — targeting is now driven by page_handles alone.
+function stripLegacyTargetingFields(config) {
+  const collections = [
+    config.offers,
+    config.coupons,
+    config.claim_gifts,
+    config.progress_bar?.visual_milestones,
+  ]
+  for (const list of collections) {
+    if (!Array.isArray(list)) continue
+    for (const entry of list) {
+      if (!entry) continue
+      if (entry.audience !== undefined) delete entry.audience
+      if (entry.eligibility !== undefined) delete entry.eligibility
+    }
+  }
 }
 
 export async function saveConfig(shopId, themeId, config) {

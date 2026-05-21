@@ -103,21 +103,15 @@ export const action = async ({ request }) => {
     cart,
     adjTotal,
     adjQty,
-    page,
-    customer
+    page
   )
 
   // 8. Build bar
-  const bar = buildBar(config, page, customer, adjTotal, adjQty)
+  const bar = buildBar(config, page, adjTotal, adjQty)
   const { ribbon_message, ribbon_code } = getRibbonFromBar(bar)
 
   // 9. Coupons
-  const availableCoupons = resolveAvailableCoupons(
-    config.coupons,
-    cart,
-    page,
-    customer
-  )
+  const availableCoupons = resolveAvailableCoupons(config.coupons, cart, page)
   const appliedCoupons = availableCoupons.filter((c) => c.applied)
   const totalSavings = computeTotalSavings(cart)
 
@@ -127,8 +121,7 @@ export const action = async ({ request }) => {
     cart,
     adjTotal,
     adjQty,
-    page,
-    customer
+    page
   )
 
   // 11. Remove claimed items whose threshold is no longer met

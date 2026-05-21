@@ -9,6 +9,7 @@ import {
   cancelSubscription,
   PLANS,
 } from "../lib/billing.server.js";
+import VStack from "../components/VStack.jsx";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -31,10 +32,11 @@ export const action = async ({ request }) => {
     if (!PLANS[planKey] || PLANS[planKey].amount === 0) {
       return { ok: false, error: "Invalid plan" };
     }
+    const billingCycle = body.billing_cycle === "annual" ? "annual" : "monthly";
     const storeName = session.shop.replace(".myshopify.com", "");
     // eslint-disable-next-line no-undef
     const returnUrl = `https://admin.shopify.com/store/${storeName}/apps/${process.env.SHOPIFY_API_KEY}/app/billing`;
-    const confirmationUrl = await createSubscription(admin, planKey, returnUrl);
+    const confirmationUrl = await createSubscription(admin, planKey, returnUrl, billingCycle);
     return { ok: true, confirmationUrl };
   }
 
@@ -54,12 +56,13 @@ export const action = async ({ request }) => {
 
 // Client-safe plan display data
 const CLIENT_PLANS = {
-  free: { name: "Free", amount: 0, trialDays: 0 },
-  basic: { name: "Basic", amount: 150, trialDays: 7 },
-  max: { name: "Max", amount: 200, trialDays: 7 },
+  free: { name: "Free", amount: 0, amountAnnual: 0, trialDays: 0 },
+  basic: { name: "Basic", amount: 150, amountAnnual: 1440, trialDays: 7 },
+  max: { name: "Max", amount: 200, amountAnnual: 1920, trialDays: 7 },
 };
 
 const PLAN_ORDER = ["free", "basic", "max"];
+const ANNUAL_DISCOUNT_PCT = 20;
 
 const FEATURE_LIST = [
   { key: "drawer", label: "Cart drawer (progress bar, upsells, coupons)" },
@@ -91,6 +94,10 @@ export default function BillingPage() {
   const [activePlanAction, setActivePlanAction] = useState(null);
   const submitting = fetcher.state !== "idle";
   const currentPlan = planData.plan;
+  const currentCycle = planData.billingCycle ?? "monthly";
+  // Default the toggle to the cycle the merchant is already on, so it's
+  // immediately obvious what they're paying for.
+  const [billingCycle, setBillingCycle] = useState(currentCycle);
 
   useEffect(() => {
     if (!submitting) setActivePlanAction(null);
@@ -98,10 +105,10 @@ export default function BillingPage() {
 
   function handleSubscribe(planKey) {
     setActivePlanAction(planKey);
-    fetcher.submit(JSON.stringify({ _action: "subscribe", plan: planKey }), {
-      method: "POST",
-      encType: "application/json",
-    });
+    fetcher.submit(
+      JSON.stringify({ _action: "subscribe", plan: planKey, billing_cycle: billingCycle }),
+      { method: "POST", encType: "application/json" },
+    );
   }
 
   function handleCancel() {
@@ -118,13 +125,13 @@ export default function BillingPage() {
       <s-page heading="Plans & Billing" backAction={{ url: "/app" }}>
         <div style={{ maxWidth: 600, margin: "0 auto" }}>
           <s-section>
-            <s-stack direction="block" gap="400" alignItems="center">
+            <VStack gap={400} style={{ alignItems: "center", textAlign: "center" }}>
               <s-badge tone="success">Max Plan</s-badge>
               <s-text fontWeight="bold">Your plan is managed externally</s-text>
               <s-paragraph color="subdued">
                 You have full access to all cartx features. Your billing is handled outside of Shopify. If you have questions about your plan, please contact our team.
               </s-paragraph>
-            </s-stack>
+            </VStack>
           </s-section>
         </div>
       </s-page>
@@ -136,10 +143,16 @@ export default function BillingPage() {
   return (
     <s-page heading="Plans & Billing" backAction={{ url: "/app" }}>
       <div style={{ maxWidth: 960, margin: "0 auto" }}>
-        <s-stack direction="block" gap="600">
+        <VStack gap={600}>
           <s-banner tone="info">
-            {`You are currently on the `}<strong>{CLIENT_PLANS[currentPlan]?.name || "Free"}</strong>{` plan.${currentPlan === "free" ? " Upgrade to unlock discount functions and more." : ""}`}
+            {`You are currently on the `}<strong>{CLIENT_PLANS[currentPlan]?.name || "Free"}</strong>{` plan`}
+            {currentPlan !== "free" && currentCycle === "annual" ? ", billed annually" : ""}
+            {`.${currentPlan === "free" ? " Upgrade to unlock discount functions and more." : ""}`}
           </s-banner>
+
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <BillingCycleToggle value={billingCycle} onChange={setBillingCycle} />
+          </div>
 
           <div
             style={{
@@ -211,6 +224,13 @@ export default function BillingPage() {
                     <div style={{ marginBottom: 4 }}>
                       {plan.amount === 0 ? (
                         <span style={{ fontSize: 32, fontWeight: 700, color: "#1a1a1a" }}>$0</span>
+                      ) : billingCycle === "annual" ? (
+                        <>
+                          <span style={{ fontSize: 32, fontWeight: 700, color: "#1a1a1a" }}>
+                            ${(plan.amountAnnual / 12).toFixed(0)}
+                          </span>
+                          <span style={{ fontSize: 14, color: "#6d7175", marginLeft: 2 }}>/mo</span>
+                        </>
                       ) : (
                         <>
                           <span style={{ fontSize: 32, fontWeight: 700, color: "#1a1a1a" }}>${plan.amount}</span>
@@ -220,11 +240,13 @@ export default function BillingPage() {
                     </div>
 
                     <div style={{ fontSize: 13, color: "#6d7175", marginBottom: 20, minHeight: 20 }}>
-                      {plan.trialDays > 0 ? (
-                        <span style={{ color: "#2c6ecb", fontWeight: 500 }}>{plan.trialDays}-day free trial</span>
-                      ) : (
+                      {plan.amount === 0 ? (
                         "Free forever"
-                      )}
+                      ) : billingCycle === "annual" ? (
+                        <span>Billed annually as <strong style={{ color: "#1a1a1a" }}>${plan.amountAnnual}</strong></span>
+                      ) : plan.trialDays > 0 ? (
+                        <span style={{ color: "#2c6ecb", fontWeight: 500 }}>{plan.trialDays}-day free trial</span>
+                      ) : null}
                     </div>
 
                     <div style={{ borderTop: "1px solid #e3e3e3", margin: "0 0 16px" }} />
@@ -252,14 +274,25 @@ export default function BillingPage() {
                     <div style={{ marginTop: "auto", paddingTop: 24 }}>
                       {isCurrent ? (
                         currentPlan !== "free" ? (
-                          <s-button
-                            tone="critical"
-                            onClick={handleCancel}
-                            fullWidth
-                            {...(activePlanAction === "free" ? { loading: true, disabled: true } : submitting ? { disabled: true } : {})}
-                          >
-                            Cancel subscription
-                          </s-button>
+                          billingCycle !== currentCycle ? (
+                            <s-button
+                              variant="primary"
+                              onClick={() => handleSubscribe(planKey)}
+                              fullWidth
+                              {...(activePlanAction === planKey ? { loading: true, disabled: true } : submitting ? { disabled: true } : {})}
+                            >
+                              Switch to {billingCycle === "annual" ? "annual" : "monthly"} billing
+                            </s-button>
+                          ) : (
+                            <s-button
+                              tone="critical"
+                              onClick={handleCancel}
+                              fullWidth
+                              {...(activePlanAction === "free" ? { loading: true, disabled: true } : submitting ? { disabled: true } : {})}
+                            >
+                              Cancel subscription
+                            </s-button>
+                          )
                         ) : (
                           <s-button disabled fullWidth>Current plan</s-button>
                         )
@@ -297,9 +330,73 @@ export default function BillingPage() {
               );
             })}
           </div>
-        </s-stack>
+        </VStack>
       </div>
     </s-page>
+  );
+}
+
+function BillingCycleToggle({ value, onChange }) {
+  const options = [
+    { id: "monthly", label: "Monthly" },
+    { id: "annual", label: "Yearly" },
+  ];
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
+      <div
+        role="tablist"
+        aria-label="Billing cycle"
+        style={{
+          display: "inline-flex",
+          padding: 4,
+          background: "#e4e5e7",
+          borderRadius: 999,
+          border: "1px solid #d4d6d8",
+        }}
+      >
+        {options.map((opt) => {
+          const isActive = value === opt.id;
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => onChange(opt.id)}
+              style={{
+                minWidth: 110,
+                padding: "8px 20px",
+                borderRadius: 999,
+                border: "none",
+                background: isActive ? "#fff" : "transparent",
+                color: isActive ? "#1a1a1a" : "#5c5f62",
+                fontSize: 13,
+                fontWeight: isActive ? 600 : 500,
+                cursor: "pointer",
+                boxShadow: isActive ? "0 1px 3px rgba(0,0,0,0.12)" : "none",
+                transition: "background 0.12s ease, color 0.12s ease",
+              }}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+      <span
+        style={{
+          fontSize: 12,
+          fontWeight: 600,
+          lineHeight: 1,
+          padding: "5px 9px",
+          borderRadius: 999,
+          background: "#daf3e1",
+          color: "#0a6b2a",
+          whiteSpace: "nowrap",
+        }}
+      >
+        Save {ANNUAL_DISCOUNT_PCT}% with yearly
+      </span>
+    </div>
   );
 }
 
