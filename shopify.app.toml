@@ -6,7 +6,12 @@ application_url = "https://cartx.fly.dev"
 embedded = true
 
 [build]
-automatically_update_urls_on_dev = false
+# When true, `shopify app dev` overwrites the URLs below with the ngrok
+# tunnel on every dev session. You MUST reset URLs to https://cartx.fly.dev
+# before running `npm run deploy` (Shopify CLI). The GitHub Actions Fly
+# deploy ignores this file, so committing dev URLs won't break Fly itself
+# — only Partner Dashboard routing.
+automatically_update_urls_on_dev = true
 
 [webhooks]
 api_version = "2026-07"
