@@ -9,37 +9,37 @@ generator client {
 // enough when changing adapters.
 // See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
-  provider = "sqlite"
-  url      = "file:dev.sqlite"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Session {
-  id            String    @id
-  shop          String
-  state         String
-  isOnline      Boolean   @default(false)
-  scope         String?
-  expires       DateTime?
-  accessToken   String
-  userId        BigInt?
-  firstName     String?
-  lastName      String?
-  email         String?
-  accountOwner  Boolean   @default(false)
-  locale        String?
-  collaborator  Boolean?  @default(false)
-  emailVerified Boolean?  @default(false)
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
 
 model Store {
   id            String   @id @default(cuid())
-  storeDomain   String   @unique           // e.g. brand-a.myshopify.com
-  planTier      String   @default("free")  // free, basic, max
+  storeDomain   String   @unique // e.g. brand-a.myshopify.com
+  planTier      String   @default("free") // free, basic, max
   billingMethod String   @default("shopify") // shopify, invoice, none
   isLegacy      Boolean  @default(false)
-  legacyPrice   Int?                        // cents, for internal records
+  legacyPrice   Int? // cents, for internal records
   notes         String?
   onboarding    String   @default("{\"completed\":false,\"steps\":{\"offer_created\":false,\"settings_configured\":false,\"previewed\":false}}")
   createdAt     DateTime @default(now())

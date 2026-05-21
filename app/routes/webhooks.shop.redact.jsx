@@ -6,9 +6,9 @@ export const action = async ({ request }) => {
 
   console.log(`Received ${topic} webhook for ${shop}`);
 
-  // Delete all data for this shop
   await db.session.deleteMany({ where: { shop } });
   await db.themeConfig.deleteMany({ where: { shopId: shop } });
+  await db.store.deleteMany({ where: { storeDomain: shop } });
 
   return new Response();
 };

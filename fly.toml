@@ -1,0 +1,27 @@
+# Fly.io configuration for cartx
+# Update `app` to your chosen Fly app name before first deploy.
+# Or run `fly launch --copy-config` to let Fly generate this interactively.
+
+app = "cartx"
+primary_region = "bom"  # Mumbai — close to India merchants
+
+[build]
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "off"   # keep warm to avoid Shopify embed load delays
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[deploy]
+  release_command = "npx prisma migrate deploy"
