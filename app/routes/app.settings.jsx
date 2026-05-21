@@ -379,24 +379,6 @@ export default function Settings() {
     else el.hide();
   }, [dirty]);
 
-  // Save bar button listeners (stable refs to latest handlers)
-  const handleSaveRef = useRef(handleSave);
-  const handleDiscardRef = useRef(handleDiscard);
-  handleSaveRef.current = handleSave;
-  handleDiscardRef.current = handleDiscard;
-  useEffect(() => {
-    const saveBtn = document.getElementById("settings-save");
-    const discardBtn = document.getElementById("settings-discard");
-    function onSave() { handleSaveRef.current?.(); }
-    function onDiscard() { handleDiscardRef.current?.(); }
-    saveBtn?.addEventListener("click", onSave);
-    discardBtn?.addEventListener("click", onDiscard);
-    return () => {
-      saveBtn?.removeEventListener("click", onSave);
-      discardBtn?.removeEventListener("click", onDiscard);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   async function pickProducts() {
     const selection = await shopify.resourcePicker({ type: "product", multiple: true, action: "select" });
@@ -469,8 +451,8 @@ export default function Settings() {
   return (
     <>
       <ui-save-bar id="settings-save-bar">
-        <button variant="primary" id="settings-save" {...(submitting ? { disabled: true } : {})}></button>
-        <button id="settings-discard"></button>
+        <button variant="primary" id="settings-save" onClick={handleSave} {...(submitting ? { disabled: true } : {})}></button>
+        <button id="settings-discard" onClick={handleDiscard}></button>
       </ui-save-bar>
 
       <s-page heading="Settings">

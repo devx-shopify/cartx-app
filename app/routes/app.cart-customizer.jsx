@@ -195,27 +195,17 @@ export default function CartCustomizer() {
     else el.hide();
   }, [dirty]);
 
-  useEffect(() => {
-    const saveBtn = document.getElementById("customizer-save");
-    const discardBtn = document.getElementById("customizer-discard");
-    function onSave() {
-      fetcher.submit(
-        JSON.stringify({ _action: "save_drawer", drawer: settingsRef.current }),
-        { method: "POST", encType: "application/json" }
-      );
-      setDirty(false);
-    }
-    function onDiscard() {
-      setSettings(initialRef.current);
-      setDirty(false);
-    }
-    saveBtn?.addEventListener("click", onSave);
-    discardBtn?.addEventListener("click", onDiscard);
-    return () => {
-      saveBtn?.removeEventListener("click", onSave);
-      discardBtn?.removeEventListener("click", onDiscard);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const handleSave = useCallback(() => {
+    fetcher.submit(
+      JSON.stringify({ _action: "save_drawer", drawer: settingsRef.current }),
+      { method: "POST", encType: "application/json" }
+    );
+    setDirty(false);
+  }, [fetcher]);
+
+  const handleDiscard = useCallback(() => {
+    setSettings(initialRef.current);
+    setDirty(false);
   }, []);
 
   // ── Toast + reset response ──────────────────────
@@ -243,8 +233,8 @@ export default function CartCustomizer() {
   return (
     <>
       <ui-save-bar id="customizer-save-bar">
-        <button variant="primary" id="customizer-save" {...(saving ? { disabled: true } : {})}></button>
-        <button id="customizer-discard"></button>
+        <button variant="primary" id="customizer-save" onClick={handleSave} {...(saving ? { disabled: true } : {})}></button>
+        <button id="customizer-discard" onClick={handleDiscard}></button>
       </ui-save-bar>
 
       <s-page heading="Customize Cart">

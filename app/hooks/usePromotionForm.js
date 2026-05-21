@@ -29,18 +29,6 @@ export function usePromotionForm({ type, successLabels, saveBarId = "promotion-s
     return () => saveBar?.hide();
   }, [saveBarId]);
 
-  // Wire up save bar button events
-  useEffect(() => {
-    const saveBtn = document.getElementById("save-action");
-    const discardBtn = document.getElementById("discard-action");
-    saveBtn?.addEventListener("click", handleSave);
-    discardBtn?.addEventListener("click", handleDiscard);
-    return () => {
-      saveBtn?.removeEventListener("click", handleSave);
-      discardBtn?.removeEventListener("click", handleDiscard);
-    };
-  }, [handleSave, handleDiscard]);
-
   // Sync loading state to save button
   useEffect(() => {
     const saveBtn = document.getElementById("save-action");
@@ -67,5 +55,5 @@ export function usePromotionForm({ type, successLabels, saveBarId = "promotion-s
     fetcher.submit(JSON.stringify({ ...data, _type: type }), { method: "POST", encType: "application/json" });
   }
 
-  return { formRef, submitting, handleSubmit };
+  return { formRef, submitting, handleSubmit, handleSave, handleDiscard };
 }

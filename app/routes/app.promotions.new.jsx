@@ -86,13 +86,13 @@ const SUCCESS_LABELS = {
 export default function NewPromotion() {
   const [searchParams, setSearchParams] = useSearchParams();
   const type = searchParams.get("type") || "offer";
-  const { formRef, submitting, handleSubmit } = usePromotionForm({ type, successLabels: SUCCESS_LABELS });
+  const { formRef, submitting, handleSubmit, handleSave, handleDiscard } = usePromotionForm({ type, successLabels: SUCCESS_LABELS });
 
   return (
     <s-page heading={TYPE_LABELS[type] || "Create promotion"} backAction={{ url: "/app/promotions" }}>
       <ui-save-bar id="promotion-save-bar">
-        <button variant="primary" id="save-action"></button>
-        <button id="discard-action"></button>
+        <button variant="primary" id="save-action" onClick={handleSave}></button>
+        <button id="discard-action" onClick={handleDiscard}></button>
       </ui-save-bar>
 
       <div style={{ maxWidth: 760, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
