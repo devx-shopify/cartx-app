@@ -5,6 +5,7 @@ const ALL_STEPS = ["offer_created", "settings_configured", "app_enabled", "previ
 const DEFAULT_ONBOARDING = {
   completed: false,
   steps: Object.fromEntries(ALL_STEPS.map((s) => [s, false])),
+  selectedThemeId: null,
 };
 
 export async function getOnboarding(shopDomain) {
@@ -16,10 +17,27 @@ export async function getOnboarding(shopDomain) {
     for (const key of ALL_STEPS) {
       if (parsed.steps[key] === undefined) parsed.steps[key] = false;
     }
+    if (parsed.selectedThemeId === undefined) parsed.selectedThemeId = null;
     return parsed;
   } catch {
     return DEFAULT_ONBOARDING;
   }
+}
+
+export async function setOnboardingTheme(shopDomain, themeId) {
+  const onboarding = await getOnboarding(shopDomain);
+  onboarding.selectedThemeId = themeId;
+  if (!onboarding.steps.app_enabled) {
+    onboarding.steps.app_enabled = true;
+    if (ALL_STEPS.every((k) => onboarding.steps[k])) {
+      onboarding.completed = true;
+    }
+  }
+  await db.store.update({
+    where: { storeDomain: shopDomain },
+    data: { onboarding: JSON.stringify(onboarding) },
+  });
+  return onboarding;
 }
 
 export async function markStep(shopDomain, stepKey) {

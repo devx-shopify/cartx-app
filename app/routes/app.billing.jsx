@@ -6,6 +6,7 @@ import { authenticate } from "../shopify.server";
 import {
   getActivePlan,
   createSubscription,
+  createEnterpriseSubscription,
   cancelSubscription,
   PLANS,
 } from "../lib/billing.server.js";
@@ -21,10 +22,24 @@ export const action = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const body = await request.json();
 
-  // Legacy stores cannot modify billing
   const planData = await getActivePlan(admin, session.shop);
+
+  const storeName = session.shop.replace(".myshopify.com", "");
+  // eslint-disable-next-line no-undef
+  const returnUrl = `https://admin.shopify.com/store/${storeName}/apps/${process.env.SHOPIFY_API_KEY}/app/billing`;
+
+  // Enterprise approval — merchant accepts admin-set custom price
+  if (body._action === "approve_enterprise") {
+    if (!planData.isEnterprise || !planData.quotedPrice || planData.quotedPrice <= 0) {
+      return { ok: false, error: "No enterprise quote to approve" };
+    }
+    const confirmationUrl = await createEnterpriseSubscription(admin, returnUrl, planData.quotedPrice);
+    return { ok: true, confirmationUrl };
+  }
+
+  // Enterprise (free or already approved) cannot self-manage standard billing
   if (planData.isLegacy) {
-    return { ok: false, error: "Your plan is managed externally" };
+    return { ok: false, error: "Your plan is managed by the cartx team" };
   }
 
   if (body._action === "subscribe") {
@@ -33,9 +48,6 @@ export const action = async ({ request }) => {
       return { ok: false, error: "Invalid plan" };
     }
     const billingCycle = body.billing_cycle === "annual" ? "annual" : "monthly";
-    const storeName = session.shop.replace(".myshopify.com", "");
-    // eslint-disable-next-line no-undef
-    const returnUrl = `https://admin.shopify.com/store/${storeName}/apps/${process.env.SHOPIFY_API_KEY}/app/billing`;
     const confirmationUrl = await createSubscription(admin, planKey, returnUrl, billingCycle);
     return { ok: true, confirmationUrl };
   }
@@ -127,23 +139,9 @@ export default function BillingPage() {
     });
   }
 
-  // Legacy / Enterprise stores see a simple message
+  // Enterprise — admin has set custom pricing for this store
   if (planData.isLegacy) {
-    return (
-      <s-page heading="Plans & Billing" backAction={{ url: "/app" }}>
-        <div style={{ maxWidth: 600, margin: "0 auto" }}>
-          <s-section>
-            <VStack gap={400} style={{ alignItems: "center", textAlign: "center" }}>
-              <s-badge tone="success">Enterprise Plan</s-badge>
-              <s-text fontWeight="bold">Your plan is managed externally</s-text>
-              <s-paragraph color="subdued">
-                You have full access to all cartx features. Your billing is handled outside of Shopify. If you have questions about your plan, please contact our team.
-              </s-paragraph>
-            </VStack>
-          </s-section>
-        </div>
-      </s-page>
-    );
+    return <EnterprisePage planData={planData} fetcher={fetcher} submitting={submitting} />;
   }
 
   return (
@@ -285,23 +283,13 @@ export default function BillingPage() {
 
                     <div style={{ marginTop: "auto", paddingTop: 24 }}>
                       {isEnterprise ? (
-                        <a
-                          href={`mailto:${ENTERPRISE_EMAIL}?subject=${encodeURIComponent("cartx Enterprise inquiry")}&body=${encodeURIComponent("Hi cartx team,\n\nI'd like to learn more about the Enterprise plan for our store.\n\nStore: \nEstimated monthly orders: \n\nThanks!")}`}
-                          style={{
-                            display: "block",
-                            width: "100%",
-                            padding: "10px 16px",
-                            textAlign: "center",
-                            background: "#1a1a1a",
-                            color: "#fff",
-                            borderRadius: 8,
-                            fontSize: 14,
-                            fontWeight: 600,
-                            textDecoration: "none",
-                          }}
+                        <s-button
+                          variant="primary"
+                          fullWidth
+                          onClick={() => shopify.modal.show("enterprise-contact-modal")}
                         >
                           Contact us
-                        </a>
+                        </s-button>
                       ) : isCurrent ? (
                         billingCycle !== currentCycle ? (
                           <s-button
@@ -340,7 +328,66 @@ export default function BillingPage() {
           </div>
         </VStack>
       </div>
+
+      <EnterpriseContactModal shopify={shopify} />
     </s-page>
+  );
+}
+
+function EnterpriseContactModal({ shopify }) {
+  async function copyEmail() {
+    try {
+      await navigator.clipboard.writeText(ENTERPRISE_EMAIL);
+      shopify.toast.show("Email copied to clipboard");
+    } catch {
+      shopify.toast.show("Could not copy. Select the email manually.", { isError: true });
+    }
+  }
+
+  function openMailClient() {
+    const subject = encodeURIComponent("cartx Enterprise inquiry");
+    const body = encodeURIComponent(
+      `Hi cartx team,\n\nI'd like to learn more about the Enterprise plan for our store.\n\nStore: \nEstimated monthly orders: \n\nThanks!`,
+    );
+    window.open(`mailto:${ENTERPRISE_EMAIL}?subject=${subject}&body=${body}`, "_blank");
+  }
+
+  return (
+    <s-modal id="enterprise-contact-modal" heading="Get in touch about Enterprise">
+      <VStack gap={400}>
+        <s-paragraph>
+          Tell us a bit about your store and we'll set up custom Enterprise pricing tailored to your volume. We typically reply within one business day.
+        </s-paragraph>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "12px 14px",
+            background: "#f6f6f7",
+            border: "1px solid #e3e3e3",
+            borderRadius: 10,
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 14, color: "#1a1a1a", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {ENTERPRISE_EMAIL}
+          </div>
+          <s-button onClick={copyEmail}>Copy email</s-button>
+        </div>
+
+        <s-text color="subdued" variant="bodySm">
+          Or open your mail app with a pre-filled message:
+        </s-text>
+      </VStack>
+
+      <s-button slot="primary-action" variant="primary" onClick={openMailClient}>
+        Open mail
+      </s-button>
+      <s-button slot="secondary-actions" onClick={() => shopify.modal.hide("enterprise-contact-modal")}>
+        Close
+      </s-button>
+    </s-modal>
   );
 }
 
@@ -404,6 +451,104 @@ function BillingCycleToggle({ value, onChange }) {
       >
         Save {ANNUAL_DISCOUNT_PCT}% with yearly
       </span>
+    </div>
+  );
+}
+
+function EnterprisePage({ planData, fetcher, submitting }) {
+  const { quotedPrice = 0, approved, needsApproval, amount } = planData;
+  const isFree = quotedPrice === 0;
+  const priceChanged = approved === false && amount && amount !== quotedPrice;
+
+  function handleApprove() {
+    fetcher.submit(JSON.stringify({ _action: "approve_enterprise" }), {
+      method: "POST",
+      encType: "application/json",
+    });
+  }
+
+  return (
+    <s-page heading="Plans & Billing" backAction={{ url: "/app" }}>
+      <div style={{ maxWidth: 640, margin: "0 auto" }}>
+        <s-section>
+          <VStack gap={500} style={{ alignItems: "center", textAlign: "center" }}>
+            <s-badge tone="success">Enterprise plan</s-badge>
+
+            {needsApproval ? (
+              <>
+                <s-text fontWeight="bold" variant="headingLg">
+                  {priceChanged ? "Your Enterprise plan price has changed" : "Approve your Enterprise plan"}
+                </s-text>
+                <s-paragraph color="subdued">
+                  {priceChanged
+                    ? `Your custom price was updated from $${amount} to $${quotedPrice}/month. Approve the new subscription to continue — your current subscription stays active until you do.`
+                    : `The cartx team has set up a custom Enterprise plan for your store at $${quotedPrice}/month. Approve the Shopify subscription to unlock all features.`
+                  }
+                </s-paragraph>
+                <div style={{
+                  background: "#f6f3ff",
+                  border: "1px solid #d6c9f5",
+                  borderRadius: 12,
+                  padding: "20px 24px",
+                  width: "100%",
+                  maxWidth: 360,
+                }}>
+                  <div style={{ fontSize: 36, fontWeight: 700, color: "#1a1a1a", lineHeight: 1.1 }}>
+                    ${quotedPrice}
+                    <span style={{ fontSize: 14, fontWeight: 500, color: "#6d7175", marginLeft: 4 }}>/mo</span>
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 13, color: "#6d7175" }}>Billed monthly via Shopify</div>
+                </div>
+                <s-button
+                  variant="primary"
+                  onClick={handleApprove}
+                  {...(submitting ? { loading: true, disabled: true } : {})}
+                >
+                  Approve & subscribe
+                </s-button>
+                <s-text color="subdued" variant="bodySm">
+                  You'll be redirected to Shopify's billing approval page. Cancel anytime from this page.
+                </s-text>
+              </>
+            ) : (
+              <>
+                <s-text fontWeight="bold" variant="headingLg">
+                  {isFree ? "You're on the Enterprise plan" : `You're on Enterprise · $${amount || quotedPrice}/mo`}
+                </s-text>
+                <s-paragraph color="subdued">
+                  {isFree
+                    ? "You have full access to all cartx features, free of charge. Your plan is managed by the cartx team — contact us for any changes."
+                    : `Your custom Enterprise plan is active and billed via Shopify. Contact the cartx team if you need to change your plan.`
+                  }
+                </s-paragraph>
+                <FeatureChecklist />
+              </>
+            )}
+          </VStack>
+        </s-section>
+      </div>
+    </s-page>
+  );
+}
+
+function FeatureChecklist() {
+  const items = [
+    "Cart drawer (progress bar, upsells, coupons)",
+    "Unlimited promotions",
+    "Automatic gift discounts at checkout",
+    "Multi-theme configuration",
+    "Priority support",
+  ];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8, alignItems: "flex-start", width: "100%", maxWidth: 360 }}>
+      {items.map((label) => (
+        <div key={label} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
+            <path d="M13.3 4.3a1 1 0 0 1 0 1.4l-6 6a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4L6.6 9.6l5.3-5.3a1 1 0 0 1 1.4 0Z" fill="#1a8c33" />
+          </svg>
+          <span style={{ fontSize: 13, lineHeight: "18px", color: "#1a1a1a" }}>{label}</span>
+        </div>
+      ))}
     </div>
   );
 }

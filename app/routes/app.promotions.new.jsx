@@ -95,24 +95,22 @@ export default function NewPromotion() {
         <button id="discard-action" onClick={handleDiscard}></button>
       </ui-save-bar>
 
-      <div style={{ maxWidth: 760, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
-        {/* Type selector */}
-        <s-section heading="Promotion type">
-          <s-select
-            label="What kind of promotion do you want to create?"
-            value={type}
-            onChange={(e) => setSearchParams({ type: e.target.value })}
-          >
-            <s-option value="offer">Offer — auto-add free gifts or bundles</s-option>
-            <s-option value="coupon">Coupon — link a Shopify discount code</s-option>
-            <s-option value="claim-gift">Claim Gift — let customers pick a freebie</s-option>
-          </s-select>
-        </s-section>
+      {/* Type selector */}
+      <s-section heading="Promotion type">
+        <s-select
+          label="What kind of promotion do you want to create?"
+          value={type}
+          onChange={(e) => setSearchParams({ type: e.target.value })}
+        >
+          <s-option value="offer">Offer — auto-add free gifts or bundles</s-option>
+          <s-option value="coupon">Coupon — link a Shopify discount code</s-option>
+          <s-option value="claim-gift">Claim Gift — let customers pick a freebie</s-option>
+        </s-select>
+      </s-section>
 
-        {type === "offer" && <OfferForm ref={formRef} onSubmit={handleSubmit} submitting={submitting} />}
-        {type === "coupon" && <CouponForm ref={formRef} onSubmit={handleSubmit} submitting={submitting} />}
-        {type === "claim-gift" && <ClaimGiftForm ref={formRef} onSubmit={handleSubmit} submitting={submitting} />}
-      </div>
+      {type === "offer" && <OfferForm ref={formRef} onSubmit={handleSubmit} submitting={submitting} />}
+      {type === "coupon" && <CouponForm ref={formRef} onSubmit={handleSubmit} submitting={submitting} />}
+      {type === "claim-gift" && <ClaimGiftForm ref={formRef} onSubmit={handleSubmit} submitting={submitting} />}
     </s-page>
   );
 }

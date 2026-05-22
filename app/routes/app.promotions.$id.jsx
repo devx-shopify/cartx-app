@@ -116,11 +116,9 @@ export default function EditPromotion() {
         <button id="discard-action" onClick={handleDiscard}></button>
       </ui-save-bar>
 
-      <div style={{ maxWidth: 760, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
-        {type === "offer" && <OfferForm ref={formRef} offer={data} variantDataMap={variantDataMap} onSubmit={handleSubmit} submitting={submitting} />}
-        {type === "coupon" && <CouponForm ref={formRef} coupon={data} onSubmit={handleSubmit} submitting={submitting} />}
-        {type === "claim-gift" && <ClaimGiftForm ref={formRef} claimGift={data} variantDataMap={variantDataMap} onSubmit={handleSubmit} submitting={submitting} />}
-      </div>
+      {type === "offer" && <OfferForm ref={formRef} offer={data} variantDataMap={variantDataMap} onSubmit={handleSubmit} submitting={submitting} />}
+      {type === "coupon" && <CouponForm ref={formRef} coupon={data} onSubmit={handleSubmit} submitting={submitting} />}
+      {type === "claim-gift" && <ClaimGiftForm ref={formRef} claimGift={data} variantDataMap={variantDataMap} onSubmit={handleSubmit} submitting={submitting} />}
     </s-page>
   );
 }

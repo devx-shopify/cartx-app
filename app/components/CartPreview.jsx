@@ -24,7 +24,7 @@ const CLAIM_GIFTS = [
   { title: "Branded Tote Bag", inCart: true },
 ];
 
-export default function CartPreview({ settings, showEmpty }) {
+export default function CartPreview({ settings, showEmpty, minHeight }) {
   const c = settings.colors || {};
   const sh = settings.shape || {};
   const t = settings.typography || {};
@@ -46,9 +46,9 @@ export default function CartPreview({ settings, showEmpty }) {
   const primary = c.primary || "#1a1a1a";
   const primaryText = c.primary_text || "#ffffff";
   const accent = c.accent || "#16a34a";
-  const savingsBg = c.savings_bg || "#d4ff00";
-  const savingsText = c.savings_text || "#1a1a1a";
-  const savingsAmount = c.savings_amount || "#1d3fbf";
+  const savingsBg = c.savings_bg || "#1a1a1a";
+  const savingsText = c.savings_text || "#ffffff";
+  const savingsAmount = c.savings_amount || "#22c55e";
 
   const btnBase = {
     borderRadius: radius,
@@ -97,6 +97,9 @@ export default function CartPreview({ settings, showEmpty }) {
         background: bg,
         color: text,
         width: "100%",
+        minHeight: minHeight ? `${minHeight}px` : undefined,
+        display: "flex",
+        flexDirection: "column",
         borderRadius: 12,
         boxShadow: "0 4px 24px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06)",
         fontFamily:
@@ -174,7 +177,7 @@ export default function CartPreview({ settings, showEmpty }) {
           <div style={{ fontSize: bodySize, color: textSec, marginBottom: 22, textAlign: "center", lineHeight: 1.5 }}>
             {tx.empty_subtitle || "Looks like you haven't added anything yet"}
           </div>
-          <div style={btnStyle}>
+          <div style={{ ...btnStyle, flex: "0 0 auto", padding: "12px 28px", minWidth: 180 }}>
             {tx.empty_button || "Continue shopping"}
           </div>
         </div>
@@ -209,35 +212,103 @@ export default function CartPreview({ settings, showEmpty }) {
       {sec.show_progress_bar !== false && (
       <div
         style={{
-          padding: "10px 16px 22px",
+          padding: "14px 16px 16px",
           borderBottom: `1px solid ${border}`,
           background: bg,
         }}
       >
-        <div
-          style={{
-            fontSize: 12,
-            fontWeight: 600,
-            color: accent,
-            textAlign: "center",
-            marginBottom: 8,
-            lineHeight: 1.3,
-          }}
-        >
-          Spend $15 more for free shipping!
-        </div>
-        <div style={{ height: 5, background: "#f3f4f6", borderRadius: 3 }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
           <div
             style={{
-              width: "60%",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              fontWeight: 600,
+              color: accent,
+              background: `${accent}1a`,
+              border: `1px solid ${accent}3a`,
+              padding: "5px 14px",
+              borderRadius: 999,
+              lineHeight: 1.3,
+              maxWidth: "100%",
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 2 13.5 8.5 20 10 13.5 11.5 12 18 10.5 11.5 4 10 10.5 8.5z" />
+            </svg>
+            <span>Add $5 more for free shipping!</span>
+          </div>
+        </div>
+        <div style={{ position: "relative", height: 8, background: "#f1f3f5", borderRadius: 999, margin: "0 6px 38px" }}>
+          <div
+            style={{
+              width: "65%",
               height: "100%",
-              background: primary,
-              borderRadius: 3,
+              background: `linear-gradient(90deg, ${accent} 0%, ${primary} 100%)`,
+              borderRadius: 999,
+              boxShadow: `0 1px 3px ${primary}30`,
             }}
           />
+          {[
+            { pos: 33, state: "active", label: "Free Gift", sub: "Above $20" },
+            { pos: 67, state: "active", label: "Free Shipping", sub: "At $25" },
+            { pos: 100, state: "next", label: "10% Off", sub: "At $30" },
+          ].map((m, i, arr) => {
+            const isLast = i === arr.length - 1;
+            const isFirst = i === 0;
+            const dotBg = m.state === "active" ? primary : "#fff";
+            const dotBorder = m.state === "active" ? primary : primary;
+            const ring = `0 0 0 3px ${primary}1f`;
+            const labelColor = m.state === "active" ? text : m.state === "next" ? primary : "#9ca3af";
+            return (
+              <div key={i} style={{
+                position: "absolute",
+                top: "50%",
+                left: `${m.pos}%`,
+                transform: "translateX(-50%) translateY(-50%)",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                zIndex: 1,
+              }}>
+                <div style={{
+                  width: 22, height: 22, borderRadius: "50%",
+                  background: dotBg,
+                  border: `2px solid ${dotBorder}`,
+                  boxShadow: ring,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  {m.state === "active" && (
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 6 9 17l-5-5" />
+                    </svg>
+                  )}
+                </div>
+                <div style={{
+                  position: "absolute",
+                  top: 28,
+                  left: isFirst ? 0 : isLast ? "auto" : "50%",
+                  right: isLast ? 0 : "auto",
+                  transform: isFirst || isLast ? "none" : "translateX(-50%)",
+                  width: "max-content",
+                  maxWidth: 110,
+                  fontSize: 11,
+                  fontWeight: m.state === "active" || m.state === "next" ? 700 : 600,
+                  color: labelColor,
+                  textAlign: isFirst ? "left" : isLast ? "right" : "center",
+                  lineHeight: 1.25,
+                }}>
+                  <div>{m.label}</div>
+                  <div style={{ fontSize: 10, fontWeight: 500, color: m.state === "active" || m.state === "next" ? "#6b7280" : "#9ca3af", marginTop: 2 }}>
+                    {m.sub}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
-
       )}
 
       {/* ── Claim Gifts ── */}
@@ -415,10 +486,38 @@ export default function CartPreview({ settings, showEmpty }) {
                 fontSize: bodySize,
                 color: text,
                 marginTop: 1,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
               }}
             >
+              {i === 0 && (
+                <span style={{ textDecoration: "line-through", color: "#d1d5db", fontWeight: 400 }}>
+                  $39.00
+                </span>
+              )}
               {item.price}
             </div>
+            {i === 0 && (
+              <div style={{ marginTop: 4 }}>
+                <span style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  fontSize: 10,
+                  padding: "2px 9px 2px 7px",
+                  background: `${accent}14`,
+                  color: accent,
+                  border: `1px solid ${accent}40`,
+                  borderRadius: 999,
+                  fontWeight: 600,
+                  letterSpacing: 0.2,
+                }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: accent }} />
+                  Volume Discount
+                </span>
+              </div>
+            )}
             <div
               style={{
                 display: "flex",
@@ -450,6 +549,7 @@ export default function CartPreview({ settings, showEmpty }) {
           borderBottom: `1px solid ${border}`,
           background: `${accent}08`,
           borderBottomColor: `${accent}20`,
+          borderLeft: `3px solid ${accent}`,
         }}
       >
         <div
@@ -563,14 +663,27 @@ export default function CartPreview({ settings, showEmpty }) {
           <div style={{ display: "flex", gap: 8, overflowX: "auto" }}>
             {[{ title: "Summer Hat", price: "$24.00" }, { title: "Silk Scarf", price: "$35.00" }].map((p, i) => (
               <div key={i} style={{
-                flexShrink: 0, width: "70%", display: "flex", alignItems: "center", gap: 8,
+                flexShrink: 0, width: "47%", display: "flex", alignItems: "center", gap: 10,
+                padding: "8px 10px 8px 8px",
                 border: `1px solid ${border}`, borderRadius: radius, overflow: "hidden", background: bg,
               }}>
-                <div style={{ width: 52, height: 52, minWidth: 52, background: "#f3f4f6" }} />
-                <div style={{ flex: 1, padding: "6px 8px 6px 0" }}>
-                  <div style={{ fontSize: 12, fontWeight: 500, color: text }}>{p.title}</div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: text, marginBottom: 3 }}>{p.price}</div>
-                  <span style={{ ...smallBtnStyle, padding: "3px 8px", fontSize: 10, fontWeight: 700, cursor: "default", width: "fit-content", textTransform: "uppercase", letterSpacing: 0.5 }}>Add</span>
+                <div style={{ width: 52, height: 52, minWidth: 52, background: "#f3f4f6", borderRadius: 6 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: text, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: text, marginBottom: 4 }}>{p.price}</div>
+                  <span style={{
+                    display: "inline-block",
+                    padding: "4px 12px",
+                    background: "transparent",
+                    color: primary,
+                    border: `1.5px solid ${primary}`,
+                    borderRadius: 999,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    cursor: "default",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.6,
+                  }}>Add</span>
                 </div>
               </div>
             ))}
@@ -594,7 +707,7 @@ export default function CartPreview({ settings, showEmpty }) {
                 justifyContent: "center",
                 alignItems: "center",
                 flexWrap: "wrap",
-                gap: 4,
+                gap: 6,
                 padding: "10px 16px",
                 background: savingsBg,
                 color: savingsText,
@@ -604,6 +717,10 @@ export default function CartPreview({ settings, showEmpty }) {
                 lineHeight: 1.3,
               }}
             >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill={savingsAmount} aria-hidden="true">
+                <path d="M12 2 13.5 8.5 20 10 13.5 11.5 12 18 10.5 11.5 4 10 10.5 8.5z" />
+                <path d="M18 14 18.75 16.75 21.5 17.5 18.75 18.25 18 21 17.25 18.25 14.5 17.5 17.25 16.75z" opacity="0.6" />
+              </svg>
               <span>{parts[0]}</span>
               <span style={{ color: savingsAmount, fontWeight: 700 }}>$15.00</span>
               <span>{parts[1] || ""}</span>
@@ -611,30 +728,32 @@ export default function CartPreview({ settings, showEmpty }) {
           );
         })() : null}
         <div style={{ padding: "10px 16px 14px" }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            fontSize: 12,
-            color: textSec,
-            marginBottom: 2,
-          }}
-        >
-          <span>{tx.subtotal_label || "Subtotal"}</span>
-          <span>$118.00</span>
-        </div>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            fontSize: 12,
-            color: accent,
-            fontWeight: 500,
-            marginBottom: 6,
-          }}
-        >
-          <span>SUMMER20</span>
-          <span>−$15.00</span>
+        <div style={{ marginBottom: 8, paddingBottom: 8, borderBottom: `1px dashed ${border}` }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: 13,
+              color: textSec,
+              padding: "3px 0",
+            }}
+          >
+            <span>{tx.subtotal_label || "Subtotal"}</span>
+            <span>$118.00</span>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: 13,
+              color: accent,
+              fontWeight: 600,
+              padding: "3px 0",
+            }}
+          >
+            <span>Discounts</span>
+            <span>−$15.00</span>
+          </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div>
@@ -661,7 +780,20 @@ export default function CartPreview({ settings, showEmpty }) {
               $103.00
             </div>
           </div>
-          <div style={btnStyle}>{tx.checkout_button || "Checkout"}</div>
+          <div style={{ ...btnStyle, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, height: 44 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.85 }}>
+              <rect width="18" height="11" x="3" y="11" rx="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            <span>{tx.checkout_button || "Checkout"}</span>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 8, fontSize: 11, color: textSec, fontWeight: 500 }}>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7 }}>
+            <rect width="18" height="11" x="3" y="11" rx="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          <span>Guaranteed safe &amp; secure checkout</span>
         </div>
         {(tx.continue_shopping || tx.continue_shopping_url) && (
           <div style={{ textAlign: "center", marginTop: 6 }}>

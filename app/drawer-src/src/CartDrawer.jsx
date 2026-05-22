@@ -77,6 +77,24 @@ function IconRemoveX() {
   );
 }
 
+function IconSparkle() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2 13.5 8.5 20 10 13.5 11.5 12 18 10.5 11.5 4 10 10.5 8.5z" />
+      <path d="M18 14 18.75 16.75 21.5 17.5 18.75 18.25 18 21 17.25 18.25 14.5 17.5 17.25 16.75z" opacity="0.6" />
+    </svg>
+  );
+}
+
+function IconLock() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect width="18" height="11" x="3" y="11" rx="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
+
 // ── CartDrawer Component ────────────────────────────────────
 
 export default class CartDrawer extends Component {
@@ -573,7 +591,14 @@ export default class CartDrawer extends Component {
 
     return (
       <div id="cartmax-progress" className="cartmax-progress">
-        {bar.top_message ? <div class="cartmax-progress-msg">{bar.top_message}</div> : null}
+        {bar.top_message ? (
+          <div class="cartmax-progress-msg-wrap">
+            <div class="cartmax-progress-msg">
+              <IconSparkle />
+              <span>{bar.top_message}</span>
+            </div>
+          </div>
+        ) : null}
         <div className="cartmax-progress-track" style={{ marginRight: trackPadRight + 'px' }}>
           <div className="cartmax-progress-fill" style={{ width: pct + '%' }} ><span className='visually-hidden'>Progress fill</span></div>
           {tiers.map((tier, i) => {
@@ -658,7 +683,7 @@ export default class CartDrawer extends Component {
                 ]
             }
           </div>
-          {!isClaimed && item.line_level_discount_allocations && item.line_level_discount_allocations.length > 0
+          {!isClaimed && !isFreebie && item.line_level_discount_allocations && item.line_level_discount_allocations.length > 0
             ? <div class="cartmax-line-discounts">
                 {item.line_level_discount_allocations.map((d) => (
                   <span class="cartmax-line-discount-tag" key={d.discount_application.title}>
@@ -1223,6 +1248,7 @@ export default class CartDrawer extends Component {
       <div class="cartmax-footer">
         {savingsParts ? (
           <div class="cartmax-footer-savings">
+            <span class="cartmax-footer-savings-icon"><IconSparkle /></span>
             <span>{savingsParts[0]}</span>
             <span class="cartmax-footer-savings-amount">{formatMoney(savings, curr)}</span>
             <span>{savingsParts[1] || ''}</span>
@@ -1235,15 +1261,24 @@ export default class CartDrawer extends Component {
               <span>{this._text.subtotal_label}</span>
               <span>{formatMoney(cart.items_subtotal_price, curr)}</span>
             </div>
-            {discounts.map((d) => {
-              var amt = d.total_allocated_amount || d.amount || 0;
-              return (
-                <div class="cartmax-totals-row cartmax-discount-row" key={d.title}>
-                  <span>{d.title || 'Discount'}</span>
-                  <span>{'\u2212' + formatMoney(amt, curr)}</span>
-                </div>
-              );
-            })}
+            {discounts.length > 0
+              ? discounts.map((d) => {
+                  var amt = d.total_allocated_amount || d.amount || 0;
+                  return (
+                    <div class="cartmax-totals-row cartmax-discount-row" key={d.title}>
+                      <span>{d.title || 'Discount'}</span>
+                      <span>{'\u2212' + formatMoney(amt, curr)}</span>
+                    </div>
+                  );
+                })
+              : (cart.total_discount > 0
+                  ? <div class="cartmax-totals-row cartmax-discount-row">
+                      <span>Discounts</span>
+                      <span>{'\u2212' + formatMoney(cart.total_discount, curr)}</span>
+                    </div>
+                  : null
+                )
+            }
           </div>
         ) : null}
         <div class="cartmax-footer-checkout">
@@ -1268,7 +1303,14 @@ export default class CartDrawer extends Component {
                 });
               }
             }}
-          >{this.state.checkoutWaiting ? 'Preparing...' : this._text.checkout_button}</a>
+          >
+            <IconLock />
+            <span>{this.state.checkoutWaiting ? 'Preparing...' : this._text.checkout_button}</span>
+          </a>
+        </div>
+        <div class="cartmax-footer-trust">
+          <IconLock />
+          <span>Guaranteed safe &amp; secure checkout</span>
         </div>
         {this._text.continue_shopping && (
           <div style={{ textAlign: 'center', marginTop: '6px' }}>

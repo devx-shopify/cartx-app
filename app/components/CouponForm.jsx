@@ -3,6 +3,33 @@ import { useFetcher } from "react-router";
 import { isFrozenHandle } from "../lib/constants.js";
 import TargetingSection from "./TargetingSection.jsx";
 import VStack from "./VStack.jsx";
+import PromotionAside from "./PromotionAside.jsx";
+
+function describePages(pageHandles) {
+  if (!Array.isArray(pageHandles) || pageHandles.length === 0) return "All pages";
+  if (pageHandles.length === 1 && pageHandles[0] === "/") return "All pages";
+  const count = pageHandles.length;
+  if (pageHandles.every((h) => h.startsWith("/products/"))) {
+    return `${count} product page${count === 1 ? "" : "s"}`;
+  }
+  if (pageHandles.every((h) => h.startsWith("/collections/"))) {
+    return `${count} collection page${count === 1 ? "" : "s"}`;
+  }
+  return `${count} page${count === 1 ? "" : "s"}`;
+}
+
+function buildCouponSummary({ isAutomatic, code, title, shopifyDiscountId, typeLabel, pageHandles }) {
+  const typeValue = isAutomatic ? "Automatic discount" : "Code-based";
+  const codeValue = isAutomatic ? (title || null) : (code || null);
+
+  return [
+    { label: "Type", value: typeValue },
+    { label: isAutomatic ? "Title" : "Code", value: codeValue },
+    { label: "Discount type", value: typeLabel || null },
+    { label: "Linked discount", value: shopifyDiscountId ? "Linked" : "Not linked" },
+    { label: "Shown on", value: describePages(pageHandles) },
+  ];
+}
 
 export default forwardRef(function CouponForm({ coupon, onSubmit, submitting }, ref) {
   const [shopifyDiscountId, setShopifyDiscountId] = useState(coupon?.shopify_discount_id ?? "");
@@ -60,21 +87,82 @@ export default forwardRef(function CouponForm({ coupon, onSubmit, submitting }, 
       <s-section heading="Shopify Discount">
         <VStack gap={400}>
           {hasDiscount && !pickerOpen ? (
-            <>
-              <s-box padding="400" border="base" borderRadius="200" background="bg-surface-secondary">
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{title}</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
-                    <span style={{ fontSize: 13, color: "#6d7175" }}>{isAutomatic ? "Automatic discount" : code}</span>
-                    <s-badge tone="success">{typeLabel}</s-badge>
-                  </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 14,
+                padding: "14px 16px",
+                border: "1px solid var(--s-color-border, #e3e3e3)",
+                borderRadius: 12,
+                background: "#fff",
+              }}
+            >
+              {/* Discount icon */}
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  background: "#e8f5ea",
+                  color: "#0a6b2a",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 6L6 14" />
+                  <circle cx="7" cy="7" r="1.5" />
+                  <circle cx="13" cy="13" r="1.5" />
+                </svg>
+              </div>
+
+              {/* Title + meta */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontWeight: 600,
+                    fontSize: 14,
+                    color: "#1a1a1a",
+                    marginBottom: 4,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {title}
                 </div>
-              </s-box>
-              <s-button variant="tertiary" onClick={openPicker}>Change discount</s-button>
-            </>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  {isAutomatic ? (
+                    <span style={{ fontSize: 12, color: "#6d7175" }}>Automatic discount</span>
+                  ) : (
+                    code && (
+                      <span
+                        style={{
+                          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                          fontSize: 12,
+                          padding: "2px 8px",
+                          background: "#f1f1f1",
+                          borderRadius: 6,
+                          color: "#1a1a1a",
+                        }}
+                      >
+                        {code}
+                      </span>
+                    )
+                  )}
+                  {typeLabel && <s-badge tone="success">{typeLabel}</s-badge>}
+                </div>
+              </div>
+
+              {/* Change button */}
+              <s-button variant="secondary" onClick={openPicker}>Change</s-button>
+            </div>
           ) : !pickerOpen ? (
             <>
-              <s-button onClick={openPicker}>Select discount</s-button>
+              <s-button variant="primary" onClick={openPicker}>Select discount</s-button>
               {errors.code && <s-banner tone="critical">{errors.code}</s-banner>}
             </>
           ) : null}
@@ -115,9 +203,14 @@ export default forwardRef(function CouponForm({ coupon, onSubmit, submitting }, 
       <s-section heading="Display settings">
         <VStack gap={400}>
           <s-text-field label="Custom message" value={displayMessage} onInput={(e) => setDisplayMessage(e.target.value)} placeholder="Use this code for 20% off your order!" details="Shown on the coupon card in the cart drawer" />
-          <s-checkbox label="Enabled" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
         </VStack>
       </s-section>
+
+      <PromotionAside
+        enabled={enabled}
+        onEnabledChange={setEnabled}
+        summary={buildCouponSummary({ isAutomatic, code, title, shopifyDiscountId, typeLabel, pageHandles })}
+      />
 
       {/* Targeting */}
       <TargetingSection

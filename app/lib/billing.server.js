@@ -36,18 +36,27 @@ function amountForCycle(plan, cycle) {
   return cycle === "annual" ? plan.amountAnnual : plan.amount;
 }
 
-// Legacy / Enterprise stores get all features at custom pricing
-const LEGACY_PLAN = {
-  plan: "enterprise",
-  name: "Enterprise",
-  amount: 0,
-  isLegacy: true,
-  billingMethod: "invoice",
-  features: {
-    discount_function: true,
-    theme_switcher: true,
-  },
+// Enterprise stores get all features; price is set per-store in /internal
+const ENTERPRISE_FEATURES = {
+  discount_function: true,
+  theme_switcher: true,
 };
+
+function makeEnterprisePlan({ quotedPrice = 0, approved = false, subscriptionId = null, currentAmount = null }) {
+  return {
+    plan: "enterprise",
+    name: "Enterprise",
+    amount: currentAmount ?? quotedPrice,
+    quotedPrice,
+    isLegacy: true,
+    isEnterprise: true,
+    billingMethod: "shopify",
+    approved,
+    needsApproval: !approved && quotedPrice > 0,
+    subscriptionId,
+    features: ENTERPRISE_FEATURES,
+  };
+}
 
 // ── Ensure Store Record Exists ───────────────────────────
 
@@ -62,16 +71,19 @@ export async function ensureStoreRecord(shopDomain) {
 // ── Query Active Plan ────────────────────────────────────
 
 export async function getActivePlan(admin, shopDomain) {
-  // 1. Check DB for legacy status first — DB is source of truth for legacy
+  // 1. Check DB for enterprise status — admin can set custom pricing per-store
   const store = await db.store.findUnique({
     where: { storeDomain: shopDomain },
   });
 
-  if (store?.isLegacy) {
-    return { ...LEGACY_PLAN, legacyPrice: store.legacyPrice };
+  const enterprisePrice = store?.isLegacy ? (store.legacyPrice ?? 0) : null;
+
+  // $0 enterprise = full features, no Shopify sub needed — skip the API call
+  if (store?.isLegacy && enterprisePrice === 0) {
+    return makeEnterprisePlan({ quotedPrice: 0, approved: true });
   }
 
-  // 2. For non-legacy stores, check Shopify billing API
+  // Fetch active Shopify subscriptions
   const res = await admin.graphql(
     `#graphql
     query {
@@ -100,8 +112,40 @@ export async function getActivePlan(admin, shopDomain) {
   const json = await res.json();
   const subs = json.data?.app?.installation?.activeSubscriptions ?? [];
 
+  // 2. Enterprise store (admin-managed): check for matching Enterprise sub
+  if (store?.isLegacy) {
+    const enterpriseSub = subs.find(
+      (s) => s.status === "ACTIVE" && s.name.startsWith("cartx Enterprise"),
+    );
+
+    if (enterpriseSub) {
+      const pricing = enterpriseSub.lineItems?.[0]?.plan?.pricingDetails;
+      const subAmount = parseFloat(pricing?.price?.amount ?? "0");
+      // Subscription matches current quoted price → fully approved
+      if (subAmount === enterprisePrice) {
+        return makeEnterprisePlan({
+          quotedPrice: enterprisePrice,
+          approved: true,
+          subscriptionId: enterpriseSub.id,
+          currentAmount: subAmount,
+        });
+      }
+      // Price was changed in /internal — old sub still active but new one needed
+      return makeEnterprisePlan({
+        quotedPrice: enterprisePrice,
+        approved: false,
+        subscriptionId: enterpriseSub.id,
+        currentAmount: subAmount,
+      });
+    }
+
+    // No enterprise sub yet — needs approval at quoted price
+    return makeEnterprisePlan({ quotedPrice: enterprisePrice, approved: false });
+  }
+
+  // 3. Standard (non-enterprise) store: existing free/pro logic
   const active = subs.find(
-    (s) => s.status === "ACTIVE" && s.name.startsWith("cartx ")
+    (s) => s.status === "ACTIVE" && s.name.startsWith("cartx ") && !s.name.startsWith("cartx Enterprise"),
   );
 
   if (!active) {
@@ -162,6 +206,52 @@ export async function createSubscription(admin, planKey, returnUrl, billingCycle
         interval,
       },
     }
+  );
+
+  const json = await res.json();
+  const errors = json.data?.appSubscriptionCreate?.userErrors ?? [];
+  if (errors.length > 0) {
+    throw new Error(errors.map((e) => e.message).join(", "));
+  }
+
+  return json.data.appSubscriptionCreate.confirmationUrl;
+}
+
+// ── Create Enterprise Subscription (custom price) ────────
+
+export async function createEnterpriseSubscription(admin, returnUrl, amount) {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Enterprise price must be greater than 0");
+  }
+
+  const res = await admin.graphql(
+    `#graphql
+    mutation createEnterpriseSubscription($name: String!, $returnUrl: URL!, $amount: Decimal!) {
+      appSubscriptionCreate(
+        name: $name
+        returnUrl: $returnUrl
+        test: ${process.env.NODE_ENV !== "production" ? "true" : "false"}
+        replacementBehavior: STANDARD
+        lineItems: [{
+          plan: {
+            appRecurringPricingDetails: {
+              price: { amount: $amount, currencyCode: USD }
+              interval: EVERY_30_DAYS
+            }
+          }
+        }]
+      ) {
+        confirmationUrl
+        userErrors { field message }
+      }
+    }`,
+    {
+      variables: {
+        name: `cartx Enterprise ($${amount}/mo)`,
+        returnUrl,
+        amount,
+      },
+    },
   );
 
   const json = await res.json();

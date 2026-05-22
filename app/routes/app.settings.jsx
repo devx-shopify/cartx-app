@@ -191,6 +191,170 @@ export const action = async ({ request }) => {
   return { ok: true };
 };
 
+// ── Section header with right-aligned switch ────────────────────
+
+function SectionEnableHeader({ enabled, onChange, label }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        padding: "10px 14px",
+        background: "#f6f6f7",
+        border: "1px solid var(--s-color-border, #e3e3e3)",
+        borderRadius: 10,
+      }}
+    >
+      <s-text variant="bodySm" color="subdued">{enabled ? "Enabled" : "Disabled"} on storefront</s-text>
+      <s-switch
+        label={label}
+        labelAccessibilityVisibility="hidden"
+        checked={enabled}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+    </div>
+  );
+}
+
+// ── Tier row in the lineup list ─────────────────────────────────
+
+const SOURCE_TONE = {
+  Offer: "info",
+  Volume: "info",
+  "Claim Gift": "success",
+  Milestone: "attention",
+};
+
+function TierRow({
+  item,
+  index,
+  isDragging,
+  isOver,
+  isEditing,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onDragEnd,
+  onToggle,
+  onEdit,
+  onDelete,
+}) {
+  const isMilestone = item.source === "milestone";
+  const thresholdLabel = item.type === "price" ? `₹${item.threshold}` : `${item.threshold} items`;
+
+  return (
+    <div
+      draggable={!isEditing}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "12px 14px",
+        border: isOver
+          ? "1px dashed #2c6ecb"
+          : "1px solid var(--s-color-border, #e3e3e3)",
+        borderRadius: isEditing ? "10px 10px 0 0" : 10,
+        borderBottom: isEditing ? "none" : undefined,
+        background: "#fff",
+        opacity: isDragging ? 0.4 : 1,
+        cursor: isEditing ? "default" : "grab",
+        userSelect: "none",
+      }}
+    >
+      {/* Drag handle */}
+      <div
+        aria-hidden="true"
+        style={{
+          color: "#8c9196",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+          cursor: isEditing ? "default" : "grab",
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <circle cx="5.5" cy="3" r="1.25" />
+          <circle cx="10.5" cy="3" r="1.25" />
+          <circle cx="5.5" cy="8" r="1.25" />
+          <circle cx="10.5" cy="8" r="1.25" />
+          <circle cx="5.5" cy="13" r="1.25" />
+          <circle cx="10.5" cy="13" r="1.25" />
+        </svg>
+      </div>
+
+      {/* Position number */}
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 600,
+          color: "#6d7175",
+          minWidth: 18,
+          textAlign: "center",
+          flexShrink: 0,
+        }}
+      >
+        {index + 1}
+      </div>
+
+      {/* Title + meta */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <s-text fontWeight="medium">{item.name}</s-text>
+          {isMilestone && !item.enabled && (
+            <s-badge tone="warning">Off</s-badge>
+          )}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+          <s-badge tone={SOURCE_TONE[item.source_label] || undefined}>{item.source_label}</s-badge>
+          <s-text color="subdued" variant="bodySm">{thresholdLabel}</s-text>
+          {item.sub_label && (
+            <>
+              <s-text color="subdued" variant="bodySm">·</s-text>
+              <s-text color="subdued" variant="bodySm">{item.sub_label}</s-text>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Milestone actions */}
+      {isMilestone && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          <s-switch
+            label="Toggle milestone"
+            labelAccessibilityVisibility="hidden"
+            checked={item.enabled}
+            onChange={onToggle}
+          />
+          <s-button
+            variant="tertiary"
+            icon="edit"
+            accessibilityLabel={`${isEditing ? "Close" : "Edit"} milestone ${item.name}`}
+            onClick={onEdit}
+          />
+          <s-button
+            variant="tertiary"
+            tone="critical"
+            icon="delete"
+            accessibilityLabel={`Delete milestone ${item.name}`}
+            onClick={onDelete}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Milestone form fields ───────────────────────────────────────
+
 function MilestoneFormFields({ initial, onSubmit, onCancel, submitting, submitLabel }) {
   const [label, setLabel] = useState(initial?.label ?? "");
   const [subLabel, setSubLabel] = useState(initial?.sub_label ?? "");
@@ -233,7 +397,9 @@ function MilestoneFormFields({ initial, onSubmit, onCancel, submitting, submitLa
           heading="Milestone targeting"
         />
         <div style={{ display: "flex", gap: 8 }}>
-          <s-button onClick={handleSubmit} {...(submitting ? { disabled: true } : {})}>{submitLabel ?? "Save"}</s-button>
+          <s-button variant="primary" onClick={handleSubmit} {...(submitting ? { disabled: true } : {})}>
+            {submitLabel ?? "Save"}
+          </s-button>
           <s-button variant="tertiary" onClick={onCancel}>Cancel</s-button>
         </div>
       </VStack>
@@ -245,7 +411,7 @@ function MilestoneForm({ onAdd, submitting }) {
   const [open, setOpen] = useState(false);
   if (!open) {
     return (
-      <s-button variant="tertiary" onClick={() => setOpen(true)}>+ Add visual milestone</s-button>
+      <s-button onClick={() => setOpen(true)}>Add visual milestone</s-button>
     );
   }
   return (
@@ -260,6 +426,8 @@ function MilestoneForm({ onAdd, submitting }) {
     />
   );
 }
+
+// ── Main settings page ─────────────────────────────────────────
 
 export default function Settings() {
   const data = useLoaderData();
@@ -301,9 +469,6 @@ export default function Settings() {
   const initialRef = useRef(snapshot());
 
   // Sync local lineup + snapshot whenever loader data changes (after revalidation).
-  // Preserve the user's in-progress reorder: keep existing items in their current
-  // local order, refresh their fields from the server, then append any new items
-  // and drop any items the server removed.
   useEffect(() => {
     setLineup((prev) => {
       const incomingById = new Map(data.lineup.map((t) => [t.id, t]));
@@ -379,7 +544,6 @@ export default function Settings() {
     else el.hide();
   }, [dirty]);
 
-
   async function pickProducts() {
     const selection = await shopify.resourcePicker({ type: "product", multiple: true, action: "select" });
     if (selection) {
@@ -443,11 +607,6 @@ export default function Settings() {
   }
   function handleDragEnd() { setDragId(null); setDragOverId(null); }
 
-  function thresholdBadge(item) {
-    if (item.type === "price") return `${item.threshold} (price)`;
-    return `${item.threshold} items`;
-  }
-
   return (
     <>
       <ui-save-bar id="settings-save-bar">
@@ -456,211 +615,230 @@ export default function Settings() {
       </ui-save-bar>
 
       <s-page heading="Settings">
-        <div style={{ maxWidth: 760, margin: "0 auto" }}>
-        <s-stack direction="block" gap="base">
+        <div style={{ maxWidth: 820, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
 
           {/* ── Progress Bar ─────────────────────────────── */}
-          <s-section padding="none">
-            <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--s-color-border, #e3e3e3)" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <s-text fontWeight="bold">Progress Bar</s-text>
-                <s-switch label="Progress Bar" labelAccessibilityVisibility="hidden" checked={pbEnabled} onChange={(e) => setPbEnabled(e.target.checked)} />
-              </div>
-            </div>
-            <div style={{ padding: "16px 20px" }}>
-              <s-stack direction="block" gap="400">
-                <s-text-field label="All tiers complete message" value={allCompleteMessage} onInput={(e) => setAllCompleteMessage(e.target.value)} placeholder="You unlocked all rewards!" />
+          <s-section
+            heading="Progress bar"
+            description="Show milestones that customers unlock as they add items to cart."
+          >
+            <VStack gap={400}>
+              <SectionEnableHeader enabled={pbEnabled} onChange={setPbEnabled} label="Progress bar enabled" />
 
-                {/* Unified bar lineup — drag to reorder */}
-                {lineup.length > 0 && (
-                  <s-stack direction="block" gap="200">
-                    <s-text fontWeight="semibold" variant="bodySm">Bar tier order</s-text>
-                    <s-text color="subdued" variant="bodyXs">
-                      Drag to reorder the tiers on your progress bar. Activation is still based on each tier's threshold — only the visual position changes. Click <strong>Save</strong> to persist the order.
-                    </s-text>
-                    <div style={{ marginTop: 4 }}>
-                      {lineup.map((item, i) => {
-                        const isMilestone = item.source === "milestone";
-                        const isDragging = dragId === item.id;
-                        const isOver = dragOverId === item.id && dragId && dragId !== item.id;
-                        const isEditing = editingId === item.id;
-                        const fullMilestone = isMilestone
-                          ? data.progressBar.visual_milestones.find((m) => m.id === item.id)
-                          : null;
-                        return (
-                          <div key={item.id} style={{ marginBottom: 6 }}>
+              <s-text-field
+                label="All tiers complete message"
+                value={allCompleteMessage}
+                onInput={(e) => setAllCompleteMessage(e.target.value)}
+                placeholder="You unlocked all rewards!"
+                details="Shown above the bar when every milestone has been reached."
+              />
+
+              {lineup.length > 0 && (
+                <VStack gap={300}>
+                  <div>
+                    <s-text fontWeight="semibold">Bar tier order</s-text>
+                    <div style={{ marginTop: 2 }}>
+                      <s-text color="subdued" variant="bodySm">
+                        Drag to reorder. Activation is still based on each tier's threshold — only the visual position changes.
+                      </s-text>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {lineup.map((item, i) => {
+                      const isMilestone = item.source === "milestone";
+                      const isEditing = editingId === item.id;
+                      const fullMilestone = isMilestone
+                        ? data.progressBar.visual_milestones.find((m) => m.id === item.id)
+                        : null;
+                      return (
+                        <div key={item.id}>
+                          <TierRow
+                            item={item}
+                            index={i}
+                            isDragging={dragId === item.id}
+                            isOver={dragOverId === item.id && dragId && dragId !== item.id}
+                            isEditing={isEditing}
+                            onDragStart={(e) => handleDragStart(e, item.id)}
+                            onDragOver={(e) => handleDragOver(e, item.id)}
+                            onDragLeave={() => { if (dragOverId === item.id) setDragOverId(null); }}
+                            onDrop={(e) => handleDrop(e, item.id)}
+                            onDragEnd={handleDragEnd}
+                            onToggle={() => milestoneAction("toggle_milestone", item.id)}
+                            onEdit={() => setEditingId(isEditing ? null : item.id)}
+                            onDelete={() => handleDeleteMilestone({ id: item.id, label: item.name })}
+                          />
+                          {isEditing && fullMilestone && (
                             <div
-                              draggable={!isEditing}
-                              onDragStart={(e) => handleDragStart(e, item.id)}
-                              onDragOver={(e) => handleDragOver(e, item.id)}
-                              onDragLeave={() => { if (dragOverId === item.id) setDragOverId(null); }}
-                              onDrop={(e) => handleDrop(e, item.id)}
-                              onDragEnd={handleDragEnd}
                               style={{
-                                display: "flex", alignItems: "center", justifyContent: "space-between",
-                                gap: 8,
-                                padding: "10px 12px",
-                                border: isOver
-                                  ? "1px dashed var(--s-color-border-emphasis, #2c6ecb)"
-                                  : "1px solid var(--s-color-border, #e3e3e3)",
-                                borderRadius: isEditing ? "8px 8px 0 0" : 8,
-                                borderBottom: isEditing ? "none" : undefined,
-                                background: isMilestone
-                                  ? "var(--s-color-bg-surface-info, #f1f8ff)"
-                                  : "var(--s-color-bg-surface, #fff)",
-                                opacity: isDragging ? 0.4 : 1,
-                                cursor: isEditing ? "default" : "grab",
-                                userSelect: "none",
-                              }}
-                            >
-                              <s-stack direction="inline" gap="200" alignItems="center">
-                                <span aria-hidden="true" style={{ color: "var(--s-color-text-subdued, #6d7175)", fontSize: 14, lineHeight: 1, cursor: isEditing ? "default" : "grab" }}>⋮⋮</span>
-                                <s-text fontWeight="semibold" variant="bodyXs" color="subdued">#{i + 1}</s-text>
-                                <s-badge>{item.source_label}</s-badge>
-                                <s-stack direction="block" gap="extra-small">
-                                  <s-stack direction="inline" gap="200" alignItems="center">
-                                    <s-text fontWeight="medium">{item.name}</s-text>
-                                    {isMilestone && (
-                                      <s-badge tone={item.enabled ? "success" : "warning"}>{item.enabled ? "Active" : "Off"}</s-badge>
-                                    )}
-                                    <s-badge tone="info">{thresholdBadge(item)}</s-badge>
-                                  </s-stack>
-                                  {item.sub_label && <s-text color="subdued" variant="bodyXs">{item.sub_label}</s-text>}
-                                </s-stack>
-                              </s-stack>
-                              {isMilestone && (
-                                <s-stack direction="inline" gap="200" alignItems="center">
-                                  <s-switch label="Toggle" labelAccessibilityVisibility="hidden" checked={item.enabled} onChange={() => milestoneAction("toggle_milestone", item.id)} />
-                                  <s-button variant="tertiary" onClick={() => setEditingId(isEditing ? null : item.id)}>{isEditing ? "Close" : "Edit"}</s-button>
-                                  <s-button variant="tertiary" tone="critical" onClick={() => handleDeleteMilestone({ id: item.id, label: item.name })}>Delete</s-button>
-                                </s-stack>
-                              )}
-                            </div>
-                            {isEditing && fullMilestone && (
-                              <div style={{
-                                padding: "0 12px 16px",
+                                padding: "0 14px 16px",
                                 border: "1px solid var(--s-color-border, #e3e3e3)",
                                 borderTop: "none",
-                                borderRadius: "0 0 8px 8px",
-                                background: "var(--s-color-bg-surface, #fff)",
-                              }}>
-                                <MilestoneFormFields
-                                  initial={fullMilestone}
-                                  onSubmit={(d) => editMilestone(item.id, d)}
-                                  onCancel={() => setEditingId(null)}
-                                  submitting={submitting}
-                                  submitLabel="Update milestone"
-                                />
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </s-stack>
-                )}
+                                borderRadius: "0 0 10px 10px",
+                                background: "#fff",
+                              }}
+                            >
+                              <MilestoneFormFields
+                                initial={fullMilestone}
+                                onSubmit={(d) => editMilestone(item.id, d)}
+                                onCancel={() => setEditingId(null)}
+                                submitting={submitting}
+                                submitLabel="Update milestone"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </VStack>
+              )}
 
-                <MilestoneForm onAdd={addMilestone} submitting={submitting} />
-              </s-stack>
-            </div>
+              <MilestoneForm onAdd={addMilestone} submitting={submitting} />
+            </VStack>
           </s-section>
 
           {/* ── Upsells ──────────────────────────────────── */}
-          <s-section padding="none">
-            <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--s-color-border, #e3e3e3)" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <s-text fontWeight="bold">Upsells</s-text>
-                <s-switch label="Upsells" labelAccessibilityVisibility="hidden" checked={upsellsEnabled} onChange={(e) => setUpsellsEnabled(e.target.checked)} />
-              </div>
-            </div>
-            <div style={{ padding: "16px 20px" }}>
-              <s-stack direction="block" gap="400">
-                <s-text-field label="Section heading" value={upsellsHeading} onInput={(e) => setUpsellsHeading(e.target.value)} placeholder="You may also like" />
-                <s-checkbox label="Show upsells when cart is empty" checked={showOnEmptyCart} onChange={(e) => setShowOnEmptyCart(e.target.checked)} />
+          <s-section
+            heading="Upsells"
+            description="Suggest related products inside the cart drawer to increase order value."
+          >
+            <VStack gap={400}>
+              <SectionEnableHeader enabled={upsellsEnabled} onChange={setUpsellsEnabled} label="Upsells enabled" />
 
-                {/* Product list */}
-                <s-stack direction="block" gap="200">
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <s-text fontWeight="semibold" variant="bodySm">Products</s-text>
-                    <s-button variant="tertiary" onClick={pickProducts}>{upsellProducts.length > 0 ? "Change" : "Add products"}</s-button>
-                  </div>
-                  {upsellProducts.length > 0 ? (
-                    <>
-                      {upsellProducts.map((p, i) => (
-                        <div key={p.product_id} style={{
-                          display: "flex", alignItems: "center", gap: 12,
-                          padding: "8px 0",
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <s-text-field
+                  label="Section heading"
+                  value={upsellsHeading}
+                  onInput={(e) => setUpsellsHeading(e.target.value)}
+                  placeholder="You may also like"
+                />
+                <s-select
+                  label="When to show"
+                  value={showOnEmptyCart ? "always" : "filled"}
+                  onChange={(e) => setShowOnEmptyCart(e.target.value === "always")}
+                >
+                  <s-option value="filled">Only when cart has items</s-option>
+                  <s-option value="always">Always (including empty cart)</s-option>
+                </s-select>
+              </div>
+
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <s-text fontWeight="semibold">Products</s-text>
+                  <s-button onClick={pickProducts}>
+                    {upsellProducts.length > 0 ? "Change products" : "Add products"}
+                  </s-button>
+                </div>
+                {upsellProducts.length > 0 ? (
+                  <div
+                    style={{
+                      border: "1px solid var(--s-color-border, #e3e3e3)",
+                      borderRadius: 10,
+                      overflow: "hidden",
+                    }}
+                  >
+                    {upsellProducts.map((p, i) => (
+                      <div
+                        key={p.product_id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 12,
+                          padding: "10px 14px",
                           borderBottom: i < upsellProducts.length - 1 ? "1px solid var(--s-color-border, #e3e3e3)" : "none",
-                        }}>
-                          {p.image_url ? (
-                            <s-thumbnail src={p.image_url} alt={p.title} size="small-200" />
-                          ) : (
-                            <div style={{ width: 40, height: 40, borderRadius: 6, background: "var(--s-color-bg-surface-secondary)" }} />
-                          )}
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <s-text fontWeight="medium">{p.title}</s-text>
-                            <div><s-text color="subdued" variant="bodyXs">{p.price}</s-text></div>
+                          background: "#fff",
+                        }}
+                      >
+                        {p.image_url ? (
+                          <s-thumbnail src={p.image_url} alt={p.title} size="small-200" />
+                        ) : (
+                          <div
+                            style={{
+                              width: 40,
+                              height: 40,
+                              borderRadius: 6,
+                              background: "var(--s-color-bg-surface-secondary)",
+                              flexShrink: 0,
+                            }}
+                          />
+                        )}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <s-text fontWeight="medium">{p.title}</s-text>
+                          <div>
+                            <s-text color="subdued" variant="bodySm">₹{p.price}</s-text>
                           </div>
-                          <s-button variant="tertiary" onClick={() => removeProduct(p.product_id)} accessibilityLabel="Remove">
-                            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </s-button>
                         </div>
-                      ))}
-                      {upsellProducts.length > 6 && (
-                        <s-banner tone="warning">More than 6 products may feel overwhelming. Consider keeping it focused.</s-banner>
-                      )}
-                    </>
-                  ) : (
-                    <div style={{ textAlign: "center", padding: "24px 0" }}>
-                      <s-text color="subdued" variant="bodySm">No products selected</s-text>
+                        <s-button
+                          variant="tertiary"
+                          tone="critical"
+                          icon="delete"
+                          accessibilityLabel={`Remove ${p.title}`}
+                          onClick={() => removeProduct(p.product_id)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      textAlign: "center",
+                      padding: "28px 14px",
+                      border: "1px dashed var(--s-color-border, #e3e3e3)",
+                      borderRadius: 10,
+                      background: "#fafafa",
+                    }}
+                  >
+                    <s-text color="subdued">No upsell products yet</s-text>
+                    <div style={{ marginTop: 10 }}>
+                      <s-button onClick={pickProducts}>Add products</s-button>
                     </div>
-                  )}
-                </s-stack>
-              </s-stack>
-            </div>
+                  </div>
+                )}
+                {upsellProducts.length > 6 && (
+                  <div style={{ marginTop: 10 }}>
+                    <s-banner tone="warning">
+                      More than 6 products may feel overwhelming. Consider keeping it focused.
+                    </s-banner>
+                  </div>
+                )}
+              </div>
+            </VStack>
           </s-section>
 
-          {/* ── Bottom Ribbon + Behavior ──────────────────── */}
-          <s-section padding="none">
-            <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--s-color-border, #e3e3e3)" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <s-text fontWeight="bold">Bottom Ribbon</s-text>
-                <s-switch label="Bottom Ribbon" labelAccessibilityVisibility="hidden" checked={ribbonEnabled} onChange={(e) => setRibbonEnabled(e.target.checked)} />
-              </div>
-            </div>
-            <div style={{ padding: "16px 20px" }}>
+          {/* ── Bottom Ribbon ───────────────────────────── */}
+          <s-section
+            heading="Bottom ribbon"
+            description="Sticky banner shown at the bottom of the drawer (e.g. for the next unlock or out-of-stock messages)."
+          >
+            <VStack gap={400}>
+              <SectionEnableHeader enabled={ribbonEnabled} onChange={setRibbonEnabled} label="Bottom ribbon enabled" />
               <s-text-field
                 label="Out-of-stock message override"
                 value={oosOverride}
                 onInput={(e) => setOosOverride(e.target.value)}
                 placeholder="This item is currently out of stock"
-                details="Leave empty to use the default"
+                details="Leave empty to use the default message."
               />
-            </div>
+            </VStack>
           </s-section>
 
-          {/* ── Behavior ─────────────────────────────────── */}
-          <s-section padding="none">
-            <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--s-color-border, #e3e3e3)" }}>
-              <s-text fontWeight="bold">Behavior</s-text>
-            </div>
-            <div style={{ padding: "16px 20px" }}>
-              <s-stack direction="block" gap="300">
-                <s-select label="Cross-page gift removal" value={crossPageBehavior} onChange={(e) => setCrossPageBehavior(e.target.value)}>
-                  <s-option value="silent">Remove silently</s-option>
-                  <s-option value="notice">Show a notice</s-option>
-                  <s-option value="modal">Show a confirmation modal</s-option>
-                </s-select>
-                <s-text color="subdued" variant="bodyXs">
-                  What happens to auto-added gifts when a customer leaves the page where the offer was active. Claimed items are never removed.
-                </s-text>
-              </s-stack>
-            </div>
+          {/* ── Behavior ────────────────────────────────── */}
+          <s-section
+            heading="Behavior"
+            description="Fine-tune how the cart drawer behaves between pages."
+          >
+            <s-select
+              label="Cross-page gift removal"
+              value={crossPageBehavior}
+              onChange={(e) => setCrossPageBehavior(e.target.value)}
+              details="What happens to auto-added gifts when a customer leaves the page where the offer was active. Claimed items are never removed."
+            >
+              <s-option value="silent">Remove silently</s-option>
+              <s-option value="notice">Show a notice</s-option>
+              <s-option value="modal">Show a confirmation modal</s-option>
+            </s-select>
           </s-section>
 
-        </s-stack>
         </div>
         {confirmModal}
       </s-page>

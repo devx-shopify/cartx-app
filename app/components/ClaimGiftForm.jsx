@@ -4,6 +4,28 @@ import { isFrozenHandle } from "../lib/constants.js";
 import VariantList, { extractVariantData } from "./VariantList.jsx";
 import TargetingSection from "./TargetingSection.jsx";
 import VStack from "./VStack.jsx";
+import PromotionAside from "./PromotionAside.jsx";
+
+function buildClaimGiftSummary({ sectionHeading, claimableVariants, triggerType, threshold, claimPrice, maxClaims, barShow }) {
+  let triggerLabel = "No trigger";
+  if (threshold) {
+    triggerLabel = triggerType === "price" ? `Cart over $${threshold}` : `${threshold}+ items in cart`;
+  }
+
+  const claimPriceNum = Number(claimPrice);
+  const priceLabel = !claimPrice || claimPriceNum === 0
+    ? "Free"
+    : `$${claimPrice}`;
+
+  return [
+    { label: "Section heading", value: sectionHeading || null },
+    { label: "Claimable products", value: claimableVariants.length > 0 ? `${claimableVariants.length} product${claimableVariants.length === 1 ? "" : "s"}` : null },
+    { label: "Trigger", value: triggerLabel },
+    { label: "Claim price", value: priceLabel },
+    { label: "Max claims", value: maxClaims ? String(maxClaims) : "Unlimited" },
+    { label: "Progress bar", value: barShow ? "Enabled" : "Disabled" },
+  ];
+}
 
 function buildInitialDisplay(claimGift, variantDataMap) {
   if (claimGift?.claimable_variant_data?.length) {
@@ -82,9 +104,14 @@ export default forwardRef(function ClaimGiftForm({ claimGift, variantDataMap, on
         <VStack gap={400}>
           <s-text-field label="Name" value={name} onInput={(e) => setName(e.target.value)} error={errors.name || ""} details="Internal label, not shown to customers" />
           <s-text-field label="Section heading" value={sectionHeading} onInput={(e) => setSectionHeading(e.target.value)} error={errors.sectionHeading || ""} placeholder="Add freebies at Rs.1" details="Shown above the claim section in the cart drawer" />
-          <s-checkbox label="Enabled" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
         </VStack>
       </s-section>
+
+      <PromotionAside
+        enabled={enabled}
+        onEnabledChange={setEnabled}
+        summary={buildClaimGiftSummary({ sectionHeading, claimableVariants, triggerType, threshold, claimPrice, maxClaims, barShow })}
+      />
 
       {/* Trigger */}
       <s-section heading="Trigger">
