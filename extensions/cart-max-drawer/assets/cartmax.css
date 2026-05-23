@@ -264,13 +264,13 @@ cart-notification,
 /* Freebie line styling */
 
 .cartmax-line-freebie {
-  background: #f0fdf4;
-  border-bottom-color: #dcfce7;
+  background: color-mix(in srgb, var(--cartmax-accent, #16a34a) 4%, #ffffff);
+  border-bottom-color: color-mix(in srgb, var(--cartmax-accent, #16a34a) 12%, transparent);
   border-left: 3px solid var(--cartmax-accent, #16a34a);
 }
 
 .cartmax-line-freebie .cartmax-line-title {
-  color: #166534;
+  color: var(--cartmax-accent, #16a34a);
 }
 
 .cartmax-line-price-free {
@@ -289,7 +289,7 @@ cart-notification,
   font-size: 10px;
   font-weight: 700;
   color: var(--cartmax-accent, #16a34a);
-  background: #dcfce7;
+  background: color-mix(in srgb, var(--cartmax-accent, #16a34a) 12%, #ffffff);
   padding: 2px 7px;
   border-radius: 4px;
   letter-spacing: 0.3px;
@@ -812,13 +812,13 @@ cart-notification,
   margin-top: 2px;
   font-size: 10px;
   font-weight: 500;
-  color: var(--cartmax-secondary-text, #9ca3af);
+  color: var(--cartmax-text-secondary, #9ca3af);
   line-height: 1.2;
 }
 
 .cartmax-milestone--active .cartmax-milestone-sub-label,
 .cartmax-milestone--next .cartmax-milestone-sub-label {
-  color: var(--cartmax-secondary-text, #6b7280);
+  color: var(--cartmax-text-secondary, #6b7280);
 }
 
 /* --- Bottom Ribbon --- */
@@ -894,8 +894,8 @@ cart-notification,
 }
 
 .cartmax-claim-card--in-cart {
-  border-color: #86efac;
-  background: #f0fdf4;
+  border-color: color-mix(in srgb, var(--cartmax-accent, #16a34a) 45%, transparent);
+  background: color-mix(in srgb, var(--cartmax-accent, #16a34a) 6%, #ffffff);
 }
 
 .cartmax-claim-img {
@@ -1074,8 +1074,8 @@ cart-notification,
   align-items: center;
   gap: 4px;
   padding: 3px 8px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
+  background: color-mix(in srgb, var(--cartmax-accent, #16a34a) 6%, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--cartmax-accent, #16a34a) 35%, transparent);
   border-radius: 6px;
   transition: all 0.15s ease;
 }
@@ -1095,7 +1095,7 @@ cart-notification,
 .cartmax-applied-discount-remove {
   background: none;
   border: none;
-  color: #86efac;
+  color: color-mix(in srgb, var(--cartmax-accent, #16a34a) 60%, #ffffff);
   cursor: pointer;
   padding: 0;
   line-height: 1;
@@ -1180,8 +1180,8 @@ cart-notification,
 }
 
 .cartmax-coupon-card--applied {
-  border-color: #86efac;
-  background: #f0fdf4;
+  border-color: color-mix(in srgb, var(--cartmax-accent, #16a34a) 45%, transparent);
+  background: color-mix(in srgb, var(--cartmax-accent, #16a34a) 6%, #ffffff);
 }
 
 .cartmax-coupon-card-header {
