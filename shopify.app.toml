@@ -1,4 +1,10 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+#
+# ⚠️  HEADS UP: `automatically_update_urls_on_dev = true` (see [build] below)
+# means `shopify app dev` will overwrite `application_url` + `redirect_urls`
+# below with the tunnel URL of your local session. Before submitting for
+# App Store review, run `shopify app deploy` to push the production
+# (cartx.fly.dev) URLs back to Shopify Partners.
 
 client_id = "3021118f1f808e0497865a902802d352"
 name = "cartx"
@@ -6,7 +12,7 @@ application_url = "https://cartx.fly.dev"
 embedded = true
 
 [build]
-automatically_update_urls_on_dev = false
+automatically_update_urls_on_dev = true
 
 [webhooks]
 api_version = "2026-07"
