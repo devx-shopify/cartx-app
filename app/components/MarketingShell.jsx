@@ -194,4 +194,4 @@ const navLinkStyle = {
   fontWeight: 500,
 };
 
-export { TOKENS, FONT_STACK, HEADING_FONT };
+export { TOKENS, FONT_STACK, HEADING_FONT, HashLink };

@@ -1,6 +1,6 @@
 import { redirect, Form, useLoaderData } from "react-router";
 import { login } from "../../shopify.server";
-import MarketingShell, { TOKENS, FONT_STACK, HEADING_FONT } from "../../components/MarketingShell.jsx";
+import MarketingShell, { TOKENS, FONT_STACK, HEADING_FONT, HashLink } from "../../components/MarketingShell.jsx";
 
 export const loader = async ({ request }) => {
   const url = new URL(request.url);
@@ -133,7 +133,7 @@ export default function Index() {
               </button>
             </Form>
           )}
-          <a href="#features" style={{
+          <HashLink hash="features" style={{
             display: 'inline-block',
             marginTop: 8,
             fontSize: 14,
@@ -142,7 +142,7 @@ export default function Index() {
             fontWeight: 500,
           }}>
             See how it works ↓
-          </a>
+          </HashLink>
 
           {/* Stats */}
           <div style={{
