@@ -1,4 +1,23 @@
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
+
+function HashLink({ hash, children, style }) {
+  const location = useLocation();
+  const onHomepage = location.pathname === "/";
+  const href = onHomepage ? `#${hash}` : `/#${hash}`;
+  function handleClick(e) {
+    if (!onHomepage) return; // let the browser navigate to "/" then scroll to hash
+    e.preventDefault();
+    const el = document.getElementById(hash);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (window.location.hash !== `#${hash}`) {
+      history.replaceState(null, "", `#${hash}`);
+    }
+  }
+  return (
+    <a href={href} onClick={handleClick} style={style}>{children}</a>
+  );
+}
 
 const FONT_STACK = 'Arial, Helvetica, -apple-system, sans-serif';
 const HEADING_FONT = '"Instrument Serif", Georgia, serif';
@@ -77,24 +96,9 @@ export default function MarketingShell({ children }) {
             <Logo />
           </Link>
           <nav style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
-            <a href="/#features" style={{
-              fontSize: 14,
-              color: TOKENS.darkGrey,
-              textDecoration: 'none',
-              fontWeight: 500,
-            }}>Features</a>
-            <a href="/#how" style={{
-              fontSize: 14,
-              color: TOKENS.darkGrey,
-              textDecoration: 'none',
-              fontWeight: 500,
-            }}>How it works</a>
-            <Link to="/privacy" style={{
-              fontSize: 14,
-              color: TOKENS.darkGrey,
-              textDecoration: 'none',
-              fontWeight: 500,
-            }}>Privacy</Link>
+            <HashLink hash="features" style={navLinkStyle}>Features</HashLink>
+            <HashLink hash="how" style={navLinkStyle}>How it works</HashLink>
+            <Link to="/privacy" style={navLinkStyle}>Privacy</Link>
           </nav>
         </div>
       </header>
@@ -144,8 +148,8 @@ export default function MarketingShell({ children }) {
                 letterSpacing: 0.6,
                 marginBottom: 10,
               }}>Product</div>
-              <a href="/#features" style={footerLinkStyle}>Features</a>
-              <a href="/#how" style={footerLinkStyle}>How it works</a>
+              <HashLink hash="features" style={footerLinkStyle}>Features</HashLink>
+              <HashLink hash="how" style={footerLinkStyle}>How it works</HashLink>
             </div>
             <div>
               <div style={{
@@ -181,6 +185,13 @@ const footerLinkStyle = {
   color: TOKENS.darkGrey,
   textDecoration: 'none',
   marginBottom: 6,
+};
+
+const navLinkStyle = {
+  fontSize: 14,
+  color: TOKENS.darkGrey,
+  textDecoration: 'none',
+  fontWeight: 500,
 };
 
 export { TOKENS, FONT_STACK, HEADING_FONT };
