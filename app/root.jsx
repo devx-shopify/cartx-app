@@ -17,6 +17,7 @@ export default function App() {
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap"
         />
+        <style>{`html { scroll-behavior: smooth; }`}</style>
         <Meta />
         <Links />
       </head>

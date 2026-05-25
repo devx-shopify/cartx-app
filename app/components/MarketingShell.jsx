@@ -17,42 +17,31 @@ const TOKENS = {
   white: '#FFFFFF',
 };
 
-function Logo({ size = 22 }) {
+function Logo({ size = 28 }) {
   return (
     <span style={{
       display: 'inline-flex',
       alignItems: 'center',
-      gap: 8,
+      gap: 10,
       fontFamily: FONT_STACK,
       fontWeight: 700,
-      fontSize: size,
+      fontSize: Math.round(size * 0.78),
       color: TOKENS.nearBlack,
       letterSpacing: -0.2,
     }}>
-      <span style={{
-        display: 'inline-block',
-        width: size,
-        height: size,
-        borderRadius: 6,
-        background: TOKENS.teal,
-        position: 'relative',
-      }}>
-        <span style={{
-          position: 'absolute',
-          inset: 4,
-          borderRadius: 3,
-          background: TOKENS.white,
-        }} />
-        <span style={{
-          position: 'absolute',
-          left: '50%',
-          top: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: size * 0.45,
-          height: 2,
-          background: TOKENS.teal,
-        }} />
-      </span>
+      <img
+        src="/cartx.png"
+        alt="cartx"
+        width={size}
+        height={size}
+        style={{
+          display: 'block',
+          width: size,
+          height: size,
+          borderRadius: 6,
+          objectFit: 'cover',
+        }}
+      />
       cartx
     </span>
   );
