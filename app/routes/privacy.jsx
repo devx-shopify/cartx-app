@@ -6,7 +6,7 @@ export const meta = () => [
 ];
 
 const LAST_UPDATED = "May 25, 2026";
-const CONTACT_EMAIL = "aditya.pasikanti@devxlabs.ai";
+const CONTACT_EMAIL = "ansh.varshney@devxlabs.ai";
 
 export default function Privacy() {
   return (
