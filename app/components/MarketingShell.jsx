@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 
 const FONT_STACK = 'Arial, Helvetica, -apple-system, sans-serif';
+const HEADING_FONT = '"Instrument Serif", Georgia, serif';
 
 const TOKENS = {
   teal: '#0D9488',
@@ -52,7 +53,7 @@ function Logo({ size = 22 }) {
           background: TOKENS.teal,
         }} />
       </span>
-      CartX
+      cartx
     </span>
   );
 }
@@ -137,7 +138,7 @@ export default function MarketingShell({ children }) {
               lineHeight: 1.6,
             }}>
               Premium cart drawer for Shopify with progress milestones,
-              free gifts, upsells, and discount automation.
+              free gifts, upsells, and discount codes.
             </p>
           </div>
           <div style={{
@@ -178,7 +179,7 @@ export default function MarketingShell({ children }) {
           fontSize: 12,
           color: TOKENS.mutedGrey,
         }}>
-          &copy; {new Date().getFullYear()} CartX by DevX Labs. All rights reserved.
+          &copy; {new Date().getFullYear()} cartx. All rights reserved.
         </div>
       </footer>
     </div>
@@ -193,4 +194,4 @@ const footerLinkStyle = {
   marginBottom: 6,
 };
 
-export { TOKENS, FONT_STACK };
+export { TOKENS, FONT_STACK, HEADING_FONT };

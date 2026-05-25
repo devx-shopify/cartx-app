@@ -1,6 +1,6 @@
 import { redirect, Form, useLoaderData } from "react-router";
 import { login } from "../../shopify.server";
-import MarketingShell, { TOKENS, FONT_STACK } from "../../components/MarketingShell.jsx";
+import MarketingShell, { TOKENS, FONT_STACK, HEADING_FONT } from "../../components/MarketingShell.jsx";
 
 export const loader = async ({ request }) => {
   const url = new URL(request.url);
@@ -38,7 +38,7 @@ const FEATURES = [
 ];
 
 const STEPS = [
-  { n: 1, title: "Install in one click", body: "Add CartX from the Shopify App Store. Enable the app embed in your theme — no code edits." },
+  { n: 1, title: "Install in one click", body: "Add cartx from the Shopify App Store. Enable the app embed in your theme — no code edits." },
   { n: 2, title: "Set milestones & offers", body: "Define progress tiers, free gifts, and upsells in the admin. Target by page or audience." },
   { n: 3, title: "Customize the drawer", body: "Match your brand using the live customizer — colors, typography, copy, layout." },
   { n: 4, title: "Launch & track", body: "Publish to your live theme. Customers see the new drawer instantly, even on the cart-add path." },
@@ -78,24 +78,26 @@ export default function Index() {
             Premium cart drawer for Shopify
           </div>
           <h1 style={{
-            fontFamily: FONT_STACK,
-            fontSize: 56,
-            lineHeight: 1.08,
-            fontWeight: 700,
+            fontFamily: HEADING_FONT,
+            fontSize: 72,
+            lineHeight: 1.05,
+            fontWeight: 400,
             color: TOKENS.nearBlack,
             margin: '0 0 20px',
-            letterSpacing: -1,
+            letterSpacing: -1.5,
           }}>
             Turn the cart drawer into your highest-converting surface
           </h1>
           <p style={{
-            fontSize: 18,
-            lineHeight: 1.55,
+            fontFamily: HEADING_FONT,
+            fontSize: 22,
+            lineHeight: 1.45,
             color: TOKENS.midGrey,
             margin: '0 auto 36px',
             maxWidth: 640,
+            fontStyle: 'italic',
           }}>
-            CartX replaces your store's cart drawer with a premium experience —
+            cartx replaces your store's cart drawer with a premium experience —
             progress milestones, free gift offers, upsells, and discount codes —
             all configurable without touching theme code.
           </p>
@@ -295,7 +297,7 @@ export default function Index() {
               marginBottom: 12,
             }}>Ready to ship a better cart?</h2>
             <p style={{ ...sectionSubStyle, marginBottom: 28 }}>
-              Install CartX and have your new cart drawer live in minutes.
+              Install cartx and have your new cart drawer live in minutes.
             </p>
             <Form method="post" action="/auth/login" style={{
               display: 'flex',
@@ -347,17 +349,20 @@ const primaryBtnStyle = {
 };
 
 const sectionHeadingStyle = {
-  fontFamily: FONT_STACK,
-  fontSize: 36,
-  fontWeight: 700,
+  fontFamily: HEADING_FONT,
+  fontSize: 44,
+  fontWeight: 400,
   color: TOKENS.nearBlack,
   margin: '0 0 12px',
-  letterSpacing: -0.5,
-  lineHeight: 1.2,
+  letterSpacing: -0.8,
+  lineHeight: 1.15,
 };
 
 const sectionSubStyle = {
-  fontSize: 16,
+  fontFamily: HEADING_FONT,
+  fontSize: 19,
   color: TOKENS.midGrey,
   margin: 0,
+  fontStyle: 'italic',
+  lineHeight: 1.45,
 };

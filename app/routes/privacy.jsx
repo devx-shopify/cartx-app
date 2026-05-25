@@ -1,14 +1,12 @@
-import MarketingShell, { TOKENS, FONT_STACK } from "../components/MarketingShell.jsx";
+import MarketingShell, { TOKENS, FONT_STACK, HEADING_FONT } from "../components/MarketingShell.jsx";
 
 export const meta = () => [
-  { title: "Privacy Policy — CartX" },
-  { name: "description", content: "Privacy policy for CartX, a Shopify cart drawer app by DevX Labs." },
+  { title: "Privacy Policy — cartx" },
+  { name: "description", content: "Privacy policy for cartx, a Shopify cart drawer app." },
 ];
 
-const LAST_UPDATED = "May 24, 2026";
-const CONTACT_EMAIL = "privacy@devxlabs.ai";
-const COMPANY_LEGAL_NAME = "DevX Labs";
-const COMPANY_LOCATION = "India";
+const LAST_UPDATED = "May 25, 2026";
+const CONTACT_EMAIL = "aditya.pasikanti@devxlabs.ai";
 
 export default function Privacy() {
   return (
@@ -22,12 +20,13 @@ export default function Privacy() {
       }}>
         <header style={{ marginBottom: 32 }}>
           <h1 style={{
-            fontSize: 40,
-            fontWeight: 700,
+            fontFamily: HEADING_FONT,
+            fontSize: 56,
+            fontWeight: 400,
             color: TOKENS.nearBlack,
             margin: '0 0 12px',
-            letterSpacing: -0.5,
-            lineHeight: 1.15,
+            letterSpacing: -1,
+            lineHeight: 1.1,
           }}>Privacy Policy</h1>
           <p style={{
             fontSize: 13,
@@ -39,54 +38,40 @@ export default function Privacy() {
 
         <Section title="1. Introduction">
           <P>
-            This Privacy Policy describes how <Strong>{COMPANY_LEGAL_NAME}</Strong>
-            {' '}("CartX", "we", "our", or "us") collects, uses, stores, and
-            shares information when Shopify merchants install and use the
-            CartX application (the "App") on their Shopify stores, and when
-            their customers interact with the cart drawer rendered by the App
-            on those stores.
+            This Privacy Policy describes how cartx (the "App") collects,
+            uses, stores, and shares information when Shopify merchants
+            install and use the App on their Shopify stores, and when
+            their customers interact with the cart drawer rendered by the
+            App on those stores.
           </P>
           <P>
-            By installing or using CartX, you agree to the terms of this
+            By installing or using cartx, you agree to the terms of this
             policy. If you do not agree, please uninstall the App.
           </P>
         </Section>
 
-        <Section title="2. Who we are (Data Controller)">
+        <Section title="2. Information we collect">
           <P>
-            <Strong>{COMPANY_LEGAL_NAME}</Strong>, based in {COMPANY_LOCATION},
-            is the data controller for personal data we process about merchant
-            users. For data about the merchant's customers, the merchant is
-            the controller and CartX acts as a data processor on the merchant's
-            behalf.
-          </P>
-          <P>
-            Contact:{' '}
-            <a href={`mailto:${CONTACT_EMAIL}`} style={linkStyle}>{CONTACT_EMAIL}</a>
-          </P>
-        </Section>
-
-        <Section title="3. Information we collect">
-          <P>
-            CartX is intentionally minimal in the data it collects. We do not
-            run marketing trackers, advertising pixels, or third-party
+            cartx is intentionally minimal in the data it collects. We do
+            not run marketing trackers, advertising pixels, or third-party
             analytics inside the merchant's storefront or admin.
           </P>
 
-          <Sub title="3.1 Merchant (store) data" />
+          <Sub title="2.1 Merchant (store) data" />
           <Ul items={[
             <>Shop domain (e.g. <code style={codeStyle}>example.myshopify.com</code>), shop ID, and primary contact details Shopify provides during OAuth.</>,
-            <>Theme ID(s) for which CartX has been configured.</>,
+            <>Theme ID(s) for which cartx has been configured.</>,
             <>App configuration the merchant creates: drawer styling, progress milestones, coupons, claim gifts, upsell products, custom CSS, and similar settings.</>,
             <>Shopify session tokens issued via OAuth so the App can call the Shopify Admin GraphQL API on the merchant's behalf.</>,
             <>Webhook deliveries from Shopify (app/uninstalled, app/scopes_update, customers/data_request, customers/redact, shop/redact).</>,
           ]} />
 
-          <Sub title="3.2 Customer (storefront) data" />
+          <Sub title="2.2 Customer (storefront) data" />
           <P>
-            When a customer browses the merchant's store with the CartX drawer
-            active, the storefront calls CartX's evaluation endpoint to decide
-            what offers, gifts, and discounts to surface. The request includes:
+            When a customer browses the merchant's store with the cartx
+            drawer active, the storefront calls cartx's evaluation
+            endpoint to decide what offers, gifts, and discounts to
+            surface. The request includes:
           </P>
           <Ul items={[
             <>Cart contents (line items, quantities, prices, line-level properties, applied discount codes).</>,
@@ -96,22 +81,22 @@ export default function Privacy() {
             <>Browser-derived currency and money format strings.</>,
           ]} />
           <P>
-            CartX does <Strong>not</Strong> set cookies on the storefront, does
-            not fingerprint visitors, and does not log IP addresses beyond
-            standard server access logs retained for operational and security
-            purposes.
+            cartx does <Strong>not</Strong> set cookies on the storefront,
+            does not fingerprint visitors, and does not log IP addresses
+            beyond standard server access logs retained for operational
+            and security purposes.
           </P>
 
-          <Sub title="3.3 Server logs" />
+          <Sub title="2.3 Server logs" />
           <Ul items={[
             <>Standard HTTP request metadata (timestamp, path, status code, response time, IP address, user agent) generated by our hosting provider.</>,
             <>Application error traces.</>,
           ]} />
         </Section>
 
-        <Section title="4. How we use information">
+        <Section title="3. How we use information">
           <Ul items={[
-            <>Render and operate the CartX cart drawer on the merchant's storefront.</>,
+            <>Render and operate the cartx cart drawer on the merchant's storefront.</>,
             <>Evaluate the merchant's configured offers, milestones, gifts, and discounts against the active cart.</>,
             <>Persist merchant-authored configuration so it is retained across sessions.</>,
             <>Authenticate the merchant in the App's admin UI via Shopify OAuth.</>,
@@ -124,7 +109,7 @@ export default function Privacy() {
           </P>
         </Section>
 
-        <Section title="5. Legal bases (GDPR)">
+        <Section title="4. Legal bases (GDPR)">
           <Ul items={[
             <><Strong>Contractual necessity</Strong> — to provide the App's functionality once installed.</>,
             <><Strong>Legitimate interest</Strong> — securing the service, preventing abuse, debugging.</>,
@@ -133,20 +118,20 @@ export default function Privacy() {
           ]} />
         </Section>
 
-        <Section title="6. Sub-processors and third parties">
-          <P>We rely on the following processors to deliver CartX:</P>
+        <Section title="5. Sub-processors and third parties">
+          <P>We rely on the following processors to deliver cartx:</P>
           <Ul items={[
             <><Strong>Shopify Inc.</Strong> — App distribution, OAuth, Admin API, storefront delivery, webhook routing. See Shopify's privacy policy.</>,
             <><Strong>Fly.io</Strong> — Application hosting (primary region: Mumbai, IN).</>,
             <><Strong>PostgreSQL</Strong> hosted alongside the App on Fly.io — Configuration and session storage.</>,
           ]} />
           <P>
-            We do not transfer personal data to any other third party unless
-            required by law or with the merchant's instruction.
+            We do not transfer personal data to any other third party
+            unless required by law or with the merchant's instruction.
           </P>
         </Section>
 
-        <Section title="7. Data retention">
+        <Section title="6. Data retention">
           <Ul items={[
             <>Merchant configuration and session records are retained for the duration of the install and deleted (or anonymized) within 30 days of uninstall, unless retention is required by law.</>,
             <>Server access logs are retained for up to 30 days.</>,
@@ -154,61 +139,63 @@ export default function Privacy() {
           ]} />
         </Section>
 
-        <Section title="8. Your rights">
+        <Section title="7. Your rights">
           <P>
-            Depending on your jurisdiction (including the EEA, UK, and India),
-            you may have the right to: access, rectify, erase, restrict, or
-            port your personal data, and to object to certain processing.
+            Depending on your jurisdiction (including the EEA, UK, and
+            India), you may have the right to: access, rectify, erase,
+            restrict, or port your personal data, and to object to certain
+            processing.
           </P>
           <P>
-            Merchants can exercise these rights directly via the App
-            admin or by emailing{' '}
+            Merchants can exercise these rights directly via the App admin
+            or by emailing{' '}
             <a href={`mailto:${CONTACT_EMAIL}`} style={linkStyle}>{CONTACT_EMAIL}</a>.
             Storefront customers should contact the merchant whose store
-            they shopped on; CartX will assist that merchant in fulfilling
+            they shopped on; cartx will assist that merchant in fulfilling
             the request and acts on Shopify's GDPR webhooks within
             mandated timeframes.
           </P>
         </Section>
 
-        <Section title="9. Security">
+        <Section title="8. Security">
           <P>
-            We protect data with TLS for all transport, scoped Shopify OAuth
-            tokens stored encrypted at rest, role-based access to production
-            infrastructure, and HMAC verification on Shopify app-proxy and
-            webhook requests. No system is perfectly secure; we will notify
-            affected merchants and authorities of any qualifying breach
-            within the timeframes required by applicable law.
+            We protect data with TLS for all transport, scoped Shopify
+            OAuth tokens stored encrypted at rest, role-based access to
+            production infrastructure, and HMAC verification on Shopify
+            app-proxy and webhook requests. No system is perfectly
+            secure; we will notify affected merchants and authorities of
+            any qualifying breach within the timeframes required by
+            applicable law.
           </P>
         </Section>
 
-        <Section title="10. International transfers">
+        <Section title="9. International transfers">
           <P>
-            Our infrastructure is primarily in India (Mumbai region). If you
-            are located outside India, your data will be transferred to and
-            processed in India. Where required, we rely on Standard
+            Our infrastructure is primarily in India (Mumbai region). If
+            you are located outside India, your data will be transferred
+            to and processed in India. Where required, we rely on Standard
             Contractual Clauses or equivalent safeguards.
           </P>
         </Section>
 
-        <Section title="11. Children's privacy">
+        <Section title="10. Children's privacy">
           <P>
-            CartX is a B2B tool for Shopify merchants and is not directed at
-            children under 13 (or the equivalent age in your jurisdiction).
-            We do not knowingly collect data from children.
+            cartx is a B2B tool for Shopify merchants and is not directed
+            at children under 13 (or the equivalent age in your
+            jurisdiction). We do not knowingly collect data from children.
           </P>
         </Section>
 
-        <Section title="12. Changes to this policy">
+        <Section title="11. Changes to this policy">
           <P>
             We may update this policy from time to time. Material changes
-            will be communicated to active merchants via the App admin
-            or email. The "Last updated" date at the top of this page
-            always reflects the latest revision.
+            will be communicated to active merchants via the App admin or
+            email. The "Last updated" date at the top of this page always
+            reflects the latest revision.
           </P>
         </Section>
 
-        <Section title="13. Contact">
+        <Section title="12. Contact">
           <P>
             For privacy questions, data-subject requests, or to report a
             concern, email{' '}
@@ -224,11 +211,13 @@ function Section({ title, children }) {
   return (
     <section style={{ marginBottom: 36 }}>
       <h2 style={{
-        fontSize: 20,
-        fontWeight: 700,
+        fontFamily: HEADING_FONT,
+        fontSize: 28,
+        fontWeight: 400,
         color: TOKENS.nearBlack,
         margin: '0 0 12px',
-        letterSpacing: -0.2,
+        letterSpacing: -0.4,
+        lineHeight: 1.2,
       }}>{title}</h2>
       {children}
     </section>
