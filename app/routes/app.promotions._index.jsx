@@ -215,12 +215,9 @@ export default function PromotionsIndex() {
         Create promotion
       </s-button>
 
-      {/* Theme switcher — Max only */}
-      {planData?.features?.theme_switcher && (
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
-          <ThemeSwitcher themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
-        </div>
-      )}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+        <ThemeSwitcher themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
+      </div>
 
       {/* Full-page empty state when no promotions exist */}
       {promotions.length === 0 && (

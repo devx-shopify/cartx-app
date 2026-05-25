@@ -506,12 +506,9 @@ export default function Dashboard() {
       </s-button>
 
       <s-stack direction="block" gap="base">
-        {/* Theme switcher row — Max only */}
-        {planData?.features?.theme_switcher && (
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <ThemeSwitcher themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
-          </div>
-        )}
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <ThemeSwitcher themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
+        </div>
 
         {/* Onboarding setup guide */}
         {showWizard && (

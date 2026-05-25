@@ -11,7 +11,7 @@ import {
   saveConfig,
   getShopAndTheme,
 } from "../lib/config.server.js";
-import { getActivePlan, hasFeature, ensureStoreRecord } from "../lib/billing.server.js";
+import { getActivePlan, ensureStoreRecord } from "../lib/billing.server.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -50,19 +50,11 @@ export const action = async ({ request }) => {
   const body = await request.json();
 
   if (body._action === "set_theme") {
-    const planData = await getActivePlan(admin, session.shop);
-    if (!hasFeature(planData, "theme_switcher")) {
-      return { ok: false, error: "Upgrade to the Max plan to use the theme switcher" };
-    }
     await setSelectedTheme(session.shop, body.theme_id || null);
     return { ok: true, themeId: body.theme_id };
   }
 
   if (body._action === "copy_promotions") {
-    const planData = await getActivePlan(admin, session.shop);
-    if (!hasFeature(planData, "theme_switcher")) {
-      return { ok: false, error: "Upgrade to the Max plan to use the theme switcher" };
-    }
     const preferred = await getSelectedTheme(session.shop);
     const { shopId, themeId: currentThemeId } = await getShopAndTheme(admin, session, preferred);
     const sourceThemeId = body.source_theme_id;
@@ -81,10 +73,6 @@ export const action = async ({ request }) => {
   }
 
   if (body._action === "copy_drawer") {
-    const planData = await getActivePlan(admin, session.shop);
-    if (!hasFeature(planData, "theme_switcher")) {
-      return { ok: false, error: "Upgrade to the Max plan to use the theme switcher" };
-    }
     const preferred = await getSelectedTheme(session.shop);
     const { shopId, themeId: currentThemeId } = await getShopAndTheme(admin, session, preferred);
     const sourceThemeId = body.source_theme_id;
