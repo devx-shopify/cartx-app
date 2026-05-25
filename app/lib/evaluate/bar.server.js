@@ -1,12 +1,12 @@
-import { pageMatch, getActiveEntries } from '../helpers.server.js'
+import { pageMatch, getActiveEntries, customerMatchesTags } from '../helpers.server.js'
 import { resolveTemplate } from './messages.server.js'
 
-function collectBarEntries(config, page) {
+function collectBarEntries(config, page, customer) {
   const entries = []
 
   // Use getActiveEntries for offers — page-specific offers take priority over global ones
   const eligibleOffers = (config.offers || []).filter(
-    (o) => o.enabled && o.bar?.show,
+    (o) => o.enabled && o.bar?.show && customerMatchesTags(o, customer),
   )
   const activeOffers = getActiveEntries(page, eligibleOffers)
   const activeOfferIds = new Set(activeOffers.map((o) => o.id))
@@ -61,7 +61,7 @@ function collectBarEntries(config, page) {
 
   // Use getActiveEntries for claims — but suppress if page-specific offers exist
   const eligibleClaims = (config.claim_gifts || []).filter(
-    (c) => c.enabled && c.bar?.show,
+    (c) => c.enabled && c.bar?.show && customerMatchesTags(c, customer),
   )
   const activeClaims = hasPageSpecificOffers ? [] : getActiveEntries(page, eligibleClaims)
   const activeClaimIds = new Set(activeClaims.map((c) => c.id))
@@ -84,6 +84,7 @@ function collectBarEntries(config, page) {
     if (hasPageSpecificOffers) continue
     if (!m.enabled) continue
     if (!pageMatch(m.page_handles, page)) continue
+    if (!customerMatchesTags(m, customer)) continue
     entries.push({
       id: m.id,
       source: 'visual_milestone',
@@ -229,10 +230,10 @@ function applyTierOrder(tiers, tierOrder) {
   return ordered
 }
 
-export function buildBar(config, page, adjustedTotal, adjustedQty, moneyFormat) {
+export function buildBar(config, page, adjustedTotal, adjustedQty, moneyFormat, customer) {
   if (!config.progress_bar.enabled) return null
 
-  const entries = collectBarEntries(config, page)
+  const entries = collectBarEntries(config, page, customer)
   if (entries.length === 0) return null
 
   const tierOrder = config.progress_bar.tier_order || []

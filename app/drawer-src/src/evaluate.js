@@ -432,7 +432,7 @@ async function runEvaluate(cart, action) {
     }));
   }
   if (isCacheValid()) {
-    var localResult = localEvaluate(_cachedConfig, evalCart);
+    var localResult = localEvaluate(_cachedConfig, evalCart, { id: ctx.customerId, tags: ctx.customerTags });
     if (localResult && _lastResult && _lastResult.bar) {
       var serverBar = _lastResult.bar;
       var optimistic = Object.assign({}, _lastResult, {
@@ -497,7 +497,7 @@ async function runEvaluateBatch(cart, actions) {
     }));
   }
   if (isCacheValid()) {
-    var localResult = localEvaluate(_cachedConfig, evalCart);
+    var localResult = localEvaluate(_cachedConfig, evalCart, { id: ctx.customerId, tags: ctx.customerTags });
     if (localResult && _lastResult && _lastResult.bar) {
       var optimistic = Object.assign({}, _lastResult, {
         ribbon_message: localResult.ribbon_message,

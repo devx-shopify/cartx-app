@@ -38,6 +38,34 @@ function pageMatch(handles, path) {
 
 // ── Evaluate offers (mirrors triggers.server.js) ──────────
 
+function normalizeTag(t) {
+  return String(t).trim().toLowerCase();
+}
+
+// Client mirror of customerMatchesTags from helpers.server.js.
+// Keeps optimistic local eval in sync with server filtering, otherwise
+// an offer can flash on screen before the server response removes it.
+function customerMatchesTags(rule, customer) {
+  var target = rule && rule.customer_tags;
+  if (!target) return true;
+  var required = (target.required_any || []).map(normalizeTag).filter(Boolean);
+  var excluded = (target.excluded || []).map(normalizeTag).filter(Boolean);
+  var tags = ((customer && customer.tags) || []).map(normalizeTag);
+  if (excluded.length) {
+    for (var i = 0; i < excluded.length; i++) {
+      if (tags.indexOf(excluded[i]) !== -1) return false;
+    }
+  }
+  if (required.length) {
+    var matched = false;
+    for (var j = 0; j < required.length; j++) {
+      if (tags.indexOf(required[j]) !== -1) { matched = true; break; }
+    }
+    if (!matched) return false;
+  }
+  return true;
+}
+
 function evaluateTrigger(offer, adjTotal, adjQty) {
   var t = offer.trigger || {};
   var priceMet = t.price_threshold && adjTotal >= t.price_threshold;
@@ -45,7 +73,7 @@ function evaluateTrigger(offer, adjTotal, adjQty) {
   return priceMet || qtyMet;
 }
 
-function evaluateOffers(offers, cart, adjTotal, adjQty, page) {
+function evaluateOffers(offers, cart, adjTotal, adjQty, page, customer) {
   var toAdd = [];
   var toRemove = [];
   var triggeredIds = {};
@@ -53,6 +81,7 @@ function evaluateOffers(offers, cart, adjTotal, adjQty, page) {
   for (var i = 0; i < offers.length; i++) {
     var offer = offers[i];
     if (!pageMatch(offer.page_handles, page)) continue;
+    if (!customerMatchesTags(offer, customer)) continue;
 
     var triggered = evaluateTrigger(offer, adjTotal, adjQty);
     if (triggered) {
@@ -94,7 +123,7 @@ function evaluateOffers(offers, cart, adjTotal, adjQty, page) {
 
 // ── Build progress bar (simplified client-side) ───────────
 
-function buildBar(config, adjTotal, adjQty, page, moneyFormat) {
+function buildBar(config, adjTotal, adjQty, page, moneyFormat, customer) {
   if (!config.progress_bar || !config.progress_bar.enabled) return null;
 
   var entries = [];
@@ -104,6 +133,7 @@ function buildBar(config, adjTotal, adjQty, page, moneyFormat) {
     var offer = config.offers[i];
     if (!offer.bar || !offer.bar.show) continue;
     if (!pageMatch(offer.page_handles, page)) continue;
+    if (!customerMatchesTags(offer, customer)) continue;
     entries.push({
       threshold: offer.trigger.price_threshold || offer.trigger.quantity_threshold,
       trigger_type: offer.trigger.price_threshold ? 'price' : 'quantity',
@@ -171,7 +201,7 @@ function buildBar(config, adjTotal, adjQty, page, moneyFormat) {
 
 // ── Main: evaluate cart locally ───────────────────────────
 
-export function localEvaluate(cachedConfig, cart) {
+export function localEvaluate(cachedConfig, cart, customer) {
   if (!cachedConfig || !cart) return null;
 
   var items = cart.items || [];
@@ -179,8 +209,8 @@ export function localEvaluate(cachedConfig, cart) {
   var adjQty = adjustedQty(items);
   var page = window.location.pathname;
 
-  var offerResult = evaluateOffers(cachedConfig.offers || [], cart, adjTotal, adjQty, page);
-  var bar = buildBar(cachedConfig, adjTotal, adjQty, page, cachedConfig.money_format || '');
+  var offerResult = evaluateOffers(cachedConfig.offers || [], cart, adjTotal, adjQty, page, customer);
+  var bar = buildBar(cachedConfig, adjTotal, adjQty, page, cachedConfig.money_format || '', customer);
 
   // Ribbon from next locked tier
   var ribbonMessage = null;

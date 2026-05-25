@@ -1,4 +1,4 @@
-import { getActiveEntries } from '../helpers.server.js'
+import { getActiveEntries, customerMatchesTags } from '../helpers.server.js'
 import { LINE_PROPS } from '../constants.js'
 
 function normalizeId(id) {
@@ -79,9 +79,10 @@ export function evaluateOffers(
   cart,
   adjustedTotal,
   adjustedQty,
-  page
+  page,
+  customer
 ) {
-  const eligible = offers.filter((o) => o.enabled)
+  const eligible = offers.filter((o) => o.enabled && customerMatchesTags(o, customer))
   const active = getActiveEntries(page, eligible)
   const toAdd = []
   const toDisplay = []

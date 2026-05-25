@@ -1,4 +1,4 @@
-import { pageMatch } from '../helpers.server.js'
+import { pageMatch, customerMatchesTags } from '../helpers.server.js'
 
 /**
  * Collect all applied discount codes from the cart.
@@ -27,13 +27,14 @@ function getAppliedCodes(cart) {
  * Return coupons to showcase in the drawer for the current page/audience.
  * Marks each as applied if its code is found in the cart's discount applications.
  */
-export function resolveAvailableCoupons(coupons, cart, page) {
+export function resolveAvailableCoupons(coupons, cart, page, customer) {
   const appliedCodes = getAppliedCodes(cart)
   const results = []
 
   for (const coupon of coupons) {
     if (!coupon.enabled) continue
     if (!pageMatch(coupon.page_handles, page)) continue
+    if (!customerMatchesTags(coupon, customer)) continue
 
     const codeUpper = (coupon.code || '').toUpperCase()
     const titleUpper = (coupon.title || '').toUpperCase()

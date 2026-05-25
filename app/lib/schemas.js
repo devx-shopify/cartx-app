@@ -8,6 +8,16 @@ const PageTargetSchema = z.object({
   kind: z.enum(['page', 'product', 'collection']).optional(),
 })
 
+// Customer-tag-based targeting. Both arrays optional; if neither is set the
+// rule applies to all customers (including guests).
+//   required_any: customer must have at least one of these tags
+//   excluded:     customer must have none of these tags
+// Guests (no customer) match when required_any is empty.
+const CustomerTagsTargetSchema = z.object({
+  required_any: z.array(z.string().min(1)).optional(),
+  excluded: z.array(z.string().min(1)).optional(),
+}).optional()
+
 const BarSchema = z.object({
   show: z.boolean(),
   label: z.string().min(1),
@@ -75,6 +85,7 @@ export const OfferSchema = z.object({
   bar: BarSchema.optional(),
   page_handles: z.array(z.string()).min(1),
   page_targets: z.array(PageTargetSchema).optional(),
+  customer_tags: CustomerTagsTargetSchema,
 }).passthrough()
 
 export const CouponSchema = z.object({
@@ -88,6 +99,7 @@ export const CouponSchema = z.object({
   display_message: z.string().optional(),
   page_handles: z.array(z.string()).min(1),
   page_targets: z.array(PageTargetSchema).optional(),
+  customer_tags: CustomerTagsTargetSchema,
 }).passthrough()
 
 export const ClaimGiftSchema = z.object({
@@ -108,6 +120,7 @@ export const ClaimGiftSchema = z.object({
   section_heading: z.string().min(1),
   page_handles: z.array(z.string()).min(1),
   page_targets: z.array(PageTargetSchema).optional(),
+  customer_tags: CustomerTagsTargetSchema,
   bar: BarSchema.optional(),
 }).passthrough()
 

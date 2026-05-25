@@ -2,6 +2,7 @@ import { useState, useCallback, forwardRef, useImperativeHandle } from "react";
 import { useFetcher } from "react-router";
 import { isFrozenHandle } from "../lib/constants.js";
 import TargetingSection from "./TargetingSection.jsx";
+import TagTargetingSection from "./TagTargetingSection.jsx";
 import VStack from "./VStack.jsx";
 import PromotionAside from "./PromotionAside.jsx";
 
@@ -41,6 +42,7 @@ export default forwardRef(function CouponForm({ coupon, onSubmit, submitting }, 
   const [displayMessage, setDisplayMessage] = useState(coupon?.display_message ?? "");
   const [pageHandles, setPageHandles] = useState(coupon?.page_handles?.length ? coupon.page_handles : ["/"]);
   const [pageTargets, setPageTargets] = useState(coupon?.page_targets);
+  const [customerTags, setCustomerTags] = useState(coupon?.customer_tags);
   const [errors, setErrors] = useState({});
   const [pickerOpen, setPickerOpen] = useState(false);
   const discountFetcher = useFetcher();
@@ -76,6 +78,7 @@ export default forwardRef(function CouponForm({ coupon, onSubmit, submitting }, 
       shopify_discount_id: shopifyDiscountId, code: code.trim(), type_label: typeLabel,
       title, is_automatic: isAutomatic, enabled, display_message: displayMessage || undefined,
       page_handles: pageHandles, page_targets: pageTargets,
+      customer_tags: customerTags,
     });
   }
 
@@ -219,6 +222,8 @@ export default forwardRef(function CouponForm({ coupon, onSubmit, submitting }, 
         onChange={({ page_handles, page_targets }) => { setPageHandles(page_handles); setPageTargets(page_targets); }}
       />
       {errors.pageHandles && <s-banner tone="critical">{errors.pageHandles}</s-banner>}
+
+      <TagTargetingSection value={customerTags} onChange={setCustomerTags} />
     </>
   );
 });

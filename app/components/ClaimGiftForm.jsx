@@ -3,6 +3,7 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { isFrozenHandle } from "../lib/constants.js";
 import VariantList, { extractVariantData } from "./VariantList.jsx";
 import TargetingSection from "./TargetingSection.jsx";
+import TagTargetingSection from "./TagTargetingSection.jsx";
 import VStack from "./VStack.jsx";
 import PromotionAside from "./PromotionAside.jsx";
 
@@ -60,6 +61,7 @@ export default forwardRef(function ClaimGiftForm({ claimGift, variantDataMap, on
   const [barLockedMessage, setBarLockedMessage] = useState(claimGift?.bar?.locked_message ?? "");
   const [pageHandles, setPageHandles] = useState(claimGift?.page_handles?.length ? claimGift.page_handles : ["/"]);
   const [pageTargets, setPageTargets] = useState(claimGift?.page_targets);
+  const [customerTags, setCustomerTags] = useState(claimGift?.customer_tags);
   const [errors, setErrors] = useState({});
 
   async function pickClaimableProducts() {
@@ -92,6 +94,7 @@ export default forwardRef(function ClaimGiftForm({ claimGift, variantDataMap, on
       max_claims: maxClaims ? Number(maxClaims) : undefined,
       bar: barShow ? { show: true, label: barLabel, sub_label: barSubLabel || undefined, locked_message: barLockedMessage || undefined } : undefined,
       page_handles: pageHandles, page_targets: pageTargets,
+      customer_tags: customerTags,
     });
   }
 
@@ -170,6 +173,8 @@ export default forwardRef(function ClaimGiftForm({ claimGift, variantDataMap, on
         onChange={({ page_handles, page_targets }) => { setPageHandles(page_handles); setPageTargets(page_targets); }}
       />
       {errors.pageHandles && <s-banner tone="critical">{errors.pageHandles}</s-banner>}
+
+      <TagTargetingSection value={customerTags} onChange={setCustomerTags} />
     </>
   );
 });

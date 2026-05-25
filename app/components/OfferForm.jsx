@@ -3,6 +3,7 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { isFrozenHandle } from "../lib/constants.js";
 import VariantList, { extractVariantData } from "./VariantList.jsx";
 import TargetingSection from "./TargetingSection.jsx";
+import TagTargetingSection from "./TagTargetingSection.jsx";
 import VStack from "./VStack.jsx";
 import PromotionAside from "./PromotionAside.jsx";
 
@@ -197,6 +198,7 @@ export default forwardRef(function OfferForm(
     offer?.page_handles?.length ? offer.page_handles : ["/"],
   );
   const [pageTargets, setPageTargets] = useState(offer?.page_targets);
+  const [customerTags, setCustomerTags] = useState(offer?.customer_tags);
   const [errors, setErrors] = useState({});
 
   const isProductSource = sourceType === "product";
@@ -377,6 +379,7 @@ export default forwardRef(function OfferForm(
         : undefined,
       page_handles: pageHandles,
       page_targets: pageTargets,
+      customer_tags: customerTags,
     });
   }
 
@@ -788,6 +791,8 @@ export default forwardRef(function OfferForm(
       {errors.pageHandles && (
         <s-banner tone="critical">{errors.pageHandles}</s-banner>
       )}
+
+      <TagTargetingSection value={customerTags} onChange={setCustomerTags} />
     </>
   );
 });

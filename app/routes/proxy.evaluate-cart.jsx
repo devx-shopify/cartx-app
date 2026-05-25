@@ -114,11 +114,11 @@ export const action = async ({ request }) => {
 
   let offerResult, bar, ribbon_message, availableCoupons, claimGifts;
   try {
-    offerResult = evaluateOffers(config.offers || [], cart, adjTotal, adjQty, page);
-    bar = buildBar(config, page, adjTotal, adjQty, moneyFormat);
+    offerResult = evaluateOffers(config.offers || [], cart, adjTotal, adjQty, page, customer);
+    bar = buildBar(config, page, adjTotal, adjQty, moneyFormat, customer);
     ({ ribbon_message } = getRibbonFromBar(bar));
-    availableCoupons = resolveAvailableCoupons(config.coupons || [], cart, page);
-    claimGifts = resolveClaimGifts(config.claim_gifts || [], cart, adjTotal, adjQty, page);
+    availableCoupons = resolveAvailableCoupons(config.coupons || [], cart, page, customer);
+    claimGifts = resolveClaimGifts(config.claim_gifts || [], cart, adjTotal, adjQty, page, customer);
   } catch (err) {
     console.error('[cartx] Evaluate pipeline error:', err);
     return Response.json({ error: "Evaluation failed", message: err.message }, { status: 500 });

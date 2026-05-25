@@ -46,6 +46,28 @@ export function pageMatch(entryHandles, currentPath) {
   return entryHandles.includes(path)
 }
 
+function normalizeTag(t) {
+  return String(t).trim().toLowerCase()
+}
+
+/**
+ * True when `customer` satisfies `rule.customer_tags` targeting.
+ * - No targeting set → matches everyone (including guests).
+ * - required_any → customer must carry at least one of these tags; a guest
+ *   (no customer) therefore fails.
+ * - excluded → customer must carry none of these tags; a guest passes.
+ */
+export function customerMatchesTags(rule, customer) {
+  const target = rule?.customer_tags
+  if (!target) return true
+  const required = (target.required_any || []).map(normalizeTag).filter(Boolean)
+  const excluded = (target.excluded || []).map(normalizeTag).filter(Boolean)
+  const tags = (customer?.tags || []).map(normalizeTag)
+  if (excluded.length && excluded.some((t) => tags.includes(t))) return false
+  if (required.length && !required.some((t) => tags.includes(t))) return false
+  return true
+}
+
 export function getActiveEntries(currentPath, allEntries) {
   const path = currentPath.split('?')[0]
   const specific = allEntries.filter(
