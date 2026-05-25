@@ -1,13 +1,15 @@
-import { redirect, Form, useLoaderData } from "react-router";
-import { login } from "../../shopify.server";
+import { redirect } from "react-router";
 import MarketingShell, { TOKENS, FONT_STACK, HEADING_FONT, HashLink } from "../../components/MarketingShell.jsx";
 
 export const loader = async ({ request }) => {
+  // Shopify-initiated installs land here with ?shop=...; punt them straight
+  // into the embedded app's OAuth flow. The marketing page itself does not
+  // accept manual shop-domain entry (Shopify policy 2.3.1).
   const url = new URL(request.url);
   if (url.searchParams.get("shop")) {
     throw redirect(`/app?${url.searchParams.toString()}`);
   }
-  return { showForm: Boolean(login) };
+  return {};
 };
 
 const FEATURES = [
@@ -45,14 +47,15 @@ const STEPS = [
 ];
 
 const STATS = [
-  { value: "+18%", label: "Avg. cart value lift" },
+  { value: "6", label: "Promotion types" },
   { value: "<50ms", label: "Drawer open latency" },
   { value: "0 lines", label: "Theme code to write" },
 ];
 
-export default function Index() {
-  const { showForm } = useLoaderData();
+// Replace this when the App Store listing is live.
+const APP_STORE_URL = "https://apps.shopify.com/";
 
+export default function Index() {
   return (
     <MarketingShell>
       {/* Hero */}
@@ -102,47 +105,25 @@ export default function Index() {
             all configurable without touching theme code.
           </p>
 
-          {showForm && (
-            <Form method="post" action="/auth/login" style={{
-              display: 'flex',
-              gap: 8,
-              maxWidth: 460,
-              margin: '0 auto 16px',
-              flexWrap: 'wrap',
-              justifyContent: 'center',
-            }}>
-              <input
-                name="shop"
-                type="text"
-                placeholder="your-store.myshopify.com"
-                required
-                style={{
-                  flex: '1 1 240px',
-                  padding: '12px 16px',
-                  fontSize: 14,
-                  fontFamily: FONT_STACK,
-                  border: `1px solid ${TOKENS.borderGrey}`,
-                  borderRadius: 8,
-                  outline: 'none',
-                  background: TOKENS.white,
-                  color: TOKENS.darkGrey,
-                }}
-              />
-              <button type="submit" style={primaryBtnStyle}>
-                Install on Shopify
-              </button>
-            </Form>
-          )}
-          <HashLink hash="features" style={{
-            display: 'inline-block',
-            marginTop: 8,
-            fontSize: 14,
-            color: TOKENS.midGrey,
-            textDecoration: 'none',
-            fontWeight: 500,
+          <div style={{
+            display: 'flex',
+            gap: 12,
+            justifyContent: 'center',
+            flexWrap: 'wrap',
+            marginBottom: 4,
           }}>
-            See how it works ↓
-          </HashLink>
+            <a
+              href={APP_STORE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={primaryBtnStyle}
+            >
+              Install on Shopify
+            </a>
+            <HashLink hash="features" style={secondaryBtnStyle}>
+              See how it works
+            </HashLink>
+          </div>
 
           {/* Stats */}
           <div style={{
@@ -280,62 +261,42 @@ export default function Index() {
       </section>
 
       {/* CTA */}
-      {showForm && (
-        <section style={{ padding: '80px 24px', background: TOKENS.white }}>
-          <div style={{
-            maxWidth: 720,
-            margin: '0 auto',
-            textAlign: 'center',
-            padding: '56px 32px',
-            background: TOKENS.tealWash,
-            border: `1px solid ${TOKENS.tealLight}`,
-            borderRadius: 16,
-          }}>
-            <h2 style={{
-              ...sectionHeadingStyle,
-              fontSize: 32,
-              marginBottom: 12,
-            }}>Ready to ship a better cart?</h2>
-            <p style={{ ...sectionSubStyle, marginBottom: 28 }}>
-              Install cartx and have your new cart drawer live in minutes.
-            </p>
-            <Form method="post" action="/auth/login" style={{
-              display: 'flex',
-              gap: 8,
-              maxWidth: 460,
-              margin: '0 auto',
-              flexWrap: 'wrap',
-              justifyContent: 'center',
-            }}>
-              <input
-                name="shop"
-                type="text"
-                placeholder="your-store.myshopify.com"
-                required
-                style={{
-                  flex: '1 1 240px',
-                  padding: '12px 16px',
-                  fontSize: 14,
-                  fontFamily: FONT_STACK,
-                  border: `1px solid ${TOKENS.borderGrey}`,
-                  borderRadius: 8,
-                  outline: 'none',
-                  background: TOKENS.white,
-                  color: TOKENS.darkGrey,
-                }}
-              />
-              <button type="submit" style={primaryBtnStyle}>
-                Install on Shopify
-              </button>
-            </Form>
+      <section style={{ padding: '80px 24px', background: TOKENS.white }}>
+        <div style={{
+          maxWidth: 720,
+          margin: '0 auto',
+          textAlign: 'center',
+          padding: '56px 32px',
+          background: TOKENS.tealWash,
+          border: `1px solid ${TOKENS.tealLight}`,
+          borderRadius: 16,
+        }}>
+          <h2 style={{
+            ...sectionHeadingStyle,
+            fontSize: 32,
+            marginBottom: 12,
+          }}>Ready to ship a better cart?</h2>
+          <p style={{ ...sectionSubStyle, marginBottom: 28 }}>
+            Install cartx from the Shopify App Store.
+          </p>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <a
+              href={APP_STORE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={primaryBtnStyle}
+            >
+              Install on Shopify
+            </a>
           </div>
-        </section>
-      )}
+        </div>
+      </section>
     </MarketingShell>
   );
 }
 
 const primaryBtnStyle = {
+  display: 'inline-block',
   padding: '12px 22px',
   fontSize: 14,
   fontWeight: 600,
@@ -346,6 +307,14 @@ const primaryBtnStyle = {
   borderRadius: 8,
   cursor: 'pointer',
   letterSpacing: 0.2,
+  textDecoration: 'none',
+};
+
+const secondaryBtnStyle = {
+  ...primaryBtnStyle,
+  background: TOKENS.white,
+  color: TOKENS.darkGrey,
+  border: `1px solid ${TOKENS.borderGrey}`,
 };
 
 const sectionHeadingStyle = {
