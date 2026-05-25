@@ -622,19 +622,46 @@
     var clean = path.split("?")[0];
     return handles.indexOf(clean) !== -1;
   }
+  function normalizeTag(t2) {
+    return String(t2).trim().toLowerCase();
+  }
+  function customerMatchesTags(rule, customer) {
+    var target = rule && rule.customer_tags;
+    if (!target) return true;
+    var required = (target.required_any || []).map(normalizeTag).filter(Boolean);
+    var excluded = (target.excluded || []).map(normalizeTag).filter(Boolean);
+    var tags = (customer && customer.tags || []).map(normalizeTag);
+    if (excluded.length) {
+      for (var i2 = 0; i2 < excluded.length; i2++) {
+        if (tags.indexOf(excluded[i2]) !== -1) return false;
+      }
+    }
+    if (required.length) {
+      var matched = false;
+      for (var j2 = 0; j2 < required.length; j2++) {
+        if (tags.indexOf(required[j2]) !== -1) {
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) return false;
+    }
+    return true;
+  }
   function evaluateTrigger(offer, adjTotal, adjQty) {
     var t2 = offer.trigger || {};
     var priceMet = t2.price_threshold && adjTotal >= t2.price_threshold;
     var qtyMet = t2.quantity_threshold && adjQty >= t2.quantity_threshold;
     return priceMet || qtyMet;
   }
-  function evaluateOffers(offers, cart, adjTotal, adjQty, page) {
+  function evaluateOffers(offers, cart, adjTotal, adjQty, page, customer) {
     var toAdd = [];
     var toRemove = [];
     var triggeredIds = {};
     for (var i2 = 0; i2 < offers.length; i2++) {
       var offer = offers[i2];
       if (!pageMatch(offer.page_handles, page)) continue;
+      if (!customerMatchesTags(offer, customer)) continue;
       var triggered = evaluateTrigger(offer, adjTotal, adjQty);
       if (triggered) {
         triggeredIds[offer.id] = true;
@@ -668,13 +695,14 @@
     }
     return { to_add: toAdd, to_remove: toRemove };
   }
-  function buildBar(config, adjTotal, adjQty, page, moneyFormat) {
+  function buildBar(config, adjTotal, adjQty, page, moneyFormat, customer) {
     if (!config.progress_bar || !config.progress_bar.enabled) return null;
     var entries = [];
     for (var i2 = 0; i2 < (config.offers || []).length; i2++) {
       var offer = config.offers[i2];
       if (!offer.bar || !offer.bar.show) continue;
       if (!pageMatch(offer.page_handles, page)) continue;
+      if (!customerMatchesTags(offer, customer)) continue;
       entries.push({
         threshold: offer.trigger.price_threshold || offer.trigger.quantity_threshold,
         trigger_type: offer.trigger.price_threshold ? "price" : "quantity",
@@ -736,14 +764,14 @@
       tiers
     };
   }
-  function localEvaluate(cachedConfig, cart) {
+  function localEvaluate(cachedConfig, cart, customer) {
     if (!cachedConfig || !cart) return null;
     var items = cart.items || [];
     var adjTotal = adjustedTotal(items);
     var adjQty = adjustedQty(items);
     var page = window.location.pathname;
-    var offerResult = evaluateOffers(cachedConfig.offers || [], cart, adjTotal, adjQty, page);
-    var bar = buildBar(cachedConfig, adjTotal, adjQty, page, cachedConfig.money_format || "");
+    var offerResult = evaluateOffers(cachedConfig.offers || [], cart, adjTotal, adjQty, page, customer);
+    var bar = buildBar(cachedConfig, adjTotal, adjQty, page, cachedConfig.money_format || "", customer);
     var ribbonMessage = null;
     if (bar && bar.tiers) {
       for (var i2 = 0; i2 < bar.tiers.length; i2++) {
@@ -1096,7 +1124,7 @@
       }));
     }
     if (isCacheValid()) {
-      var localResult = localEvaluate(_cachedConfig, evalCart);
+      var localResult = localEvaluate(_cachedConfig, evalCart, { id: ctx.customerId, tags: ctx.customerTags });
       if (localResult && _lastResult && _lastResult.bar) {
         var serverBar = _lastResult.bar;
         var optimistic = Object.assign({}, _lastResult, {
@@ -1146,7 +1174,7 @@
       }));
     }
     if (isCacheValid()) {
-      var localResult = localEvaluate(_cachedConfig, evalCart);
+      var localResult = localEvaluate(_cachedConfig, evalCart, { id: ctx.customerId, tags: ctx.customerTags });
       if (localResult && _lastResult && _lastResult.bar) {
         var optimistic = Object.assign({}, _lastResult, {
           ribbon_message: localResult.ribbon_message
@@ -1388,11 +1416,33 @@
           return self.state.open;
         }
       };
+      var CART_ICON_SELECTORS = [
+        'a[href="/cart"]',
+        'a[href="/cart/"]',
+        'a[href^="/cart?"]',
+        "[data-cart-icon]",
+        "[data-cart-trigger]",
+        "[data-cart-link]",
+        "#cart-icon-bubble",
+        "#cart-bubble",
+        "#CartBubble",
+        "cart-icon-bubble",
+        '[aria-controls*="cart-drawer"]',
+        '[aria-controls*="CartDrawer"]',
+        '[aria-controls*="Cart-drawer"]',
+        // Horizon: the icon is a direct-child <button> of <cart-drawer-component>.
+        // The <dialog> sibling we strip below, so this selector only ever matches
+        // the icon trigger button, never anything inside the drawer body.
+        "cart-drawer-component > button"
+      ].join(", ");
       this._onDocClick = (e2) => {
-        var link = e2.target.closest('a[href="/cart"], a[href="/cart/"], [data-cart-icon], #cart-icon-bubble');
+        var link = e2.target.closest(CART_ICON_SELECTORS);
         if (link) {
           e2.preventDefault();
           e2.stopPropagation();
+          if (typeof e2.stopImmediatePropagation === "function") {
+            e2.stopImmediatePropagation();
+          }
           this._triggerElement = link;
           this.loadCart();
           this.openDrawer();
@@ -1400,7 +1450,7 @@
       };
       document.addEventListener("click", this._onDocClick, true);
       this._onDocMouseover = (e2) => {
-        var link = e2.target.closest('a[href="/cart"], a[href="/cart/"], [data-cart-icon], #cart-icon-bubble');
+        var link = e2.target.closest(CART_ICON_SELECTORS);
         if (link && !this._hoverPrefetched) {
           this._hoverPrefetched = true;
           this.loadCart();
@@ -1414,6 +1464,52 @@
         if (e2.key === "Escape" && this.state.open && this._behavior.close_on_esc) this.close();
       };
       document.addEventListener("keydown", this._onDocKeydown);
+      this._installThemeCompat();
+    }
+    _installThemeCompat() {
+      var DRAWER_BODY_SELECTOR = "cart-drawer-component > dialog, cart-notification-component > dialog";
+      function purgeNativeDrawerBodies(root) {
+        try {
+          if (root && root.matches && root.matches(DRAWER_BODY_SELECTOR)) {
+            root.remove();
+            return;
+          }
+          if (root && root.querySelectorAll) {
+            root.querySelectorAll(DRAWER_BODY_SELECTOR).forEach(function(el) {
+              el.remove();
+            });
+          }
+        } catch (_2) {
+        }
+      }
+      purgeNativeDrawerBodies(document);
+      this._horizonObserver = new MutationObserver(function(mutations) {
+        for (var i2 = 0; i2 < mutations.length; i2++) {
+          var added = mutations[i2].addedNodes;
+          for (var j2 = 0; j2 < added.length; j2++) {
+            purgeNativeDrawerBodies(added[j2]);
+          }
+        }
+      });
+      this._horizonObserver.observe(document.documentElement, {
+        childList: true,
+        subtree: true
+      });
+      var SCROLL_LOCK_CLASSES = ["scroll-lock", "cart-drawer-open"];
+      function cleanScrollLock() {
+        var html = document.documentElement;
+        for (var i2 = 0; i2 < SCROLL_LOCK_CLASSES.length; i2++) {
+          if (html.classList.contains(SCROLL_LOCK_CLASSES[i2])) {
+            html.classList.remove(SCROLL_LOCK_CLASSES[i2]);
+          }
+        }
+      }
+      cleanScrollLock();
+      this._scrollLockObserver = new MutationObserver(cleanScrollLock);
+      this._scrollLockObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["class"]
+      });
     }
     componentWillUnmount() {
       window.removeEventListener("cartmax:cart-changed", this._onCartChanged);
@@ -1424,6 +1520,8 @@
       document.removeEventListener("click", this._onDocClick, true);
       document.removeEventListener("mouseover", this._onDocMouseover);
       document.removeEventListener("keydown", this._onDocKeydown);
+      if (this._horizonObserver) this._horizonObserver.disconnect();
+      if (this._scrollLockObserver) this._scrollLockObserver.disconnect();
       Object.values(this._debounceTimers).forEach(clearTimeout);
       this._clearProcessingTimeout();
     }

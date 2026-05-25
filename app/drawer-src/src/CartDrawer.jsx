@@ -253,12 +253,40 @@ export default class CartDrawer extends Component {
       isOpen: function () { return self.state.open; },
     };
 
-    // Cart icon click — open drawer
+    // Cart icon selectors — broadened to cover Dawn, Refresh, Sense, Origin,
+    // Horizon, and other modern Shopify themes that wrap the icon in a
+    // custom element or use newer aria patterns.
+    var CART_ICON_SELECTORS = [
+      'a[href="/cart"]',
+      'a[href="/cart/"]',
+      'a[href^="/cart?"]',
+      '[data-cart-icon]',
+      '[data-cart-trigger]',
+      '[data-cart-link]',
+      '#cart-icon-bubble',
+      '#cart-bubble',
+      '#CartBubble',
+      'cart-icon-bubble',
+      '[aria-controls*="cart-drawer"]',
+      '[aria-controls*="CartDrawer"]',
+      '[aria-controls*="Cart-drawer"]',
+      // Horizon: the icon is a direct-child <button> of <cart-drawer-component>.
+      // The <dialog> sibling we strip below, so this selector only ever matches
+      // the icon trigger button, never anything inside the drawer body.
+      'cart-drawer-component > button',
+    ].join(', ');
+
+    // Cart icon click — open drawer. Capture phase + stopImmediatePropagation
+    // so a host theme's own listener (e.g. Horizon's cart-drawer-component)
+    // never gets a chance to fire.
     this._onDocClick = (e) => {
-      var link = e.target.closest('a[href="/cart"], a[href="/cart/"], [data-cart-icon], #cart-icon-bubble');
+      var link = e.target.closest(CART_ICON_SELECTORS);
       if (link) {
         e.preventDefault();
         e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') {
+          e.stopImmediatePropagation();
+        }
         this._triggerElement = link;
         this.loadCart();
         this.openDrawer();
@@ -268,7 +296,7 @@ export default class CartDrawer extends Component {
 
     // Cart icon hover — prefetch cart data so open is instant
     this._onDocMouseover = (e) => {
-      var link = e.target.closest('a[href="/cart"], a[href="/cart/"], [data-cart-icon], #cart-icon-bubble');
+      var link = e.target.closest(CART_ICON_SELECTORS);
       if (link && !this._hoverPrefetched) {
         this._hoverPrefetched = true;
         this.loadCart();
@@ -282,6 +310,71 @@ export default class CartDrawer extends Component {
       if (e.key === 'Escape' && this.state.open && this._behavior.close_on_esc) this.close();
     };
     document.addEventListener('keydown', this._onDocKeydown);
+
+    // ── Host-theme compatibility ─────────────────────────────
+    // Themes like Shopify Horizon nest the cart icon BUTTON inside a
+    // <cart-drawer-component> wrapper that also contains a native <dialog>
+    // for the drawer body. The wrapper must stay in the DOM (the icon
+    // depends on it), but we strip the inner <dialog> so Horizon's
+    // showModal() call has nothing to show and can't add scroll-lock.
+    this._installThemeCompat();
+  }
+
+  _installThemeCompat() {
+    var DRAWER_BODY_SELECTOR = 'cart-drawer-component > dialog, cart-notification-component > dialog';
+
+    function purgeNativeDrawerBodies(root) {
+      try {
+        if (root && root.matches && root.matches(DRAWER_BODY_SELECTOR)) {
+          root.remove();
+          return;
+        }
+        if (root && root.querySelectorAll) {
+          root.querySelectorAll(DRAWER_BODY_SELECTOR).forEach(function (el) {
+            el.remove();
+          });
+        }
+      } catch (_) { /* detached node, ignore */ }
+    }
+
+    // Initial purge — strip any dialog Horizon already rendered.
+    purgeNativeDrawerBodies(document);
+
+    // Watch for re-adds (theme JS may re-mount the dialog on navigation).
+    this._horizonObserver = new MutationObserver(function (mutations) {
+      for (var i = 0; i < mutations.length; i++) {
+        var added = mutations[i].addedNodes;
+        for (var j = 0; j < added.length; j++) {
+          purgeNativeDrawerBodies(added[j]);
+        }
+      }
+    });
+    this._horizonObserver.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+    });
+
+    // Safety net: only strips classes that are unambiguously cart-related.
+    // We deliberately do NOT touch generic classes like 'overflow-hidden'
+    // or 'no-scroll' — those are commonly used by non-cart modals
+    // (search drawers, login overlays) and stripping them would break the
+    // host theme's other components. Inline html style is also left alone
+    // for the same reason.
+    var SCROLL_LOCK_CLASSES = ['scroll-lock', 'cart-drawer-open'];
+    function cleanScrollLock() {
+      var html = document.documentElement;
+      for (var i = 0; i < SCROLL_LOCK_CLASSES.length; i++) {
+        if (html.classList.contains(SCROLL_LOCK_CLASSES[i])) {
+          html.classList.remove(SCROLL_LOCK_CLASSES[i]);
+        }
+      }
+    }
+    cleanScrollLock();
+    this._scrollLockObserver = new MutationObserver(cleanScrollLock);
+    this._scrollLockObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
   }
 
   componentWillUnmount() {
@@ -293,6 +386,8 @@ export default class CartDrawer extends Component {
     document.removeEventListener('click', this._onDocClick, true);
     document.removeEventListener('mouseover', this._onDocMouseover);
     document.removeEventListener('keydown', this._onDocKeydown);
+    if (this._horizonObserver) this._horizonObserver.disconnect();
+    if (this._scrollLockObserver) this._scrollLockObserver.disconnect();
     Object.values(this._debounceTimers).forEach(clearTimeout);
     this._clearProcessingTimeout();
   }

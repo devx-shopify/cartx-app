@@ -5,12 +5,34 @@
   display: block !important;
 }
 
-/* Suppress Dawn's native cart drawer when cartx is active */
+/* Suppress native cart drawers when cartx is active.
+   Covers Dawn, Refresh, Sense, Origin (cart-drawer / cart-notification),
+   and similar drawers that live as their own root element.
+   The :not() guards exclude Horizon's <cart-drawer-component>, which uses
+   class="cart-drawer" on the WRAPPER that also contains the cart icon button
+   — hiding it would hide the icon. */
 cart-drawer,
-.cart-drawer,
-#cart-drawer,
+.cart-drawer:not(cart-drawer-component),
+#cart-drawer:not(cart-drawer-component),
 cart-notification,
-.cart-notification {
+.cart-notification,
+dialog[is="cart-drawer"],
+dialog#cart-drawer,
+.cart-drawer-container {
+  display: none !important;
+}
+
+/* Horizon / newer themes: <cart-drawer-component> wraps BOTH the cart icon
+   button AND the drawer body. Hide only the inner drawer body descendants
+   so the icon button stays visible; our capture-phase click handler opens
+   cartx and the JS below also removes the <dialog> from the DOM. */
+cart-drawer-component > dialog,
+cart-drawer-component aside,
+cart-drawer-component [role="dialog"],
+cart-drawer-component .cart-drawer__dialog,
+cart-drawer-component .cart-drawer__overlay,
+cart-notification-component > dialog,
+cart-notification-component [role="dialog"] {
   display: none !important;
 }
 
