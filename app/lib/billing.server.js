@@ -32,6 +32,16 @@ const INTERVAL_BY_CYCLE = {
   annual: "ANNUAL",
 };
 
+// Whether to create Shopify charges as test charges (no real money, approvable
+// on dev stores with no payment method). Explicit SHOPIFY_BILLING_TEST wins so
+// you can force test mode in any environment; otherwise fall back to NODE_ENV
+// so real merchants on production (flag unset) always get live charges.
+function isBillingTest() {
+  const flag = process.env.SHOPIFY_BILLING_TEST;
+  if (flag != null && flag !== "") return flag === "true";
+  return process.env.NODE_ENV !== "production";
+}
+
 function amountForCycle(plan, cycle) {
   return cycle === "annual" ? plan.amountAnnual : plan.amount;
 }
@@ -68,6 +78,16 @@ export async function ensureStoreRecord(shopDomain) {
   });
 }
 
+// Drop Enterprise status — used when a merchant self-downgrades to a
+// standard plan. They become a normal store and must be re-negotiated to
+// get Enterprise pricing back.
+export async function clearEnterpriseStatus(shopDomain) {
+  return db.store.update({
+    where: { storeDomain: shopDomain },
+    data: { isLegacy: false, legacyPrice: null },
+  });
+}
+
 // ── Query Active Plan ────────────────────────────────────
 
 export async function getActivePlan(admin, shopDomain) {
@@ -77,11 +97,6 @@ export async function getActivePlan(admin, shopDomain) {
   });
 
   const enterprisePrice = store?.isLegacy ? (store.legacyPrice ?? 0) : null;
-
-  // $0 enterprise = full features, no Shopify sub needed — skip the API call
-  if (store?.isLegacy && enterprisePrice === 0) {
-    return makeEnterprisePlan({ quotedPrice: 0, approved: true });
-  }
 
   // Fetch active Shopify subscriptions
   const res = await admin.graphql(
@@ -112,54 +127,58 @@ export async function getActivePlan(admin, shopDomain) {
   const json = await res.json();
   const subs = json.data?.app?.installation?.activeSubscriptions ?? [];
 
-  // 2. Enterprise store (admin-managed): check for matching Enterprise sub
-  if (store?.isLegacy) {
-    const enterpriseSub = subs.find(
-      (s) => s.status === "ACTIVE" && s.name.startsWith("cartx Enterprise"),
-    );
+  // An active standard (non-Enterprise) cartx subscription, if any.
+  const standardSub = subs.find(
+    (s) => s.status === "ACTIVE" && s.name.startsWith("cartx ") && !s.name.startsWith("cartx Enterprise"),
+  );
 
-    if (enterpriseSub) {
-      const pricing = enterpriseSub.lineItems?.[0]?.plan?.pricingDetails;
-      const subAmount = parseFloat(pricing?.price?.amount ?? "0");
-      // Subscription matches current quoted price → fully approved
-      if (subAmount === enterprisePrice) {
+  // 2. Enterprise store (admin-managed)
+  if (store?.isLegacy) {
+    // Merchant self-downgraded to a standard plan → drop Enterprise entirely
+    // and fall through to the standard free/pro logic below.
+    if (standardSub) {
+      await clearEnterpriseStatus(shopDomain);
+    } else {
+      const enterpriseSub = subs.find(
+        (s) => s.status === "ACTIVE" && s.name.startsWith("cartx Enterprise"),
+      );
+
+      if (enterpriseSub) {
+        const pricing = enterpriseSub.lineItems?.[0]?.plan?.pricingDetails;
+        const subAmount = parseFloat(pricing?.price?.amount ?? "0");
+        // approved when the active sub matches the current quoted price;
+        // otherwise the price was changed in /internal and a new sub is needed.
         return makeEnterprisePlan({
           quotedPrice: enterprisePrice,
-          approved: true,
+          approved: subAmount === enterprisePrice,
           subscriptionId: enterpriseSub.id,
           currentAmount: subAmount,
         });
       }
-      // Price was changed in /internal — old sub still active but new one needed
-      return makeEnterprisePlan({
-        quotedPrice: enterprisePrice,
-        approved: false,
-        subscriptionId: enterpriseSub.id,
-        currentAmount: subAmount,
-      });
-    }
 
-    // No enterprise sub yet — needs approval at quoted price
-    return makeEnterprisePlan({ quotedPrice: enterprisePrice, approved: false });
+      // $0 enterprise = full features, no Shopify sub needed
+      if (enterprisePrice === 0) {
+        return makeEnterprisePlan({ quotedPrice: 0, approved: true });
+      }
+
+      // No enterprise sub yet — needs approval at quoted price
+      return makeEnterprisePlan({ quotedPrice: enterprisePrice, approved: false });
+    }
   }
 
-  // 3. Standard (non-enterprise) store: existing free/pro logic
-  const active = subs.find(
-    (s) => s.status === "ACTIVE" && s.name.startsWith("cartx ") && !s.name.startsWith("cartx Enterprise"),
-  );
-
-  if (!active) {
+  // 3. Standard (non-enterprise) store: free/pro logic
+  if (!standardSub) {
     return { plan: "free", isLegacy: false, billingCycle: "monthly", ...PLANS.free };
   }
 
-  const pricing = active.lineItems?.[0]?.plan?.pricingDetails;
+  const pricing = standardSub.lineItems?.[0]?.plan?.pricingDetails;
   const amount = parseFloat(pricing?.price?.amount ?? "0");
   const billingCycle = pricing?.interval === "ANNUAL" ? "annual" : "monthly";
 
   const proThreshold = amountForCycle(PLANS.pro, billingCycle);
 
   if (amount >= proThreshold) {
-    return { plan: "pro", subscriptionId: active.id, isLegacy: false, billingCycle, ...PLANS.pro };
+    return { plan: "pro", subscriptionId: standardSub.id, isLegacy: false, billingCycle, ...PLANS.pro };
   }
 
   return { plan: "free", isLegacy: false, billingCycle: "monthly", ...PLANS.free };
@@ -183,7 +202,7 @@ export async function createSubscription(admin, planKey, returnUrl, billingCycle
         name: $name
         returnUrl: $returnUrl
         trialDays: $trialDays
-        test: ${process.env.NODE_ENV !== "production" ? "true" : "false"}
+        test: ${isBillingTest()}
         lineItems: [{
           plan: {
             appRecurringPricingDetails: {
@@ -230,7 +249,7 @@ export async function createEnterpriseSubscription(admin, returnUrl, amount) {
       appSubscriptionCreate(
         name: $name
         returnUrl: $returnUrl
-        test: ${process.env.NODE_ENV !== "production" ? "true" : "false"}
+        test: ${isBillingTest()}
         replacementBehavior: STANDARD
         lineItems: [{
           plan: {
