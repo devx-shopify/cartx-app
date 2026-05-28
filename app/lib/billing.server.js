@@ -127,43 +127,41 @@ export async function getActivePlan(admin, shopDomain) {
   const json = await res.json();
   const subs = json.data?.app?.installation?.activeSubscriptions ?? [];
 
+  const enterpriseSub = subs.find(
+    (s) => s.status === "ACTIVE" && s.name.startsWith("cartx Enterprise"),
+  );
   // An active standard (non-Enterprise) cartx subscription, if any.
   const standardSub = subs.find(
     (s) => s.status === "ACTIVE" && s.name.startsWith("cartx ") && !s.name.startsWith("cartx Enterprise"),
   );
 
-  // 2. Enterprise store (admin-managed)
+  // 1. An active Enterprise subscription is authoritative — the store is paying
+  //    an Enterprise rate right now, regardless of the isLegacy flag.
+  if (enterpriseSub) {
+    const pricing = enterpriseSub.lineItems?.[0]?.plan?.pricingDetails;
+    const subAmount = parseFloat(pricing?.price?.amount ?? "0");
+    // If the team changed the quoted price in /internal, the active sub no
+    // longer matches and the merchant must approve the new price.
+    const approved = !store?.isLegacy || subAmount === enterprisePrice;
+    return makeEnterprisePlan({
+      quotedPrice: store?.isLegacy ? enterprisePrice : subAmount,
+      approved,
+      subscriptionId: enterpriseSub.id,
+      currentAmount: subAmount,
+    });
+  }
+
+  // 2. No Enterprise sub yet, but the team assigned this store an Enterprise
+  //    price in /internal → prompt the merchant to approve it. Any existing
+  //    standard sub is replaced when they approve. (We do NOT treat a stale
+  //    standard sub as a downgrade here — that's handled explicitly when the
+  //    merchant chooses to switch off Enterprise.)
   if (store?.isLegacy) {
-    // Merchant self-downgraded to a standard plan → drop Enterprise entirely
-    // and fall through to the standard free/pro logic below.
-    if (standardSub) {
-      await clearEnterpriseStatus(shopDomain);
-    } else {
-      const enterpriseSub = subs.find(
-        (s) => s.status === "ACTIVE" && s.name.startsWith("cartx Enterprise"),
-      );
-
-      if (enterpriseSub) {
-        const pricing = enterpriseSub.lineItems?.[0]?.plan?.pricingDetails;
-        const subAmount = parseFloat(pricing?.price?.amount ?? "0");
-        // approved when the active sub matches the current quoted price;
-        // otherwise the price was changed in /internal and a new sub is needed.
-        return makeEnterprisePlan({
-          quotedPrice: enterprisePrice,
-          approved: subAmount === enterprisePrice,
-          subscriptionId: enterpriseSub.id,
-          currentAmount: subAmount,
-        });
-      }
-
-      // $0 enterprise = full features, no Shopify sub needed
-      if (enterprisePrice === 0) {
-        return makeEnterprisePlan({ quotedPrice: 0, approved: true });
-      }
-
-      // No enterprise sub yet — needs approval at quoted price
-      return makeEnterprisePlan({ quotedPrice: enterprisePrice, approved: false });
+    // $0 enterprise = full features, no Shopify sub needed
+    if (enterprisePrice === 0) {
+      return makeEnterprisePlan({ quotedPrice: 0, approved: true });
     }
+    return makeEnterprisePlan({ quotedPrice: enterprisePrice, approved: false });
   }
 
   // 3. Standard (non-enterprise) store: free/pro logic

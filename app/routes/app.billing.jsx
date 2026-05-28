@@ -61,6 +61,13 @@ export const action = async ({ request }) => {
       returnUrl,
       billingCycle,
     );
+    // Enterprise store switching to a standard plan: drop Enterprise so the
+    // completed switch isn't re-prompted. If they abandon the approval, the
+    // still-active Enterprise subscription keeps them on Enterprise (see
+    // getActivePlan — an active Enterprise sub is authoritative).
+    if (planData.isLegacy) {
+      await clearEnterpriseStatus(session.shop);
+    }
     return { ok: true, confirmationUrl };
   }
 
