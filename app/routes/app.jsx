@@ -308,7 +308,7 @@ export default function App() {
         <s-link href="/app/cart-customizer">Customize Cart</s-link>
         <s-link href="/app/promotions">Promotions</s-link>
         <s-link href="/app/settings">Settings</s-link>
-        {!planData.isLegacy && <s-link href="/app/billing">Plans</s-link>}
+        <s-link href="/app/billing">Plans</s-link>
         {isAdmin && <s-link href="/app/internal">Admin</s-link>}
       </s-app-nav>
       <Outlet context={{ themes, activeThemeId, mainThemeId, planData }} />
