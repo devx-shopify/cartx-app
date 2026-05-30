@@ -31,6 +31,88 @@ export function cartUpdateAll(payload) {
   }).then(function (r) { return r.json(); });
 }
 
+// ── Optimistic-update utilities ─────────────────────────────
+// Dispatch a locally-simulated cart through the same event channel
+// evaluate.js uses for qty optimism. CartDrawer's _onOptimisticUpdate
+// listener absorbs it into state without waiting for server.
+export function dispatchOptimistic(cart) {
+  if (!cart) return;
+  window.dispatchEvent(new CustomEvent('cartmax:optimistic-update', {
+    detail: { cart: cart },
+  }));
+}
+
+function propertiesSignature(props) {
+  if (!props) return '';
+  var keys = Object.keys(props).sort();
+  var parts = [];
+  for (var i = 0; i < keys.length; i++) {
+    parts.push(keys[i] + '=' + props[keys[i]]);
+  }
+  return parts.join('|');
+}
+
+function recomputeCartTotals(cart, items) {
+  var totalPrice = 0;
+  var originalTotal = 0;
+  var itemCount = 0;
+  for (var i = 0; i < items.length; i++) {
+    totalPrice += (items[i].final_line_price || 0);
+    originalTotal += (items[i].original_line_price || items[i].line_price || 0);
+    itemCount += (items[i].quantity || 0);
+  }
+  return Object.assign({}, cart, {
+    items: items,
+    total_price: totalPrice,
+    original_total_price: originalTotal,
+    total_discount: Math.max(0, originalTotal - totalPrice),
+    item_count: itemCount,
+    items_subtotal_price: totalPrice,
+  });
+}
+
+// Add a single line to a cart snapshot, coalescing with an existing line
+// only if variant_id AND properties signature match.
+export function simulateAdd(cart, optimisticItem) {
+  if (!cart) return cart;
+  var items = (cart.items || []).slice();
+  var sig = propertiesSignature(optimisticItem.properties);
+  var idx = -1;
+  for (var i = 0; i < items.length; i++) {
+    if (String(items[i].variant_id) === String(optimisticItem.variant_id)
+        && propertiesSignature(items[i].properties) === sig) {
+      idx = i;
+      break;
+    }
+  }
+  if (idx >= 0) {
+    var existing = items[idx];
+    var newQty = (existing.quantity || 0) + (optimisticItem.quantity || 1);
+    var unitPrice = existing.price || 0;
+    var newLine = newQty * unitPrice;
+    items[idx] = Object.assign({}, existing, {
+      quantity: newQty,
+      line_price: newLine,
+      final_line_price: newLine,
+      original_line_price: newLine,
+    });
+  } else {
+    items.push(optimisticItem);
+  }
+  return recomputeCartTotals(cart, items);
+}
+
+// Drop a cart-level discount code; totals stay as-is (we cannot predict
+// the new total without re-running the merchant's discount engine).
+export function simulateCouponRemove(cart, code) {
+  if (!cart || !code) return cart;
+  var upper = String(code).toUpperCase();
+  var apps = (cart.cart_level_discount_applications || []).filter(function (d) {
+    return !(d.title && d.title.toUpperCase() === upper);
+  });
+  return Object.assign({}, cart, { cart_level_discount_applications: apps });
+}
+
 // ── Money formatting ────────────────────────────────────────
 
 export function formatMoney(cents, currency) {

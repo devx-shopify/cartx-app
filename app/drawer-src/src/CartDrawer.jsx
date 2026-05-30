@@ -1,15 +1,19 @@
 /* eslint-disable */
 import { h, Component } from 'preact';
-import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings } from './helpers';
+import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, simulateCouponRemove } from './helpers';
 import { fireConfetti, setConfettiLottieUrl } from './confetti';
 import { waitForEvaluate } from './evaluate';
+import { tracker } from './tracker';
+import { ANALYTICS_EVENTS } from './analytics-events';
 
 // ── Timing constants ────────────────────────────────────────
 
 var CLOSE_DELAY = 250;
 var DEBOUNCE_DELAY = 300;
 var REMOVE_ANIM_DELAY = 0;
+var TOMBSTONE_HOLD_MS = 280;   // matches the cartmax-line-removing CSS transition
 var PROCESSING_TIMEOUT = 10000;
+var INLINE_ERROR_HOLD_MS = 4000;
 
 // ── SVG Icons (inline for zero network cost) ────────────────
 
@@ -111,6 +115,9 @@ export default class CartDrawer extends Component {
       evalResult: null,
       savings: 0,
       unavailableGifts: [],
+      claimed: {},        // key -> true, button-level optimistic state for freebie claims
+      claimError: {},     // key -> message, inline error shown on offer/claim card
+      upsellError: null,  // brief error message displayed near upsell list on rollback
     };
     this.close = this.close.bind(this);
     this.handleOverlayClick = this.handleOverlayClick.bind(this);
@@ -120,6 +127,10 @@ export default class CartDrawer extends Component {
     this._drawerRef = null;
     this._debounceTimers = {};
     this._processingTimeout = null;
+    this._removingTombstones = {};       // key -> snapshotted item, kept in DOM during fade
+    this._tombstoneTimers = {};          // key -> setTimeout handle
+    this._pendingGiftRemovals = {};      // key -> { promotion_id, promotion_type, variant_id } for analytics
+    this._errorTimers = {};              // key -> setTimeout handle for clearing inline errors
     this._currency = (window.Shopify && window.Shopify.currency && window.Shopify.currency.active) || 'USD';
     this._prevActiveTiers = {};
     this._confettiInitialized = false;
@@ -178,39 +189,42 @@ export default class CartDrawer extends Component {
           this._checkConfetti(e.detail.evalResult);
         }
 
-        // Detect removed items for animation
+        // Detect removed items for animation. Pending optimistic keys
+        // that resolved to a real Shopify key in newCart are NOT removed.
         var oldItems = (this.state.cart && this.state.cart.items) || [];
-        var newKeys = {};
-        (newCart.items || []).forEach(function (item) { newKeys[item.key] = true; });
-        var removing = {};
-        oldItems.forEach(function (item) {
-          if (!newKeys[item.key]) removing[item.key] = true;
+        var removing = this._detectRemovedKeys(oldItems, newCart);
+
+        // Fire deferred gift-removed analytics for any pending removals
+        // the server confirmed (line is gone from newCart). Drop pending
+        // entries for keys that came back (server kept the line).
+        var pendingRemovals = this._pendingGiftRemovals || {};
+        var newKeySet = {};
+        (newCart.items || []).forEach(function (it) { newKeySet[it.key] = true; });
+        Object.keys(pendingRemovals).forEach((k) => {
+          if (!newKeySet[k]) {
+            tracker.track(ANALYTICS_EVENTS.GIFT_REMOVED, pendingRemovals[k]);
+          }
+          delete pendingRemovals[k];
         });
 
         var newSavings = (newEval && typeof newEval.total_savings === 'number')
           ? newEval.total_savings
           : this.state.savings;
 
-        if (Object.keys(removing).length > 0) {
-          // DEFER evalResult until after remove animation completes
-          // so progress bar doesn't jump while items are fading out
-          this.setState({ removing: removing, updating: {}, pendingQty: {}, loading: false });
-          setTimeout(() => {
-            this.setState({ cart: newCart, removing: {}, evalResult: newEval, savings: newSavings });
-            updateCartCount(newCart.item_count);
-          }, REMOVE_ANIM_DELAY);
-        } else {
-          this.setState({
-            cart: newCart,
-            evalResult: newEval,
-            savings: newSavings,
-            loading: false,
-            updating: {},
-            removing: {},
-            pendingQty: {},
-          });
-          updateCartCount(newCart.item_count);
-        }
+        // Tombstones handle the fade; we can apply newCart immediately
+        // without a delay. Lines that ought to fade are in the tombstone
+        // map and will be merged in by _displayItems() until their
+        // setTimeout clears them.
+        this.setState({
+          cart: newCart,
+          evalResult: newEval,
+          savings: newSavings,
+          loading: false,
+          updating: {},
+          removing: Object.keys(removing).length > 0 ? removing : this.state.removing,
+          pendingQty: {},
+        });
+        updateCartCount(newCart.item_count);
         this.announce('Cart updated');
         this._clearProcessingTimeout();
       }
@@ -242,6 +256,33 @@ export default class CartDrawer extends Component {
       this.openDrawer();
       window.__cartmaxQueue = [];
     }
+
+    // ── Analytics tracker ────────────────────────────────────
+    var rootEl = document.getElementById('cartmax-root');
+    if (rootEl) {
+      var analyticsEnabled = rootEl.dataset.analyticsEnabled !== 'false';
+      tracker.init({
+        shopId: rootEl.dataset.shopId || '',
+        customerId: rootEl.dataset.customerId || null,
+        proxyBase: rootEl.dataset.proxyBase || '/apps/cartmax',
+        enabled: analyticsEnabled,
+      });
+    }
+
+    // promotion_viewed dedupes per session in the tracker. We attach one
+    // IntersectionObserver and observe any node tagged with data-cartmax-promo-id.
+    this._promoObserver = (typeof IntersectionObserver !== 'undefined')
+      ? new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            var el = entry.target;
+            var id = el.getAttribute('data-cartmax-promo-id');
+            var type = el.getAttribute('data-cartmax-promo-type');
+            if (id) tracker.trackPromotionView(id, type);
+            this._promoObserver.unobserve(el);
+          });
+        }, { threshold: 0.5 })
+      : null;
 
     // ── Public API for third-party apps ──────────────────
     var self = this;
@@ -388,8 +429,19 @@ export default class CartDrawer extends Component {
     document.removeEventListener('keydown', this._onDocKeydown);
     if (this._horizonObserver) this._horizonObserver.disconnect();
     if (this._scrollLockObserver) this._scrollLockObserver.disconnect();
+    if (this._promoObserver) this._promoObserver.disconnect();
     Object.values(this._debounceTimers).forEach(clearTimeout);
+    Object.values(this._tombstoneTimers || {}).forEach(clearTimeout);
+    Object.values(this._errorTimers || {}).forEach(clearTimeout);
+    if (this._upsellErrorTimer) clearTimeout(this._upsellErrorTimer);
     this._clearProcessingTimeout();
+    tracker.flush({ useBeacon: true });
+  }
+
+  // Ref callback for elements that represent a promotion impression target.
+  _observePromo(el) {
+    if (!el || !this._promoObserver) return;
+    this._promoObserver.observe(el);
   }
 
   // ── Apply drawer config to instance properties ──────────
@@ -511,19 +563,83 @@ export default class CartDrawer extends Component {
   // ── Stable item ordering ─────────────────────────────────
   // Shopify's cart API can return items in different order.
   // This preserves the order the user last saw to prevent jitter.
+  // Also aliases optimistic `pending_*` keys to the real Shopify key
+  // they reconcile to (matched by variant_id + properties signature)
+  // so an optimistic-add line keeps its slot when the real cart lands.
 
   _stabiliseOrder(cart) {
     if (!cart || !cart.items) return cart;
     var oldItems = (this.state.cart && this.state.cart.items) || [];
     if (oldItems.length === 0) return cart;
+
     var oldOrder = {};
-    oldItems.forEach(function (item, idx) { oldOrder[item.key] = idx; });
+    var pendingOldItems = [];
+    oldItems.forEach(function (item, idx) {
+      oldOrder[item.key] = idx;
+      if (typeof item.key === 'string' && item.key.indexOf('pending_') === 0) {
+        pendingOldItems.push(item);
+      }
+    });
+
+    // Alias each pending key to a same-variant real-key in the new cart,
+    // first-match-wins so duplicate pending entries each get a distinct
+    // partner.
+    var aliasFromReal = {};   // realKey -> oldOrder position to inherit
+    var claimed = {};
+    for (var p = 0; p < pendingOldItems.length; p++) {
+      var pend = pendingOldItems[p];
+      for (var q = 0; q < cart.items.length; q++) {
+        var n = cart.items[q];
+        if (claimed[n.key]) continue;
+        if (typeof n.key === 'string' && n.key.indexOf('pending_') === 0) continue;
+        if (String(n.variant_id) !== String(pend.variant_id)) continue;
+        claimed[n.key] = true;
+        aliasFromReal[n.key] = oldOrder[pend.key];
+        break;
+      }
+    }
+
     var sorted = cart.items.slice().sort(function (a, b) {
-      var ia = oldOrder.hasOwnProperty(a.key) ? oldOrder[a.key] : 99999;
-      var ib = oldOrder.hasOwnProperty(b.key) ? oldOrder[b.key] : 99999;
+      var ia = aliasFromReal.hasOwnProperty(a.key) ? aliasFromReal[a.key]
+        : (oldOrder.hasOwnProperty(a.key) ? oldOrder[a.key] : 99999);
+      var ib = aliasFromReal.hasOwnProperty(b.key) ? aliasFromReal[b.key]
+        : (oldOrder.hasOwnProperty(b.key) ? oldOrder[b.key] : 99999);
       return ia - ib;
     });
     return Object.assign({}, cart, { items: sorted });
+  }
+
+  // Compute the set of old keys that have NO matching new key — used to
+  // play the remove-fade animation. Pending keys that aliased to a real
+  // key are NOT considered removed (their optimistic line is being
+  // promoted to the real line, not removed).
+  _detectRemovedKeys(oldItems, newCart) {
+    var newKeys = {};
+    var pendingReals = {};   // real keys claimed by a pending alias
+    (newCart.items || []).forEach(function (item) { newKeys[item.key] = true; });
+
+    // Claim a real key for each pending old item (mirrors _stabiliseOrder).
+    var claimed = {};
+    oldItems.forEach(function (oldItem) {
+      if (!(typeof oldItem.key === 'string' && oldItem.key.indexOf('pending_') === 0)) return;
+      for (var q = 0; q < (newCart.items || []).length; q++) {
+        var n = newCart.items[q];
+        if (claimed[n.key]) continue;
+        if (typeof n.key === 'string' && n.key.indexOf('pending_') === 0) continue;
+        if (String(n.variant_id) !== String(oldItem.variant_id)) continue;
+        claimed[n.key] = true;
+        pendingReals[oldItem.key] = true;   // this pending was matched
+        break;
+      }
+    });
+
+    var removing = {};
+    oldItems.forEach(function (item) {
+      if (newKeys[item.key]) return;
+      if (pendingReals[item.key]) return;   // optimistic add got reconciled
+      removing[item.key] = true;
+    });
+    return removing;
   }
 
   // ── Cart data ─────────────────────────────────────────────
@@ -567,6 +683,13 @@ export default class CartDrawer extends Component {
     document.body.style.overflow = 'hidden';
     this.announce('Cart opened');
     window.dispatchEvent(new CustomEvent('cartmax:drawer-opened'));
+
+    this._openedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    var cart = this.state.cart;
+    tracker.track(ANALYTICS_EVENTS.DRAWER_OPENED, {
+      cart_total: cart ? cart.total_price : null,
+      item_count: cart ? cart.item_count : null,
+    });
   }
 
   close() {
@@ -585,6 +708,18 @@ export default class CartDrawer extends Component {
       this._triggerElement = null;
     }
     this.announce('Cart closed');
+
+    if (this._openedAt != null) {
+      var now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      var dwellMs = Math.max(0, Math.round(now - this._openedAt));
+      var cart = this.state.cart;
+      tracker.track(ANALYTICS_EVENTS.DRAWER_CLOSED, {
+        cart_total: cart ? cart.total_price : null,
+        item_count: cart ? cart.item_count : null,
+        dwell_ms: dwellMs,
+      });
+      this._openedAt = null;
+    }
   }
 
   handleOverlayClick() {
@@ -633,26 +768,73 @@ export default class CartDrawer extends Component {
     this.announce('Updating cart...');
   }
 
-  // ── Remove item (with animation delay) ────────────────────
+  // ── Remove item (optimistic with tombstone fade) ──────────
+  // 1. Snapshot the line as a tombstone so it stays in DOM for the fade.
+  // 2. Dispatch cart-action synchronously — totals + bar update immediately
+  //    via evaluate.js → cartmax:optimistic-update.
+  // 3. After TOMBSTONE_HOLD_MS, drop the tombstone. Analytics fire only when
+  //    the server reconcile confirms the removal.
 
   handleRemove(key) {
     if (this._debounceTimers[key]) {
       clearTimeout(this._debounceTimers[key]);
       delete this._debounceTimers[key];
     }
+
+    var cart = this.state.cart;
+    var line = cart && cart.items && cart.items.find(function (i) { return i.key === key; });
+
+    // Defer GIFT_REMOVED analytics until reconcile confirms (see _onInternalReload).
+    if (line && line.properties && line.properties._freebie === 'true') {
+      this._pendingGiftRemovals[key] = {
+        promotion_id: line.properties._offer_id || null,
+        promotion_type: line.properties._cartmax_claim === 'true' ? 'claim-gift' : 'offer',
+        variant_id: String(line.variant_id),
+      };
+    }
+
+    // Stash the line as a tombstone so the fade can play while the
+    // optimistic update strips the line from state.cart.
+    if (line) this._removingTombstones[key] = line;
+
     var removing = Object.assign({}, this.state.removing);
     removing[key] = true;
-    this.setState({ removing: removing });
-    setTimeout(() => {
-      var updating = Object.assign({}, this.state.updating);
-      updating[key] = true;
-      this.setState({ updating: updating });
-      this._startProcessingTimeout();
-      window.dispatchEvent(new CustomEvent('cartmax:cart-action', {
-        detail: { cart: this.state.cart, action: { key: key, qty: 0 } },
-      }));
-      this.announce('Removing item...');
-    }, REMOVE_ANIM_DELAY);
+    var updating = Object.assign({}, this.state.updating);
+    updating[key] = true;
+    this.setState({ removing: removing, updating: updating });
+    this._startProcessingTimeout();
+
+    window.dispatchEvent(new CustomEvent('cartmax:cart-action', {
+      detail: { cart: this.state.cart, action: { key: key, qty: 0 } },
+    }));
+    this.announce('Removing item...');
+
+    // Drop the tombstone after the fade. The line may already be gone from
+    // state.cart by now (optimistic update fired); the tombstone is the
+    // only thing keeping it visible.
+    if (this._tombstoneTimers[key]) clearTimeout(this._tombstoneTimers[key]);
+    this._tombstoneTimers[key] = setTimeout(() => {
+      delete this._tombstoneTimers[key];
+      delete this._removingTombstones[key];
+      var nextRemoving = Object.assign({}, this.state.removing);
+      delete nextRemoving[key];
+      this.setState({ removing: nextRemoving });
+    }, TOMBSTONE_HOLD_MS);
+  }
+
+  // Render-time merge: list items currently in cart, plus any tombstoned
+  // items not in cart (so the fade can finish before they unmount).
+  _displayItems() {
+    var cart = this.state.cart;
+    var cartItems = (cart && cart.items) || [];
+    var inCart = {};
+    cartItems.forEach(function (item) { inCart[item.key] = true; });
+    var merged = cartItems.slice();
+    var tombs = this._removingTombstones || {};
+    Object.keys(tombs).forEach(function (key) {
+      if (!inCart[key]) merged.push(tombs[key]);
+    });
+    return merged;
   }
 
   // ── Accessibility ─────────────────────────────────────────
@@ -859,13 +1041,44 @@ export default class CartDrawer extends Component {
     );
   }
 
-  // ── Claim Gifts ────────────────────────────────────────────
+  // ── Claim Gifts (button-level optimistic, line pessimistic) ─
+
+  _showClaimError(key, message) {
+    if (this._errorTimers[key]) clearTimeout(this._errorTimers[key]);
+    var nextError = Object.assign({}, this.state.claimError);
+    nextError[key] = message;
+    this.setState({ claimError: nextError });
+    this._errorTimers[key] = setTimeout(() => {
+      delete this._errorTimers[key];
+      var clear = Object.assign({}, this.state.claimError);
+      delete clear[key];
+      this.setState({ claimError: clear });
+    }, INLINE_ERROR_HOLD_MS);
+  }
+
+  _clearClaimError(key) {
+    if (this._errorTimers[key]) {
+      clearTimeout(this._errorTimers[key]);
+      delete this._errorTimers[key];
+    }
+    if (this.state.claimError[key]) {
+      var clear = Object.assign({}, this.state.claimError);
+      delete clear[key];
+      this.setState({ claimError: clear });
+    }
+  }
 
   async handleClaimAdd(variantId, claimId) {
     var key = 'claim_' + variantId;
-    var updating = Object.assign({}, this.state.updating);
-    updating[key] = true;
-    this.setState({ updating: updating });
+
+    // Button-level optimistic: card flips to "Claimed ✓" immediately.
+    // No optimistic line in the cart — the line materialises on reconcile.
+    this._clearClaimError(key);
+    this.setState({
+      claimed: Object.assign({}, this.state.claimed, { [key]: true }),
+      updating: Object.assign({}, this.state.updating, { [key]: true }),
+    });
+
     try {
       await internalFetch('/cart/add.js', {
         method: 'POST',
@@ -881,7 +1094,19 @@ export default class CartDrawer extends Component {
       this.setState({ cart: cart });
       updateCartCount(cart.item_count);
       window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: { cart: cart } }));
+      tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, {
+        promotion_id: claimId,
+        promotion_type: 'claim-gift',
+        variant_id: String(variantId),
+        cart_total: cart.total_price,
+        item_count: cart.item_count,
+      });
     } catch (err) {
+      // Rollback the button — claim state revert + inline error.
+      var nextClaimed = Object.assign({}, this.state.claimed);
+      delete nextClaimed[key];
+      this.setState({ claimed: nextClaimed });
+      this._showClaimError(key, 'Out of stock');
       console.error('[cartx] Claim add error:', err);
     } finally {
       var newUpdating = Object.assign({}, this.state.updating);
@@ -897,15 +1122,28 @@ export default class CartDrawer extends Component {
       return String(i.variant_id) === String(variantId);
     });
     if (!line) return;
+    // Clear any lingering button-optimistic "Claimed ✓" state so it doesn't
+    // flash back on next render when inCart flips false.
+    var nextClaimed = Object.assign({}, this.state.claimed);
+    delete nextClaimed['claim_' + variantId];
+    delete nextClaimed['offer_' + variantId];
+    this.setState({ claimed: nextClaimed });
     this.handleRemove(line.key);
   }
 
   // Display-mode offer: customer manually adds the gift from a card.
+  // Button-level optimistic (same pattern as handleClaimAdd) — the cart
+  // line itself stays pessimistic to avoid blink-in/blink-out on
+  // inventory rejection.
   async handleOfferDisplayAdd(variantId, offerId, quantity) {
     var key = 'offer_' + variantId;
-    var updating = Object.assign({}, this.state.updating);
-    updating[key] = true;
-    this.setState({ updating: updating });
+
+    this._clearClaimError(key);
+    this.setState({
+      claimed: Object.assign({}, this.state.claimed, { [key]: true }),
+      updating: Object.assign({}, this.state.updating, { [key]: true }),
+    });
+
     try {
       await internalFetch('/cart/add.js', {
         method: 'POST',
@@ -926,6 +1164,10 @@ export default class CartDrawer extends Component {
       updateCartCount(cart.item_count);
       window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: { cart: cart } }));
     } catch (err) {
+      var nextClaimed = Object.assign({}, this.state.claimed);
+      delete nextClaimed[key];
+      this.setState({ claimed: nextClaimed });
+      this._showClaimError(key, 'Out of stock');
       console.error('[cartx] Offer display add error:', err);
     } finally {
       var newUpdating = Object.assign({}, this.state.updating);
@@ -947,35 +1189,55 @@ export default class CartDrawer extends Component {
       <div class="cartmax-claims cartmax-offer-cards">
         <div class="cartmax-claims-heading">{heading}</div>
         <div class="cartmax-claims-scroll">
-          {groups.flatMap(function (group) {
-            return (group.gifts || []).map(function (g) {
-              var vid = String(g.variant_id);
-              if (vid.startsWith('gid://')) vid = vid.split('/').pop();
-              var isAdding = self.state.updating['offer_' + vid];
-              var inCart = g.in_cart;
-              return (
-                <div class={'cartmax-claim-card' + (inCart ? ' cartmax-claim-card--in-cart' : '')} key={group.offer_id + ':' + vid}>
-                  {g.image
-                    ? <img class="cartmax-claim-img" src={resizeImage(g.image, 96)} alt={g.title} loading="lazy" />
-                    : <div class="cartmax-claim-img-placeholder"><span class="visually-hidden">No image</span></div>
-                  }
-                  <div class="cartmax-claim-info">
-                    {g.title ? <div class="cartmax-claim-title">{g.title}</div> : null}
-                    {inCart
-                      ? <button
-                          class="cartmax-claim-btn cartmax-claim-btn--remove"
-                          onClick={function () { self.handleClaimRemove(vid); }}
-                        >Remove</button>
-                      : <button
-                          class="cartmax-claim-btn cartmax-claim-btn--add"
-                          onClick={function () { self.handleOfferDisplayAdd(vid, group.offer_id, group.quantity_per_variant); }}
-                          disabled={isAdding || !g.available}
-                        >{isAdding ? 'Adding...' : (!g.available ? 'Unavailable' : 'Add')}</button>
-                    }
-                  </div>
-                </div>
-              );
-            });
+          {groups.map(function (group) {
+            return (
+              <div
+                class="cartmax-offer-group"
+                key={'group:' + group.offer_id}
+                data-cartmax-promo-id={group.offer_id}
+                data-cartmax-promo-type="offer"
+                ref={function (el) { self._observePromo(el); }}
+              >
+                {(group.gifts || []).map(function (g) {
+                  var vid = String(g.variant_id);
+                  if (vid.startsWith('gid://')) vid = vid.split('/').pop();
+                  var btnKey = 'offer_' + vid;
+                  var isAdding = self.state.updating[btnKey];
+                  var isClaimedOptimistic = self.state.claimed[btnKey];
+                  var claimErr = self.state.claimError[btnKey];
+                  var inCart = g.in_cart;
+                  var showClaimedBtn = isClaimedOptimistic && !inCart;
+                  return (
+                    <div class={'cartmax-claim-card' + (inCart ? ' cartmax-claim-card--in-cart' : '')} key={group.offer_id + ':' + vid}>
+                      {g.image
+                        ? <img class="cartmax-claim-img" src={resizeImage(g.image, 96)} alt={g.title} loading="lazy" />
+                        : <div class="cartmax-claim-img-placeholder"><span class="visually-hidden">No image</span></div>
+                      }
+                      <div class="cartmax-claim-info">
+                        {g.title ? <div class="cartmax-claim-title">{g.title}</div> : null}
+                        {inCart
+                          ? <button
+                              class="cartmax-claim-btn cartmax-claim-btn--remove"
+                              onClick={function () { self.handleClaimRemove(vid); }}
+                            >Remove</button>
+                          : showClaimedBtn
+                            ? <button
+                                class="cartmax-claim-btn cartmax-claim-btn--claimed"
+                                disabled
+                              ><IconCheck /> Claimed</button>
+                            : <button
+                                class="cartmax-claim-btn cartmax-claim-btn--add"
+                                onClick={function () { self.handleOfferDisplayAdd(vid, group.offer_id, group.quantity_per_variant); }}
+                                disabled={isAdding || !g.available}
+                              >{isAdding ? 'Adding...' : (!g.available ? 'Unavailable' : 'Add')}</button>
+                        }
+                        {claimErr ? <div class="cartmax-claim-error">{claimErr}</div> : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
           })}
         </div>
       </div>
@@ -1016,14 +1278,23 @@ export default class CartDrawer extends Component {
     var limitReached = cartClaimedCount >= maxClaims;
 
     return (
-      <div class="cartmax-claims">
+      <div
+        class="cartmax-claims"
+        data-cartmax-promo-id={cg._rule_id}
+        data-cartmax-promo-type="claim-gift"
+        ref={function (el) { self._observePromo(el); }}
+      >
         <div class="cartmax-claims-heading">{cg.section_heading}</div>
         <div class="cartmax-claims-scroll">
           {gifts.map(function (g) {
             var vid = String(g.variant_id);
             if (vid.startsWith('gid://')) vid = vid.split('/').pop();
-            var isClaiming = self.state.updating['claim_' + vid];
+            var btnKey = 'claim_' + vid;
+            var isClaiming = self.state.updating[btnKey];
+            var isClaimedOptimistic = self.state.claimed[btnKey];
+            var claimErr = self.state.claimError[btnKey];
             var inCart = g.in_cart || isInCart(vid);
+            var showClaimedBtn = isClaimedOptimistic && !inCart;
             return (
               <div class={'cartmax-claim-card' + (inCart ? ' cartmax-claim-card--in-cart' : '')} key={vid}>
                 {g.image
@@ -1037,12 +1308,18 @@ export default class CartDrawer extends Component {
                         class="cartmax-claim-btn cartmax-claim-btn--remove"
                         onClick={function () { self.handleClaimRemove(vid); }}
                       >Remove</button>
-                    : <button
-                        class="cartmax-claim-btn cartmax-claim-btn--add"
-                        onClick={function () { self.handleClaimAdd(vid, cg._rule_id); }}
-                        disabled={isClaiming || !g.available || limitReached}
-                      >{isClaiming ? 'Adding...' : (!g.available ? 'Unavailable' : (limitReached ? 'Limit reached' : 'Add'))}</button>
+                    : showClaimedBtn
+                      ? <button
+                          class="cartmax-claim-btn cartmax-claim-btn--claimed"
+                          disabled
+                        ><IconCheck /> Claimed</button>
+                      : <button
+                          class="cartmax-claim-btn cartmax-claim-btn--add"
+                          onClick={function () { self.handleClaimAdd(vid, cg._rule_id); }}
+                          disabled={isClaiming || !g.available || limitReached}
+                        >{isClaiming ? 'Adding...' : (!g.available ? 'Unavailable' : (limitReached ? 'Limit reached' : 'Add'))}</button>
                   }
+                  {claimErr ? <div class="cartmax-claim-error">{claimErr}</div> : null}
                 </div>
               </div>
             );
@@ -1108,13 +1385,37 @@ export default class CartDrawer extends Component {
       });
       updateCartCount(cart.item_count);
       if (applied) window.dispatchEvent(new CustomEvent('cartmax:cart-action', { detail: { cart: cart } }));
+
+      tracker.track(
+        applied ? ANALYTICS_EVENTS.COUPON_APPLIED : ANALYTICS_EVENTS.COUPON_REJECTED,
+        {
+          promotion_type: 'coupon',
+          code: newCode,
+          reason: applied ? null : 'not_applicable',
+          cart_total: cart.total_price,
+          item_count: cart.item_count,
+        },
+      );
     } catch (err) {
       this.setState({ couponLoading: false, couponError: 'Failed to apply coupon' });
+      tracker.track(ANALYTICS_EVENTS.COUPON_REJECTED, {
+        promotion_type: 'coupon',
+        code: (code || '').trim(),
+        reason: 'request_failed',
+      });
     }
   }
 
   async handleCouponRemove(codeToRemove) {
+    var snapshot = this.state.cart;
     this.setState({ couponLoading: true });
+
+    // Optimistic: drop the chip from cart_level_discount_applications.
+    // Totals stay where they are until reconcile — re-running the merchant's
+    // discount engine client-side isn't possible. Acceptable: the chip
+    // disappearing is the visible feedback.
+    if (snapshot) dispatchOptimistic(simulateCouponRemove(snapshot, codeToRemove));
+
     try {
       var currentCodes = this.getAppliedCodes();
       var removeUpper = (codeToRemove || '').toUpperCase();
@@ -1129,6 +1430,8 @@ export default class CartDrawer extends Component {
       updateCartCount(cart.item_count);
       window.dispatchEvent(new CustomEvent('cartmax:cart-action', { detail: { cart: cart } }));
     } catch (err) {
+      // Rollback the chip.
+      if (snapshot) dispatchOptimistic(snapshot);
       this.setState({ couponLoading: false });
     }
   }
@@ -1246,11 +1549,43 @@ export default class CartDrawer extends Component {
 
   // ── Render: Upsells ────────────────────────────────────────
 
-  async handleUpsellAdd(variantId) {
+  _showUpsellError(message) {
+    if (this._upsellErrorTimer) clearTimeout(this._upsellErrorTimer);
+    this.setState({ upsellError: message });
+    this._upsellErrorTimer = setTimeout(() => {
+      this._upsellErrorTimer = null;
+      this.setState({ upsellError: null });
+    }, INLINE_ERROR_HOLD_MS);
+  }
+
+  // Line-level optimistic add. Customer explicitly chose a paid item;
+  // out-of-stock is an intuitive failure mode worth the line-blink risk.
+  async handleUpsellAdd(variantId, productMeta) {
     var key = 'upsell_' + variantId;
-    var updating = Object.assign({}, this.state.updating);
-    updating[key] = true;
-    this.setState({ updating: updating });
+    var snapshot = this.state.cart;
+
+    this.setState({ updating: Object.assign({}, this.state.updating, { [key]: true }) });
+
+    if (productMeta && snapshot) {
+      var unitPriceCents = Math.round(Number(productMeta.price || 0) * 100);
+      var optimisticItem = {
+        key: 'pending_upsell_' + variantId + '_' + Date.now(),
+        variant_id: Number(variantId),
+        quantity: 1,
+        price: unitPriceCents,
+        line_price: unitPriceCents,
+        final_line_price: unitPriceCents,
+        original_line_price: unitPriceCents,
+        product_title: productMeta.title || '',
+        title: productMeta.title || '',
+        image: productMeta.image || '',
+        variant_title: productMeta.variant_title || '',
+        properties: {},
+        line_level_discount_allocations: [],
+      };
+      dispatchOptimistic(simulateAdd(snapshot, optimisticItem));
+    }
+
     try {
       await internalFetch('/cart/add.js', {
         method: 'POST',
@@ -1259,10 +1594,18 @@ export default class CartDrawer extends Component {
       });
       var cart = await fetchCart();
       this._currency = cart.currency || this._currency;
-      this.setState({ cart: cart });
-      updateCartCount(cart.item_count);
+      window.dispatchEvent(new CustomEvent('cartmax:internal-reload', { detail: { cart: cart } }));
       window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: { cart: cart } }));
+      tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, {
+        promotion_type: 'upsell',
+        variant_id: String(variantId),
+        cart_total: cart.total_price,
+        item_count: cart.item_count,
+      });
     } catch (err) {
+      // Roll back optimistic line.
+      if (snapshot) dispatchOptimistic(snapshot);
+      this._showUpsellError('Could not add — out of stock or unavailable.');
       console.error('[cartx] Upsell add error:', err);
     } finally {
       var newUpdating = Object.assign({}, this.state.updating);
@@ -1293,11 +1636,20 @@ export default class CartDrawer extends Component {
     return (
       <div class="cartmax-upsells">
         <div class="cartmax-upsells-heading">{upsells.heading || 'You may also like'}</div>
+        {this.state.upsellError
+          ? <div class="cartmax-upsell-error">{this.state.upsellError}</div>
+          : null
+        }
         <div class="cartmax-upsells-scroll">
           {filtered.map(function (p) {
             var vid = String(p.variant_id);
             if (vid.startsWith('gid://')) vid = vid.split('/').pop();
             var isAdding = self.state.updating['upsell_' + vid];
+            var productMeta = {
+              title: p.title,
+              image: p.image_url,
+              price: p.price,
+            };
             return (
               <div class="cartmax-upsell-card" key={p.product_id}>
                 {p.image_url
@@ -1315,7 +1667,7 @@ export default class CartDrawer extends Component {
                   </div>
                   <button
                     class="cartmax-upsell-add"
-                    onClick={function () { self.handleUpsellAdd(vid); }}
+                    onClick={function () { self.handleUpsellAdd(vid, productMeta); }}
                     disabled={isAdding}
                   >{isAdding ? 'Adding...' : 'Add'}</button>
                 </div>
@@ -1499,7 +1851,7 @@ export default class CartDrawer extends Component {
               : isEmpty
                 ? this.renderEmpty()
                 : hasItems
-                  ? <div class="cartmax-body">{cart.items.map((item) => this.renderLineItem(item))}</div>
+                  ? <div class="cartmax-body">{this._displayItems().map((item) => this.renderLineItem(item))}</div>
                   : null
             }
 

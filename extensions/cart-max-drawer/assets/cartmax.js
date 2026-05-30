@@ -282,6 +282,74 @@
       return r2.json();
     });
   }
+  function dispatchOptimistic(cart) {
+    if (!cart) return;
+    window.dispatchEvent(new CustomEvent("cartmax:optimistic-update", {
+      detail: { cart }
+    }));
+  }
+  function propertiesSignature(props) {
+    if (!props) return "";
+    var keys = Object.keys(props).sort();
+    var parts = [];
+    for (var i2 = 0; i2 < keys.length; i2++) {
+      parts.push(keys[i2] + "=" + props[keys[i2]]);
+    }
+    return parts.join("|");
+  }
+  function recomputeCartTotals(cart, items) {
+    var totalPrice = 0;
+    var originalTotal = 0;
+    var itemCount = 0;
+    for (var i2 = 0; i2 < items.length; i2++) {
+      totalPrice += items[i2].final_line_price || 0;
+      originalTotal += items[i2].original_line_price || items[i2].line_price || 0;
+      itemCount += items[i2].quantity || 0;
+    }
+    return Object.assign({}, cart, {
+      items,
+      total_price: totalPrice,
+      original_total_price: originalTotal,
+      total_discount: Math.max(0, originalTotal - totalPrice),
+      item_count: itemCount,
+      items_subtotal_price: totalPrice
+    });
+  }
+  function simulateAdd(cart, optimisticItem) {
+    if (!cart) return cart;
+    var items = (cart.items || []).slice();
+    var sig = propertiesSignature(optimisticItem.properties);
+    var idx = -1;
+    for (var i2 = 0; i2 < items.length; i2++) {
+      if (String(items[i2].variant_id) === String(optimisticItem.variant_id) && propertiesSignature(items[i2].properties) === sig) {
+        idx = i2;
+        break;
+      }
+    }
+    if (idx >= 0) {
+      var existing = items[idx];
+      var newQty = (existing.quantity || 0) + (optimisticItem.quantity || 1);
+      var unitPrice = existing.price || 0;
+      var newLine = newQty * unitPrice;
+      items[idx] = Object.assign({}, existing, {
+        quantity: newQty,
+        line_price: newLine,
+        final_line_price: newLine,
+        original_line_price: newLine
+      });
+    } else {
+      items.push(optimisticItem);
+    }
+    return recomputeCartTotals(cart, items);
+  }
+  function simulateCouponRemove(cart, code) {
+    if (!cart || !code) return cart;
+    var upper = String(code).toUpperCase();
+    var apps = (cart.cart_level_discount_applications || []).filter(function(d2) {
+      return !(d2.title && d2.title.toUpperCase() === upper);
+    });
+    return Object.assign({}, cart, { cart_level_discount_applications: apps });
+  }
   function formatMoney(cents, currency) {
     var amount = (cents / 100).toFixed(2);
     var fmt = window.Shopify && window.Shopify.money_format;
@@ -729,12 +797,12 @@
     var prevThreshold = 0;
     for (var t2 = 0; t2 < filtered.length; t2++) {
       var tier = filtered[t2];
-      var state;
+      var state2;
       if (currentValue >= tier.threshold) {
-        state = "active";
+        state2 = "active";
         progress += segmentWidth;
       } else if (!topMessage) {
-        state = "next";
+        state2 = "next";
         var remaining = tier.threshold - currentValue;
         var segmentRange = tier.threshold - prevThreshold;
         var segmentProgress = segmentRange > 0 ? (currentValue - prevThreshold) / segmentRange : 0;
@@ -744,13 +812,13 @@
           topMessage = tier.top_message.replace(/\[\[\s*price\s*\]\]/gi, formatted);
         }
       } else {
-        state = "inactive";
+        state2 = "inactive";
       }
       prevThreshold = tier.threshold;
       tiers.push({
         threshold: tier.threshold,
         label: tier.label,
-        state
+        state: state2
       });
     }
     if (topMessage === null && currentValue >= filtered[filtered.length - 1].threshold) {
@@ -1227,11 +1295,241 @@
   }).catch(function() {
   });
 
+  // src/analytics-events.js
+  var ANALYTICS_EVENTS = {
+    DRAWER_OPENED: "drawer_opened",
+    DRAWER_CLOSED: "drawer_closed",
+    PROMOTION_VIEWED: "promotion_viewed",
+    GIFT_CLAIMED: "gift_claimed",
+    GIFT_REMOVED: "gift_removed",
+    UPSELL_ADDED: "upsell_added",
+    COUPON_APPLIED: "coupon_applied",
+    COUPON_REJECTED: "coupon_rejected"
+  };
+  var ANALYTICS_BOUNDS = {
+    MAX_QUEUE: 100,
+    FLUSH_INTERVAL_MS: 1e4,
+    MAX_CART_CENTS: 1e7,
+    MAX_ITEM_COUNT: 1e3
+  };
+
+  // src/tracker.js
+  var SESSION_KEY = "cartx_session_id";
+  var DEFAULT_PROXY_BASE = "/apps/cartmax";
+  var ENDPOINT_PATH = "/analytics";
+  function safeSessionStorage() {
+    try {
+      return window.sessionStorage;
+    } catch (_2) {
+      return null;
+    }
+  }
+  function newSessionId() {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    var rand2 = function() {
+      return Math.floor(Math.random() * 4294967295).toString(16).padStart(8, "0");
+    };
+    return rand2() + "-" + rand2() + "-" + rand2() + "-" + rand2();
+  }
+  function resolveSessionId() {
+    var store = safeSessionStorage();
+    if (!store) return newSessionId();
+    var existing = null;
+    try {
+      existing = store.getItem(SESSION_KEY);
+    } catch (_2) {
+    }
+    if (existing) return existing;
+    var fresh = newSessionId();
+    try {
+      store.setItem(SESSION_KEY, fresh);
+    } catch (_2) {
+    }
+    return fresh;
+  }
+  function consentAllowed() {
+    try {
+      var api = window.Shopify && window.Shopify.customerPrivacy;
+      if (api && typeof api.analyticsProcessingAllowed === "function") {
+        return api.analyticsProcessingAllowed();
+      }
+    } catch (_2) {
+    }
+    return true;
+  }
+  var state = {
+    initialized: false,
+    enabled: false,
+    shopId: "",
+    customerId: null,
+    endpoint: "",
+    sessionId: "",
+    queue: [],
+    seenPromotions: null,
+    flushTimer: null,
+    flushing: false
+  };
+  function buildEndpoint(proxyBase) {
+    var base = proxyBase || DEFAULT_PROXY_BASE;
+    if (base.charAt(base.length - 1) === "/") {
+      base = base.slice(0, -1);
+    }
+    return base + ENDPOINT_PATH;
+  }
+  function startFlushTimer() {
+    if (state.flushTimer) return;
+    state.flushTimer = setInterval(function() {
+      if (state.queue.length > 0) {
+        flushInternal(false);
+      }
+    }, ANALYTICS_BOUNDS.FLUSH_INTERVAL_MS);
+  }
+  function flushInternal(useBeacon) {
+    if (state.flushing) return;
+    if (state.queue.length === 0) return;
+    if (!state.endpoint) return;
+    var batch = state.queue;
+    state.queue = [];
+    state.flushing = true;
+    var payload = JSON.stringify({
+      source: "drawer",
+      session_id: state.sessionId,
+      events: batch
+    });
+    var ok = false;
+    try {
+      if (useBeacon && typeof navigator !== "undefined" && navigator.sendBeacon) {
+        var blob = new Blob([payload], { type: "application/json" });
+        ok = navigator.sendBeacon(state.endpoint, blob);
+      }
+    } catch (_2) {
+      ok = false;
+    }
+    if (ok) {
+      state.flushing = false;
+      return;
+    }
+    try {
+      fetch(state.endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: payload,
+        keepalive: true
+      }).catch(function() {
+      }).finally(function() {
+        state.flushing = false;
+      });
+    } catch (_2) {
+      state.flushing = false;
+    }
+  }
+  var tracker = {
+    init: function(opts) {
+      try {
+        if (state.initialized) return;
+        state.shopId = opts && opts.shopId || "";
+        state.customerId = opts && opts.customerId || null;
+        state.endpoint = buildEndpoint(opts && opts.proxyBase);
+        state.enabled = !!(opts && opts.enabled !== false) && !!state.shopId;
+        state.sessionId = resolveSessionId();
+        state.seenPromotions = /* @__PURE__ */ new Set();
+        state.initialized = true;
+        if (!state.enabled) return;
+        startFlushTimer();
+        var flushOnExit = function() {
+          flushInternal(true);
+        };
+        window.addEventListener("pagehide", flushOnExit);
+        window.addEventListener("visibilitychange", function() {
+          if (document.visibilityState === "hidden") flushOnExit();
+        });
+        window.addEventListener("visitorConsentCollected", function() {
+          state.enabled = !!state.shopId && consentAllowed();
+        });
+      } catch (err) {
+        console.warn("[cartx][tracker] init failed:", err);
+      }
+    },
+    sessionId: function() {
+      return state.sessionId;
+    },
+    track: function(event, props) {
+      try {
+        if (!state.initialized || !state.enabled) return;
+        if (!consentAllowed()) return;
+        if (!event || typeof event !== "string") return;
+        var entry = {
+          event,
+          occurred_at: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        if (state.customerId) entry.customer_id = state.customerId;
+        if (props && typeof props === "object") {
+          var stdKeys = [
+            "promotion_id",
+            "promotion_type",
+            "cart_total",
+            "item_count"
+          ];
+          var meta = null;
+          for (var key in props) {
+            if (!Object.prototype.hasOwnProperty.call(props, key)) continue;
+            if (props[key] === void 0 || props[key] === null) continue;
+            if (stdKeys.indexOf(key) !== -1) {
+              entry[key] = props[key];
+            } else {
+              if (!meta) meta = {};
+              meta[key] = props[key];
+            }
+          }
+          if (meta) entry.metadata = meta;
+        }
+        state.queue.push(entry);
+        if (state.queue.length >= ANALYTICS_BOUNDS.MAX_QUEUE) {
+          setTimeout(function() {
+            flushInternal(false);
+          }, 0);
+        }
+      } catch (err) {
+        console.warn("[cartx][tracker] track failed:", err);
+      }
+    },
+    // Idempotent per session: a given promotion_id only emits one
+    // promotion_viewed event per session. Drawer wires this to an
+    // IntersectionObserver on bar tiers / claim sections.
+    trackPromotionView: function(promotionId, promotionType) {
+      try {
+        if (!state.initialized || !state.enabled) return;
+        if (!promotionId) return;
+        if (state.seenPromotions.has(promotionId)) return;
+        state.seenPromotions.add(promotionId);
+        this.track("promotion_viewed", {
+          promotion_id: promotionId,
+          promotion_type: promotionType || null
+        });
+      } catch (err) {
+        console.warn("[cartx][tracker] trackPromotionView failed:", err);
+      }
+    },
+    flush: function(opts) {
+      try {
+        flushInternal(!!(opts && opts.useBeacon));
+      } catch (_2) {
+      }
+    },
+    // Test/debug only.
+    _state: function() {
+      return state;
+    }
+  };
+
   // src/CartDrawer.jsx
   var CLOSE_DELAY = 250;
   var DEBOUNCE_DELAY = 300;
-  var REMOVE_ANIM_DELAY = 0;
+  var TOMBSTONE_HOLD_MS = 280;
   var PROCESSING_TIMEOUT = 1e4;
+  var INLINE_ERROR_HOLD_MS = 4e3;
   function IconClose() {
     return /* @__PURE__ */ k("svg", { width: "18", height: "18", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" }, /* @__PURE__ */ k("path", { d: "M18 6 6 18" }), /* @__PURE__ */ k("path", { d: "m6 6 12 12" }));
   }
@@ -1275,7 +1573,13 @@
         pendingQty: {},
         evalResult: null,
         savings: 0,
-        unavailableGifts: []
+        unavailableGifts: [],
+        claimed: {},
+        // key -> true, button-level optimistic state for freebie claims
+        claimError: {},
+        // key -> message, inline error shown on offer/claim card
+        upsellError: null
+        // brief error message displayed near upsell list on rollback
       };
       this.close = this.close.bind(this);
       this.handleOverlayClick = this.handleOverlayClick.bind(this);
@@ -1285,6 +1589,10 @@
       this._drawerRef = null;
       this._debounceTimers = {};
       this._processingTimeout = null;
+      this._removingTombstones = {};
+      this._tombstoneTimers = {};
+      this._pendingGiftRemovals = {};
+      this._errorTimers = {};
       this._currency = window.Shopify && window.Shopify.currency && window.Shopify.currency.active || "USD";
       this._prevActiveTiers = {};
       this._confettiInitialized = false;
@@ -1342,33 +1650,29 @@
             this._checkConfetti(e2.detail.evalResult);
           }
           var oldItems = this.state.cart && this.state.cart.items || [];
-          var newKeys = {};
-          (newCart.items || []).forEach(function(item) {
-            newKeys[item.key] = true;
+          var removing = this._detectRemovedKeys(oldItems, newCart);
+          var pendingRemovals = this._pendingGiftRemovals || {};
+          var newKeySet = {};
+          (newCart.items || []).forEach(function(it) {
+            newKeySet[it.key] = true;
           });
-          var removing = {};
-          oldItems.forEach(function(item) {
-            if (!newKeys[item.key]) removing[item.key] = true;
+          Object.keys(pendingRemovals).forEach((k2) => {
+            if (!newKeySet[k2]) {
+              tracker.track(ANALYTICS_EVENTS.GIFT_REMOVED, pendingRemovals[k2]);
+            }
+            delete pendingRemovals[k2];
           });
           var newSavings = newEval && typeof newEval.total_savings === "number" ? newEval.total_savings : this.state.savings;
-          if (Object.keys(removing).length > 0) {
-            this.setState({ removing, updating: {}, pendingQty: {}, loading: false });
-            setTimeout(() => {
-              this.setState({ cart: newCart, removing: {}, evalResult: newEval, savings: newSavings });
-              updateCartCount(newCart.item_count);
-            }, REMOVE_ANIM_DELAY);
-          } else {
-            this.setState({
-              cart: newCart,
-              evalResult: newEval,
-              savings: newSavings,
-              loading: false,
-              updating: {},
-              removing: {},
-              pendingQty: {}
-            });
-            updateCartCount(newCart.item_count);
-          }
+          this.setState({
+            cart: newCart,
+            evalResult: newEval,
+            savings: newSavings,
+            loading: false,
+            updating: {},
+            removing: Object.keys(removing).length > 0 ? removing : this.state.removing,
+            pendingQty: {}
+          });
+          updateCartCount(newCart.item_count);
           this.announce("Cart updated");
           this._clearProcessingTimeout();
         }
@@ -1396,6 +1700,26 @@
         this.openDrawer();
         window.__cartmaxQueue = [];
       }
+      var rootEl = document.getElementById("cartmax-root");
+      if (rootEl) {
+        var analyticsEnabled = rootEl.dataset.analyticsEnabled !== "false";
+        tracker.init({
+          shopId: rootEl.dataset.shopId || "",
+          customerId: rootEl.dataset.customerId || null,
+          proxyBase: rootEl.dataset.proxyBase || "/apps/cartmax",
+          enabled: analyticsEnabled
+        });
+      }
+      this._promoObserver = typeof IntersectionObserver !== "undefined" ? new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          var el = entry.target;
+          var id = el.getAttribute("data-cartmax-promo-id");
+          var type = el.getAttribute("data-cartmax-promo-type");
+          if (id) tracker.trackPromotionView(id, type);
+          this._promoObserver.unobserve(el);
+        });
+      }, { threshold: 0.5 }) : null;
       var self = this;
       window.cartx = {
         open: function() {
@@ -1522,8 +1846,18 @@
       document.removeEventListener("keydown", this._onDocKeydown);
       if (this._horizonObserver) this._horizonObserver.disconnect();
       if (this._scrollLockObserver) this._scrollLockObserver.disconnect();
+      if (this._promoObserver) this._promoObserver.disconnect();
       Object.values(this._debounceTimers).forEach(clearTimeout);
+      Object.values(this._tombstoneTimers || {}).forEach(clearTimeout);
+      Object.values(this._errorTimers || {}).forEach(clearTimeout);
+      if (this._upsellErrorTimer) clearTimeout(this._upsellErrorTimer);
       this._clearProcessingTimeout();
+      tracker.flush({ useBeacon: true });
+    }
+    // Ref callback for elements that represent a promotion impression target.
+    _observePromo(el) {
+      if (!el || !this._promoObserver) return;
+      this._promoObserver.observe(el);
     }
     // ── Apply drawer config to instance properties ──────────
     // Gates the heavier drawer-config side effects (CSS vars, custom-CSS injection,
@@ -1632,20 +1966,72 @@
     // ── Stable item ordering ─────────────────────────────────
     // Shopify's cart API can return items in different order.
     // This preserves the order the user last saw to prevent jitter.
+    // Also aliases optimistic `pending_*` keys to the real Shopify key
+    // they reconcile to (matched by variant_id + properties signature)
+    // so an optimistic-add line keeps its slot when the real cart lands.
     _stabiliseOrder(cart) {
       if (!cart || !cart.items) return cart;
       var oldItems = this.state.cart && this.state.cart.items || [];
       if (oldItems.length === 0) return cart;
       var oldOrder = {};
+      var pendingOldItems = [];
       oldItems.forEach(function(item, idx) {
         oldOrder[item.key] = idx;
+        if (typeof item.key === "string" && item.key.indexOf("pending_") === 0) {
+          pendingOldItems.push(item);
+        }
       });
+      var aliasFromReal = {};
+      var claimed = {};
+      for (var p2 = 0; p2 < pendingOldItems.length; p2++) {
+        var pend = pendingOldItems[p2];
+        for (var q2 = 0; q2 < cart.items.length; q2++) {
+          var n2 = cart.items[q2];
+          if (claimed[n2.key]) continue;
+          if (typeof n2.key === "string" && n2.key.indexOf("pending_") === 0) continue;
+          if (String(n2.variant_id) !== String(pend.variant_id)) continue;
+          claimed[n2.key] = true;
+          aliasFromReal[n2.key] = oldOrder[pend.key];
+          break;
+        }
+      }
       var sorted = cart.items.slice().sort(function(a2, b2) {
-        var ia = oldOrder.hasOwnProperty(a2.key) ? oldOrder[a2.key] : 99999;
-        var ib = oldOrder.hasOwnProperty(b2.key) ? oldOrder[b2.key] : 99999;
+        var ia = aliasFromReal.hasOwnProperty(a2.key) ? aliasFromReal[a2.key] : oldOrder.hasOwnProperty(a2.key) ? oldOrder[a2.key] : 99999;
+        var ib = aliasFromReal.hasOwnProperty(b2.key) ? aliasFromReal[b2.key] : oldOrder.hasOwnProperty(b2.key) ? oldOrder[b2.key] : 99999;
         return ia - ib;
       });
       return Object.assign({}, cart, { items: sorted });
+    }
+    // Compute the set of old keys that have NO matching new key — used to
+    // play the remove-fade animation. Pending keys that aliased to a real
+    // key are NOT considered removed (their optimistic line is being
+    // promoted to the real line, not removed).
+    _detectRemovedKeys(oldItems, newCart) {
+      var newKeys = {};
+      var pendingReals = {};
+      (newCart.items || []).forEach(function(item) {
+        newKeys[item.key] = true;
+      });
+      var claimed = {};
+      oldItems.forEach(function(oldItem) {
+        if (!(typeof oldItem.key === "string" && oldItem.key.indexOf("pending_") === 0)) return;
+        for (var q2 = 0; q2 < (newCart.items || []).length; q2++) {
+          var n2 = newCart.items[q2];
+          if (claimed[n2.key]) continue;
+          if (typeof n2.key === "string" && n2.key.indexOf("pending_") === 0) continue;
+          if (String(n2.variant_id) !== String(oldItem.variant_id)) continue;
+          claimed[n2.key] = true;
+          pendingReals[oldItem.key] = true;
+          break;
+        }
+      });
+      var removing = {};
+      oldItems.forEach(function(item) {
+        if (newKeys[item.key]) return;
+        if (pendingReals[item.key]) return;
+        removing[item.key] = true;
+      });
+      return removing;
     }
     // ── Cart data ─────────────────────────────────────────────
     async loadCart() {
@@ -1684,6 +2070,12 @@
       document.body.style.overflow = "hidden";
       this.announce("Cart opened");
       window.dispatchEvent(new CustomEvent("cartmax:drawer-opened"));
+      this._openedAt = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+      var cart = this.state.cart;
+      tracker.track(ANALYTICS_EVENTS.DRAWER_OPENED, {
+        cart_total: cart ? cart.total_price : null,
+        item_count: cart ? cart.item_count : null
+      });
     }
     close() {
       if (this._focusCleanup) {
@@ -1701,6 +2093,17 @@
         this._triggerElement = null;
       }
       this.announce("Cart closed");
+      if (this._openedAt != null) {
+        var now = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+        var dwellMs = Math.max(0, Math.round(now - this._openedAt));
+        var cart = this.state.cart;
+        tracker.track(ANALYTICS_EVENTS.DRAWER_CLOSED, {
+          cart_total: cart ? cart.total_price : null,
+          item_count: cart ? cart.item_count : null,
+          dwell_ms: dwellMs
+        });
+        this._openedAt = null;
+      }
     }
     handleOverlayClick() {
       if (this._behavior.close_on_overlay_click) this.close();
@@ -1741,25 +2144,63 @@
       }));
       this.announce("Updating cart...");
     }
-    // ── Remove item (with animation delay) ────────────────────
+    // ── Remove item (optimistic with tombstone fade) ──────────
+    // 1. Snapshot the line as a tombstone so it stays in DOM for the fade.
+    // 2. Dispatch cart-action synchronously — totals + bar update immediately
+    //    via evaluate.js → cartmax:optimistic-update.
+    // 3. After TOMBSTONE_HOLD_MS, drop the tombstone. Analytics fire only when
+    //    the server reconcile confirms the removal.
     handleRemove(key) {
       if (this._debounceTimers[key]) {
         clearTimeout(this._debounceTimers[key]);
         delete this._debounceTimers[key];
       }
+      var cart = this.state.cart;
+      var line = cart && cart.items && cart.items.find(function(i2) {
+        return i2.key === key;
+      });
+      if (line && line.properties && line.properties._freebie === "true") {
+        this._pendingGiftRemovals[key] = {
+          promotion_id: line.properties._offer_id || null,
+          promotion_type: line.properties._cartmax_claim === "true" ? "claim-gift" : "offer",
+          variant_id: String(line.variant_id)
+        };
+      }
+      if (line) this._removingTombstones[key] = line;
       var removing = Object.assign({}, this.state.removing);
       removing[key] = true;
-      this.setState({ removing });
-      setTimeout(() => {
-        var updating = Object.assign({}, this.state.updating);
-        updating[key] = true;
-        this.setState({ updating });
-        this._startProcessingTimeout();
-        window.dispatchEvent(new CustomEvent("cartmax:cart-action", {
-          detail: { cart: this.state.cart, action: { key, qty: 0 } }
-        }));
-        this.announce("Removing item...");
-      }, REMOVE_ANIM_DELAY);
+      var updating = Object.assign({}, this.state.updating);
+      updating[key] = true;
+      this.setState({ removing, updating });
+      this._startProcessingTimeout();
+      window.dispatchEvent(new CustomEvent("cartmax:cart-action", {
+        detail: { cart: this.state.cart, action: { key, qty: 0 } }
+      }));
+      this.announce("Removing item...");
+      if (this._tombstoneTimers[key]) clearTimeout(this._tombstoneTimers[key]);
+      this._tombstoneTimers[key] = setTimeout(() => {
+        delete this._tombstoneTimers[key];
+        delete this._removingTombstones[key];
+        var nextRemoving = Object.assign({}, this.state.removing);
+        delete nextRemoving[key];
+        this.setState({ removing: nextRemoving });
+      }, TOMBSTONE_HOLD_MS);
+    }
+    // Render-time merge: list items currently in cart, plus any tombstoned
+    // items not in cart (so the fade can finish before they unmount).
+    _displayItems() {
+      var cart = this.state.cart;
+      var cartItems = cart && cart.items || [];
+      var inCart = {};
+      cartItems.forEach(function(item) {
+        inCart[item.key] = true;
+      });
+      var merged = cartItems.slice();
+      var tombs = this._removingTombstones || {};
+      Object.keys(tombs).forEach(function(key) {
+        if (!inCart[key]) merged.push(tombs[key]);
+      });
+      return merged;
     }
     // ── Accessibility ─────────────────────────────────────────
     announce(msg) {
@@ -1858,12 +2299,37 @@
         }
       } }, this._text.empty_button));
     }
-    // ── Claim Gifts ────────────────────────────────────────────
+    // ── Claim Gifts (button-level optimistic, line pessimistic) ─
+    _showClaimError(key, message) {
+      if (this._errorTimers[key]) clearTimeout(this._errorTimers[key]);
+      var nextError = Object.assign({}, this.state.claimError);
+      nextError[key] = message;
+      this.setState({ claimError: nextError });
+      this._errorTimers[key] = setTimeout(() => {
+        delete this._errorTimers[key];
+        var clear = Object.assign({}, this.state.claimError);
+        delete clear[key];
+        this.setState({ claimError: clear });
+      }, INLINE_ERROR_HOLD_MS);
+    }
+    _clearClaimError(key) {
+      if (this._errorTimers[key]) {
+        clearTimeout(this._errorTimers[key]);
+        delete this._errorTimers[key];
+      }
+      if (this.state.claimError[key]) {
+        var clear = Object.assign({}, this.state.claimError);
+        delete clear[key];
+        this.setState({ claimError: clear });
+      }
+    }
     async handleClaimAdd(variantId, claimId) {
       var key = "claim_" + variantId;
-      var updating = Object.assign({}, this.state.updating);
-      updating[key] = true;
-      this.setState({ updating });
+      this._clearClaimError(key);
+      this.setState({
+        claimed: Object.assign({}, this.state.claimed, { [key]: true }),
+        updating: Object.assign({}, this.state.updating, { [key]: true })
+      });
       try {
         await internalFetch("/cart/add.js", {
           method: "POST",
@@ -1879,7 +2345,18 @@
         this.setState({ cart });
         updateCartCount(cart.item_count);
         window.dispatchEvent(new CustomEvent("cartmax:cart-changed", { detail: { cart } }));
+        tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, {
+          promotion_id: claimId,
+          promotion_type: "claim-gift",
+          variant_id: String(variantId),
+          cart_total: cart.total_price,
+          item_count: cart.item_count
+        });
       } catch (err) {
+        var nextClaimed = Object.assign({}, this.state.claimed);
+        delete nextClaimed[key];
+        this.setState({ claimed: nextClaimed });
+        this._showClaimError(key, "Out of stock");
         console.error("[cartx] Claim add error:", err);
       } finally {
         var newUpdating = Object.assign({}, this.state.updating);
@@ -1894,14 +2371,23 @@
         return String(i2.variant_id) === String(variantId);
       });
       if (!line) return;
+      var nextClaimed = Object.assign({}, this.state.claimed);
+      delete nextClaimed["claim_" + variantId];
+      delete nextClaimed["offer_" + variantId];
+      this.setState({ claimed: nextClaimed });
       this.handleRemove(line.key);
     }
     // Display-mode offer: customer manually adds the gift from a card.
+    // Button-level optimistic (same pattern as handleClaimAdd) — the cart
+    // line itself stays pessimistic to avoid blink-in/blink-out on
+    // inventory rejection.
     async handleOfferDisplayAdd(variantId, offerId, quantity) {
       var key = "offer_" + variantId;
-      var updating = Object.assign({}, this.state.updating);
-      updating[key] = true;
-      this.setState({ updating });
+      this._clearClaimError(key);
+      this.setState({
+        claimed: Object.assign({}, this.state.claimed, { [key]: true }),
+        updating: Object.assign({}, this.state.updating, { [key]: true })
+      });
       try {
         await internalFetch("/cart/add.js", {
           method: "POST",
@@ -1922,6 +2408,10 @@
         updateCartCount(cart.item_count);
         window.dispatchEvent(new CustomEvent("cartmax:cart-changed", { detail: { cart } }));
       } catch (err) {
+        var nextClaimed = Object.assign({}, this.state.claimed);
+        delete nextClaimed[key];
+        this.setState({ claimed: nextClaimed });
+        this._showClaimError(key, "Out of stock");
         console.error("[cartx] Offer display add error:", err);
       } finally {
         var newUpdating = Object.assign({}, this.state.updating);
@@ -1936,33 +2426,57 @@
       if (groups.length === 0) return null;
       var self = this;
       var heading = this._text.offer_cards_heading || "Pick your free gift";
-      return /* @__PURE__ */ k("div", { class: "cartmax-claims cartmax-offer-cards" }, /* @__PURE__ */ k("div", { class: "cartmax-claims-heading" }, heading), /* @__PURE__ */ k("div", { class: "cartmax-claims-scroll" }, groups.flatMap(function(group) {
-        return (group.gifts || []).map(function(g2) {
-          var vid = String(g2.variant_id);
-          if (vid.startsWith("gid://")) vid = vid.split("/").pop();
-          var isAdding = self.state.updating["offer_" + vid];
-          var inCart = g2.in_cart;
-          return /* @__PURE__ */ k("div", { class: "cartmax-claim-card" + (inCart ? " cartmax-claim-card--in-cart" : ""), key: group.offer_id + ":" + vid }, g2.image ? /* @__PURE__ */ k("img", { class: "cartmax-claim-img", src: resizeImage(g2.image, 96), alt: g2.title, loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-claim-img-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image")), /* @__PURE__ */ k("div", { class: "cartmax-claim-info" }, g2.title ? /* @__PURE__ */ k("div", { class: "cartmax-claim-title" }, g2.title) : null, inCart ? /* @__PURE__ */ k(
-            "button",
-            {
-              class: "cartmax-claim-btn cartmax-claim-btn--remove",
-              onClick: function() {
-                self.handleClaimRemove(vid);
-              }
-            },
-            "Remove"
-          ) : /* @__PURE__ */ k(
-            "button",
-            {
-              class: "cartmax-claim-btn cartmax-claim-btn--add",
-              onClick: function() {
-                self.handleOfferDisplayAdd(vid, group.offer_id, group.quantity_per_variant);
+      return /* @__PURE__ */ k("div", { class: "cartmax-claims cartmax-offer-cards" }, /* @__PURE__ */ k("div", { class: "cartmax-claims-heading" }, heading), /* @__PURE__ */ k("div", { class: "cartmax-claims-scroll" }, groups.map(function(group) {
+        return /* @__PURE__ */ k(
+          "div",
+          {
+            class: "cartmax-offer-group",
+            key: "group:" + group.offer_id,
+            "data-cartmax-promo-id": group.offer_id,
+            "data-cartmax-promo-type": "offer",
+            ref: function(el) {
+              self._observePromo(el);
+            }
+          },
+          (group.gifts || []).map(function(g2) {
+            var vid = String(g2.variant_id);
+            if (vid.startsWith("gid://")) vid = vid.split("/").pop();
+            var btnKey = "offer_" + vid;
+            var isAdding = self.state.updating[btnKey];
+            var isClaimedOptimistic = self.state.claimed[btnKey];
+            var claimErr = self.state.claimError[btnKey];
+            var inCart = g2.in_cart;
+            var showClaimedBtn = isClaimedOptimistic && !inCart;
+            return /* @__PURE__ */ k("div", { class: "cartmax-claim-card" + (inCart ? " cartmax-claim-card--in-cart" : ""), key: group.offer_id + ":" + vid }, g2.image ? /* @__PURE__ */ k("img", { class: "cartmax-claim-img", src: resizeImage(g2.image, 96), alt: g2.title, loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-claim-img-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image")), /* @__PURE__ */ k("div", { class: "cartmax-claim-info" }, g2.title ? /* @__PURE__ */ k("div", { class: "cartmax-claim-title" }, g2.title) : null, inCart ? /* @__PURE__ */ k(
+              "button",
+              {
+                class: "cartmax-claim-btn cartmax-claim-btn--remove",
+                onClick: function() {
+                  self.handleClaimRemove(vid);
+                }
               },
-              disabled: isAdding || !g2.available
-            },
-            isAdding ? "Adding..." : !g2.available ? "Unavailable" : "Add"
-          )));
-        });
+              "Remove"
+            ) : showClaimedBtn ? /* @__PURE__ */ k(
+              "button",
+              {
+                class: "cartmax-claim-btn cartmax-claim-btn--claimed",
+                disabled: true
+              },
+              /* @__PURE__ */ k(IconCheck, null),
+              " Claimed"
+            ) : /* @__PURE__ */ k(
+              "button",
+              {
+                class: "cartmax-claim-btn cartmax-claim-btn--add",
+                onClick: function() {
+                  self.handleOfferDisplayAdd(vid, group.offer_id, group.quantity_per_variant);
+                },
+                disabled: isAdding || !g2.available
+              },
+              isAdding ? "Adding..." : !g2.available ? "Unavailable" : "Add"
+            ), claimErr ? /* @__PURE__ */ k("div", { class: "cartmax-claim-error" }, claimErr) : null));
+          })
+        );
       })));
     }
     renderClaimGifts() {
@@ -1992,32 +2506,56 @@
         });
       }
       var limitReached = cartClaimedCount >= maxClaims;
-      return /* @__PURE__ */ k("div", { class: "cartmax-claims" }, /* @__PURE__ */ k("div", { class: "cartmax-claims-heading" }, cg.section_heading), /* @__PURE__ */ k("div", { class: "cartmax-claims-scroll" }, gifts.map(function(g2) {
-        var vid = String(g2.variant_id);
-        if (vid.startsWith("gid://")) vid = vid.split("/").pop();
-        var isClaiming = self.state.updating["claim_" + vid];
-        var inCart = g2.in_cart || isInCart(vid);
-        return /* @__PURE__ */ k("div", { class: "cartmax-claim-card" + (inCart ? " cartmax-claim-card--in-cart" : ""), key: vid }, g2.image ? /* @__PURE__ */ k("img", { class: "cartmax-claim-img", src: resizeImage(g2.image, 96), alt: g2.title, loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-claim-img-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image")), /* @__PURE__ */ k("div", { class: "cartmax-claim-info" }, g2.title ? /* @__PURE__ */ k("div", { class: "cartmax-claim-title" }, g2.title) : null, inCart ? /* @__PURE__ */ k(
-          "button",
-          {
-            class: "cartmax-claim-btn cartmax-claim-btn--remove",
-            onClick: function() {
-              self.handleClaimRemove(vid);
-            }
-          },
-          "Remove"
-        ) : /* @__PURE__ */ k(
-          "button",
-          {
-            class: "cartmax-claim-btn cartmax-claim-btn--add",
-            onClick: function() {
-              self.handleClaimAdd(vid, cg._rule_id);
+      return /* @__PURE__ */ k(
+        "div",
+        {
+          class: "cartmax-claims",
+          "data-cartmax-promo-id": cg._rule_id,
+          "data-cartmax-promo-type": "claim-gift",
+          ref: function(el) {
+            self._observePromo(el);
+          }
+        },
+        /* @__PURE__ */ k("div", { class: "cartmax-claims-heading" }, cg.section_heading),
+        /* @__PURE__ */ k("div", { class: "cartmax-claims-scroll" }, gifts.map(function(g2) {
+          var vid = String(g2.variant_id);
+          if (vid.startsWith("gid://")) vid = vid.split("/").pop();
+          var btnKey = "claim_" + vid;
+          var isClaiming = self.state.updating[btnKey];
+          var isClaimedOptimistic = self.state.claimed[btnKey];
+          var claimErr = self.state.claimError[btnKey];
+          var inCart = g2.in_cart || isInCart(vid);
+          var showClaimedBtn = isClaimedOptimistic && !inCart;
+          return /* @__PURE__ */ k("div", { class: "cartmax-claim-card" + (inCart ? " cartmax-claim-card--in-cart" : ""), key: vid }, g2.image ? /* @__PURE__ */ k("img", { class: "cartmax-claim-img", src: resizeImage(g2.image, 96), alt: g2.title, loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-claim-img-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image")), /* @__PURE__ */ k("div", { class: "cartmax-claim-info" }, g2.title ? /* @__PURE__ */ k("div", { class: "cartmax-claim-title" }, g2.title) : null, inCart ? /* @__PURE__ */ k(
+            "button",
+            {
+              class: "cartmax-claim-btn cartmax-claim-btn--remove",
+              onClick: function() {
+                self.handleClaimRemove(vid);
+              }
             },
-            disabled: isClaiming || !g2.available || limitReached
-          },
-          isClaiming ? "Adding..." : !g2.available ? "Unavailable" : limitReached ? "Limit reached" : "Add"
-        )));
-      })));
+            "Remove"
+          ) : showClaimedBtn ? /* @__PURE__ */ k(
+            "button",
+            {
+              class: "cartmax-claim-btn cartmax-claim-btn--claimed",
+              disabled: true
+            },
+            /* @__PURE__ */ k(IconCheck, null),
+            " Claimed"
+          ) : /* @__PURE__ */ k(
+            "button",
+            {
+              class: "cartmax-claim-btn cartmax-claim-btn--add",
+              onClick: function() {
+                self.handleClaimAdd(vid, cg._rule_id);
+              },
+              disabled: isClaiming || !g2.available || limitReached
+            },
+            isClaiming ? "Adding..." : !g2.available ? "Unavailable" : limitReached ? "Limit reached" : "Add"
+          ), claimErr ? /* @__PURE__ */ k("div", { class: "cartmax-claim-error" }, claimErr) : null));
+        }))
+      );
     }
     // ── Coupons ────────────────────────────────────────────────
     getAppliedCodes() {
@@ -2073,12 +2611,29 @@
         });
         updateCartCount(cart.item_count);
         if (applied) window.dispatchEvent(new CustomEvent("cartmax:cart-action", { detail: { cart } }));
+        tracker.track(
+          applied ? ANALYTICS_EVENTS.COUPON_APPLIED : ANALYTICS_EVENTS.COUPON_REJECTED,
+          {
+            promotion_type: "coupon",
+            code: newCode,
+            reason: applied ? null : "not_applicable",
+            cart_total: cart.total_price,
+            item_count: cart.item_count
+          }
+        );
       } catch (err) {
         this.setState({ couponLoading: false, couponError: "Failed to apply coupon" });
+        tracker.track(ANALYTICS_EVENTS.COUPON_REJECTED, {
+          promotion_type: "coupon",
+          code: (code || "").trim(),
+          reason: "request_failed"
+        });
       }
     }
     async handleCouponRemove(codeToRemove) {
+      var snapshot = this.state.cart;
       this.setState({ couponLoading: true });
+      if (snapshot) dispatchOptimistic(simulateCouponRemove(snapshot, codeToRemove));
       try {
         var currentCodes = this.getAppliedCodes();
         var removeUpper = (codeToRemove || "").toUpperCase();
@@ -2093,6 +2648,7 @@
         updateCartCount(cart.item_count);
         window.dispatchEvent(new CustomEvent("cartmax:cart-action", { detail: { cart } }));
       } catch (err) {
+        if (snapshot) dispatchOptimistic(snapshot);
         this.setState({ couponLoading: false });
       }
     }
@@ -2186,11 +2742,39 @@
       }))));
     }
     // ── Render: Upsells ────────────────────────────────────────
-    async handleUpsellAdd(variantId) {
+    _showUpsellError(message) {
+      if (this._upsellErrorTimer) clearTimeout(this._upsellErrorTimer);
+      this.setState({ upsellError: message });
+      this._upsellErrorTimer = setTimeout(() => {
+        this._upsellErrorTimer = null;
+        this.setState({ upsellError: null });
+      }, INLINE_ERROR_HOLD_MS);
+    }
+    // Line-level optimistic add. Customer explicitly chose a paid item;
+    // out-of-stock is an intuitive failure mode worth the line-blink risk.
+    async handleUpsellAdd(variantId, productMeta) {
       var key = "upsell_" + variantId;
-      var updating = Object.assign({}, this.state.updating);
-      updating[key] = true;
-      this.setState({ updating });
+      var snapshot = this.state.cart;
+      this.setState({ updating: Object.assign({}, this.state.updating, { [key]: true }) });
+      if (productMeta && snapshot) {
+        var unitPriceCents = Math.round(Number(productMeta.price || 0) * 100);
+        var optimisticItem = {
+          key: "pending_upsell_" + variantId + "_" + Date.now(),
+          variant_id: Number(variantId),
+          quantity: 1,
+          price: unitPriceCents,
+          line_price: unitPriceCents,
+          final_line_price: unitPriceCents,
+          original_line_price: unitPriceCents,
+          product_title: productMeta.title || "",
+          title: productMeta.title || "",
+          image: productMeta.image || "",
+          variant_title: productMeta.variant_title || "",
+          properties: {},
+          line_level_discount_allocations: []
+        };
+        dispatchOptimistic(simulateAdd(snapshot, optimisticItem));
+      }
       try {
         await internalFetch("/cart/add.js", {
           method: "POST",
@@ -2199,10 +2783,17 @@
         });
         var cart = await fetchCart();
         this._currency = cart.currency || this._currency;
-        this.setState({ cart });
-        updateCartCount(cart.item_count);
+        window.dispatchEvent(new CustomEvent("cartmax:internal-reload", { detail: { cart } }));
         window.dispatchEvent(new CustomEvent("cartmax:cart-changed", { detail: { cart } }));
+        tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, {
+          promotion_type: "upsell",
+          variant_id: String(variantId),
+          cart_total: cart.total_price,
+          item_count: cart.item_count
+        });
       } catch (err) {
+        if (snapshot) dispatchOptimistic(snapshot);
+        this._showUpsellError("Could not add \u2014 out of stock or unavailable.");
         console.error("[cartx] Upsell add error:", err);
       } finally {
         var newUpdating = Object.assign({}, this.state.updating);
@@ -2228,16 +2819,21 @@
       if (filtered.length === 0) return null;
       var curr = this._currency;
       var self = this;
-      return /* @__PURE__ */ k("div", { class: "cartmax-upsells" }, /* @__PURE__ */ k("div", { class: "cartmax-upsells-heading" }, upsells.heading || "You may also like"), /* @__PURE__ */ k("div", { class: "cartmax-upsells-scroll" }, filtered.map(function(p2) {
+      return /* @__PURE__ */ k("div", { class: "cartmax-upsells" }, /* @__PURE__ */ k("div", { class: "cartmax-upsells-heading" }, upsells.heading || "You may also like"), this.state.upsellError ? /* @__PURE__ */ k("div", { class: "cartmax-upsell-error" }, this.state.upsellError) : null, /* @__PURE__ */ k("div", { class: "cartmax-upsells-scroll" }, filtered.map(function(p2) {
         var vid = String(p2.variant_id);
         if (vid.startsWith("gid://")) vid = vid.split("/").pop();
         var isAdding = self.state.updating["upsell_" + vid];
+        var productMeta = {
+          title: p2.title,
+          image: p2.image_url,
+          price: p2.price
+        };
         return /* @__PURE__ */ k("div", { class: "cartmax-upsell-card", key: p2.product_id }, p2.image_url ? /* @__PURE__ */ k("img", { class: "cartmax-upsell-img", src: resizeImage(p2.image_url, 96), alt: p2.title, loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-upsell-img-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image")), /* @__PURE__ */ k("div", { class: "cartmax-upsell-info" }, /* @__PURE__ */ k("div", { class: "cartmax-upsell-title" }, p2.title), /* @__PURE__ */ k("div", { class: "cartmax-upsell-price" }, p2.compare_at_price ? /* @__PURE__ */ k("span", { class: "cartmax-upsell-compare" }, formatMoney(Number(p2.compare_at_price) * 100, curr)) : null, /* @__PURE__ */ k("span", null, formatMoney(Number(p2.price) * 100, curr))), /* @__PURE__ */ k(
           "button",
           {
             class: "cartmax-upsell-add",
             onClick: function() {
-              self.handleUpsellAdd(vid);
+              self.handleUpsellAdd(vid, productMeta);
             },
             disabled: isAdding
           },
@@ -2335,7 +2931,7 @@
         hasItems && sec.show_progress_bar ? this.renderProgressBar() : null,
         hasItems && sec.show_claim_gifts ? this.renderClaimGifts() : null,
         hasItems && sec.show_offer_cards ? this.renderOfferDisplays() : null,
-        loading ? this.renderLoading() : isEmpty ? this.renderEmpty() : hasItems ? /* @__PURE__ */ k("div", { class: "cartmax-body" }, cart.items.map((item) => this.renderLineItem(item))) : null,
+        loading ? this.renderLoading() : isEmpty ? this.renderEmpty() : hasItems ? /* @__PURE__ */ k("div", { class: "cartmax-body" }, this._displayItems().map((item) => this.renderLineItem(item))) : null,
         hasItems && sec.show_coupons ? this.renderCoupons() : null,
         sec.show_upsells ? this.renderUpsells() : null,
         hasItems && sec.show_ribbon ? this.renderRibbon() : null,
