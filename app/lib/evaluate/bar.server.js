@@ -24,6 +24,8 @@ function collectBarEntries(config, page, customer) {
         entries.push({
           id: offer.id + '_tier_' + tier.quantity,
           source: 'volume_discount',
+          promotion_id: offer.id,
+          promotion_type: 'offer',
           threshold: tier.quantity,
           trigger_type: 'quantity',
           label: tierLabel,
@@ -41,6 +43,8 @@ function collectBarEntries(config, page, customer) {
     entries.push({
       id: offer.id,
       source: 'offer',
+      promotion_id: offer.id,
+      promotion_type: 'offer',
       threshold:
         offer.trigger.price_threshold || offer.trigger.quantity_threshold,
       trigger_type: offer.trigger.price_threshold ? 'price' : 'quantity',
@@ -71,6 +75,8 @@ function collectBarEntries(config, page, customer) {
     entries.push({
       id: claim.id,
       source: 'claim_gift',
+      promotion_id: claim.id,
+      promotion_type: 'claim-gift',
       threshold: claim.trigger.threshold,
       trigger_type: claim.trigger.type,
       label: claim.bar.label,
@@ -88,6 +94,10 @@ function collectBarEntries(config, page, customer) {
     entries.push({
       id: m.id,
       source: 'visual_milestone',
+      // Visual milestones are not promotions — no promotion_id/type so the
+      // drawer-side observer skips them.
+      promotion_id: null,
+      promotion_type: null,
       threshold: m.trigger.threshold,
       trigger_type: m.trigger.type,
       label: m.label,
@@ -114,10 +124,12 @@ function mergeCollisions(entries) {
     if (group.length === 1) {
       merged.push(group[0])
     } else {
+      // For analytics impressions, fire against the first underlying source.
+      // The full list is retained on `sources` for future per-source tracking.
       merged.push({
         ...group[0],
         label: group.map((e) => e.label).join('\n+ '),
-        sources: group.map((e) => ({ id: e.id, source: e.source })),
+        sources: group.map((e) => ({ id: e.id, source: e.source, promotion_id: e.promotion_id, promotion_type: e.promotion_type })),
       })
     }
   }
@@ -170,6 +182,8 @@ function computeBarState(tiers, currentValue, allCompleteMsg, moneyFormat) {
     tiers: tiers.map((t) => ({
       id: t.id,
       source: t.source,
+      promotion_id: t.promotion_id || null,
+      promotion_type: t.promotion_type || null,
       threshold: t.threshold,
       trigger_type: t.trigger_type,
       label: t.label,
@@ -274,7 +288,10 @@ export function buildBar(config, page, adjustedTotal, adjustedQty, moneyFormat, 
       progress_pct: Math.min(progressPct, 100),
       top_message: nextTier?._top_message || (allComplete ? config.progress_bar.all_complete_message : null),
       tiers: allTiers.map((t) => ({
-        id: t.id, source: t.source, threshold: t.threshold,
+        id: t.id, source: t.source,
+        promotion_id: t.promotion_id || null,
+        promotion_type: t.promotion_type || null,
+        threshold: t.threshold,
         trigger_type: t._trigger_type || t.trigger_type,
         label: t.label, sub_label: t.sub_label, icon_url: t.icon_url,
         state: t.state, ribbon_message: t.ribbon_message || null,

@@ -1,0 +1,13 @@
+api_version = "2026-07"
+
+[[extensions]]
+name = "cartx Pixel"
+handle = "cartx-pixel"
+uid = "ff782bc6-27c2-1844-3ed5-a9c59d8354ae2bf73671"
+type = "web_pixel_extension"
+runtime_context = "strict"
+
+[extensions.settings]
+type = "object"
+
+  [extensions.settings.fields]

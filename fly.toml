@@ -25,3 +25,21 @@ primary_region = "bom"  # Mumbai — close to India merchants
 
 [deploy]
   release_command = "npx prisma migrate deploy"
+
+# ─ Scheduled jobs (analytics) ──────────────────────────────────────────
+# Fly schedules are configured via `fly machine run`, not via fly.toml.
+# Provision these once per environment:
+#
+#   fly machine run . \
+#     --app cartx \
+#     --schedule hourly \
+#     --name analytics-rollup \
+#     --entrypoint "npm run rollup"
+#
+#   fly machine run . \
+#     --app cartx \
+#     --schedule daily \
+#     --name analytics-retention \
+#     --entrypoint "npm run retention"
+#
+# These boot, run, and shut down. Failures are visible via `fly logs`.

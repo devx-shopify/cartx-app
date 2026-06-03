@@ -1518,6 +1518,17 @@
       } catch (_2) {
       }
     },
+    // Persist session id to a cookie so the Web Pixel (sandboxed iframe) can
+    // read it on checkout events. Same-origin cookie under the storefront
+    // domain — the proxy and pixel share it.
+    persistSessionCookie: function(maxAgeSeconds) {
+      try {
+        if (!state.initialized || !state.sessionId) return;
+        var ttl = maxAgeSeconds || 1800;
+        document.cookie = "cartx_session_id=" + encodeURIComponent(state.sessionId) + "; path=/; max-age=" + ttl + "; SameSite=Lax";
+      } catch (_2) {
+      }
+    },
     // Test/debug only.
     _state: function() {
       return state;
@@ -2231,7 +2242,22 @@
         var isActive = tier.state === "active";
         if (isActive) cls += " cartmax-milestone--active";
         else if (tier.state === "next") cls += " cartmax-milestone--next";
-        return /* @__PURE__ */ k("div", { class: cls, style: { left: pos + "%" }, key: i2 }, /* @__PURE__ */ k("div", { class: "cartmax-milestone-dot" }, isActive ? /* @__PURE__ */ k("svg", { width: "10", height: "10", viewBox: "0 0 24 24", fill: "none", stroke: "#fff", "stroke-width": "3", "stroke-linecap": "round", "stroke-linejoin": "round" }, /* @__PURE__ */ k("path", { d: "M20 6 9 17l-5-5" })) : /* @__PURE__ */ k("span", { class: "visually-hidden" }, "Milestone")), /* @__PURE__ */ k("div", { class: "cartmax-milestone-label" }, /* @__PURE__ */ k("div", { class: "cartmax-milestone-label-main" }, (tier.label || "").split("\n+ ")[0]), tier.sub_label ? /* @__PURE__ */ k("div", { class: "cartmax-milestone-sub-label" }, tier.sub_label) : null));
+        var self = this;
+        return /* @__PURE__ */ k(
+          "div",
+          {
+            class: cls,
+            style: { left: pos + "%" },
+            key: tier.id || i2,
+            "data-cartmax-promo-id": tier.promotion_id || void 0,
+            "data-cartmax-promo-type": tier.promotion_type || void 0,
+            ref: tier.promotion_id ? function(el) {
+              self._observePromo(el);
+            } : void 0
+          },
+          /* @__PURE__ */ k("div", { class: "cartmax-milestone-dot" }, isActive ? /* @__PURE__ */ k("svg", { width: "10", height: "10", viewBox: "0 0 24 24", fill: "none", stroke: "#fff", "stroke-width": "3", "stroke-linecap": "round", "stroke-linejoin": "round" }, /* @__PURE__ */ k("path", { d: "M20 6 9 17l-5-5" })) : /* @__PURE__ */ k("span", { class: "visually-hidden" }, "Milestone")),
+          /* @__PURE__ */ k("div", { class: "cartmax-milestone-label" }, /* @__PURE__ */ k("div", { class: "cartmax-milestone-label-main" }, (tier.label || "").split("\n+ ")[0]), tier.sub_label ? /* @__PURE__ */ k("div", { class: "cartmax-milestone-sub-label" }, tier.sub_label) : null)
+        );
       })));
     }
     // ── Render: Ribbon ────────────────────────────────────────
@@ -2858,6 +2884,7 @@
           class: "cartmax-checkout-btn" + (this.state.checkoutWaiting ? " cartmax-checkout-waiting" : ""),
           href: "/checkout",
           onClick: (e2) => {
+            tracker.persistSessionCookie();
             var isProcessing = Object.keys(this.state.updating).length > 0;
             if (isProcessing || this.state.checkoutWaiting) {
               e2.preventDefault();

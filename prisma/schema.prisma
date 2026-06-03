@@ -59,3 +59,43 @@ model ThemeConfig {
   @@unique([shopId, themeId])
   @@index([shopId])
 }
+
+model AnalyticsEvent {
+  id            String   @id @default(cuid())
+  shopId        String
+  event         String
+  source        String   // drawer | web_pixel | server
+  promotionId   String?
+  promotionType String?  // offer | coupon | claim-gift | upsell
+  customerId    String?
+  sessionId     String?
+  cartTotal     Int?
+  itemCount     Int?
+  revenue       Int?
+  metadata      Json?
+  occurredAt    DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([shopId, createdAt])
+  @@index([shopId, promotionId, createdAt])
+  @@index([shopId, event, createdAt])
+}
+
+model DailyStats {
+  id            String   @id @default(cuid())
+  shopId        String
+  date          String   // YYYY-MM-DD, shop-local
+  promotionId   String
+  impressions   Int      @default(0)
+  claims        Int      @default(0)
+  removals      Int      @default(0)
+  upsellAdds    Int      @default(0)
+  couponApplies Int      @default(0)
+  checkouts     Int      @default(0)
+  orders        Int      @default(0)
+  revenue       Int      @default(0)
+  updatedAt     DateTime @updatedAt
+
+  @@unique([shopId, date, promotionId])
+  @@index([shopId, date])
+}

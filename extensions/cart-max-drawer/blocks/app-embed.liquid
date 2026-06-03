@@ -12,6 +12,8 @@
   data-customer-id="{{ customer.id }}"
   data-customer-tags="{{ customer.tags | json | escape }}"
   data-money-format="{{ shop.money_format | escape }}"
+  data-proxy-base="/apps/cartmax"
+  data-analytics-enabled="true"
 ></div>
 <script>
   // theme.id may not render in app embed blocks — set it from window.Shopify.theme

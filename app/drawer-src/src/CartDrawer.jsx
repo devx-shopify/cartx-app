@@ -884,8 +884,16 @@ export default class CartDrawer extends Component {
             var isActive = tier.state === 'active';
             if (isActive) cls += ' cartmax-milestone--active';
             else if (tier.state === 'next') cls += ' cartmax-milestone--next';
+            var self = this;
             return (
-              <div class={cls} style={{ left: pos + '%' }} key={i}>
+              <div
+                class={cls}
+                style={{ left: pos + '%' }}
+                key={tier.id || i}
+                data-cartmax-promo-id={tier.promotion_id || undefined}
+                data-cartmax-promo-type={tier.promotion_type || undefined}
+                ref={tier.promotion_id ? function (el) { self._observePromo(el); } : undefined}
+              >
                 <div class="cartmax-milestone-dot">
                   {isActive
                     ? <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
@@ -1737,6 +1745,10 @@ export default class CartDrawer extends Component {
             class={'cartmax-checkout-btn' + (this.state.checkoutWaiting ? ' cartmax-checkout-waiting' : '')}
             href="/checkout"
             onClick={(e) => {
+              // Hand the tracker session id off to the Web Pixel via cookie
+              // so checkout-side events join back to this drawer session.
+              tracker.persistSessionCookie();
+
               // If evaluate is in-flight, wait for it before navigating
               // so gifts/discounts are applied before checkout
               var isProcessing = Object.keys(this.state.updating).length > 0;
