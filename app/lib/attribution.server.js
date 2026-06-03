@@ -7,24 +7,33 @@ import {
 
 // Parse a Shopify Admin REST order JSON into a list of analytics rows.
 //
-// Logic:
-// - Group line items by `_offer_id` line item property.
-// - Always emit one shop-wide `order_completed` row for the whole order.
-// - For each promotion group, attribute revenue using this model:
-//     - If the matched lines have non-zero subtotal (e.g. volume_discount),
-//       attribute the sum of those line subtotals — that's the revenue the
-//       promotion produced directly.
-//     - If the matched lines are all free (GWP / claim-gift — discount
-//       function zeroed them at checkout), attribute the non-freebie portion
-//       of the order instead — i.e. the cart total minus all `_freebie`
-//       lines. That's the spend the customer made to unlock the gift.
-//   When multiple GWPs trigger on the same order each gets full credit; this
-//   over-counts but is transparent and useful in v1.
+// Two attribution paths:
+//
+// 1. Line-property path (`_offer_id`) — GWP, claim-gift, and other offers
+//    that tag the lines they affect. For each group:
+//      - GWP/claim-gift (matched lines are all freebies → discount function
+//        zeroed them): credit the order's `subtotal_price` (the customer's
+//        non-freebie spend that unlocked the gift).
+//      - Volume discount or other revenue-producing lines: credit the sum of
+//        post-discount line subtotals.
+//
+// 2. Discount-application path (cartx volume_discount) — Shopify Functions
+//    cart discounts that change line prices without adding `_offer_id`.
+//    Match `order.discount_applications[].title` against the known cartx
+//    volume_discount title, walk each line's `discount_allocations` to find
+//    the lines it touched, then look up the cartx offer that owns that
+//    variant via the volume_discount config in `ThemeConfig`. Credit each
+//    matched line's post-discount subtotal to the corresponding offer.
+//
+// When the same promotion attribution exists in both paths, the second pass
+// merges into the same bucket so we don't double-write rows.
 //
 // All amounts are in the order's presentment currency, stored as integer cents.
 // Shopify REST returns string decimals like "29.95" — convert to cents safely.
 
 const DOLLARS_TO_CENTS = 100
+const VOLUME_DISCOUNT_STORE_KEY = '__volume_discount__'
+const VOLUME_DISCOUNT_TITLE = 'cartx volume discount'
 
 function toCents(value) {
   if (value === null || value === undefined) return 0
@@ -35,10 +44,18 @@ function toCents(value) {
 }
 
 function lineSubtotalCents(line) {
-  // `price` is the per-unit price. Shopify also returns `total_discount` per
-  // line that we subtract to get the actual revenue captured for that line.
+  // `price` is the per-unit price. Subtract every discount the line carries:
+  // - `total_discount` is the legacy Shopify Scripts field (often 0)
+  // - `discount_allocations[].amount` is where Shopify Functions / discount
+  //   codes land. We MUST include these, otherwise freebies look like full
+  //   revenue lines.
   const gross = toCents(line.price) * (line.quantity ?? 1)
-  const discount = toCents(line.total_discount)
+  let discount = toCents(line.total_discount)
+  if (Array.isArray(line.discount_allocations)) {
+    for (const a of line.discount_allocations) {
+      discount += toCents(a.amount)
+    }
+  }
   return Math.max(0, gross - discount)
 }
 
@@ -65,6 +82,67 @@ function readFreebieFlag(line) {
   if (!Array.isArray(props)) return false
   for (const p of props) {
     if (p && p.name === '_freebie' && p.value === 'true') return true
+  }
+  return false
+}
+
+function normalizeVariantId(id) {
+  if (id === null || id === undefined) return null
+  const s = String(id)
+  return s.startsWith('gid://') ? s.split('/').pop() : s
+}
+
+/**
+ * Load the cartx volume_discount config and build a variant_id → offer_id map.
+ * Returns an empty map if the shop has no volume_discount offers configured.
+ */
+async function loadVolumeOfferMap(shopId) {
+  const record = await db.themeConfig.findUnique({
+    where: { shopId_themeId: { shopId, themeId: VOLUME_DISCOUNT_STORE_KEY } },
+    select: { config: true },
+  })
+  const result = new Map()
+  if (!record) return result
+  let payload
+  try {
+    payload = JSON.parse(record.config)
+    if (!payload?.functionConfig) return result
+    payload = JSON.parse(payload.functionConfig)
+  } catch {
+    return result
+  }
+  for (const offer of payload?.offers ?? []) {
+    if (!offer?.offer_id) continue
+    for (const vid of offer.variant_ids ?? []) {
+      const norm = normalizeVariantId(vid)
+      if (norm) result.set(norm, offer.offer_id)
+    }
+  }
+  return result
+}
+
+/**
+ * Find the indices of `order.discount_applications` that correspond to the
+ * cartx volume_discount Function. Title-based — that's what we control via
+ * `DISCOUNT_TITLE` in volume-discount.server.js.
+ */
+function findVolumeApplicationIndices(order) {
+  const indices = new Set()
+  const apps = order.discount_applications
+  if (!Array.isArray(apps)) return indices
+  apps.forEach((app, i) => {
+    if (!app) return
+    if (typeof app.title === 'string' && app.title.toLowerCase() === VOLUME_DISCOUNT_TITLE) {
+      indices.add(i)
+    }
+  })
+  return indices
+}
+
+function lineHasAllocationFrom(line, indices) {
+  if (!Array.isArray(line.discount_allocations) || indices.size === 0) return false
+  for (const a of line.discount_allocations) {
+    if (a && indices.has(a.discount_application_index)) return true
   }
   return false
 }
@@ -102,38 +180,68 @@ export async function attributeOrder(shopId, order) {
   const customerId = order.customer?.id ? String(order.customer.id) : null
   const orderIdMeta = { order_id: orderId }
 
-  // First pass: total up freebie revenue so we can compute the non-freebie
-  // portion of the order (used as the GWP attribution revenue).
-  let freebieTotalCents = 0
-  for (const line of order.line_items || []) {
-    if (readFreebieFlag(line)) {
-      freebieTotalCents += lineSubtotalCents(line)
-    }
-  }
-  // `subtotal_price` excludes shipping/tax; closer to "cart total" than `total_price`.
+  // `subtotal_price` is the line total AFTER all line-level discounts
+  // (including Shopify Functions zeroing freebies) and BEFORE shipping/tax.
+  // Freebies are already at $0 in this number, so it equals what the
+  // customer paid for non-freebie lines — exactly the revenue we want to
+  // credit to GWP / claim-gift promotions.
   const orderSubtotalCents = toCents(order.subtotal_price) || totalCents
-  const nonFreebieCents = Math.max(0, orderSubtotalCents - freebieTotalCents)
 
-  // Second pass: bucket by promotion.
-  const groups = new Map() // offer_id -> { lineRevenue, lineIds, lineCount, claim, allFreebies }
+  // Bucket by promotion.
+  // promotionType: 'offer' | 'claim-gift' (default 'offer'; set from claim flag).
+  const groups = new Map() // offer_id -> { lineRevenue, lineIds, lineCount, claim, allFreebies, source }
+  function bucketFor(offerId, source) {
+    let b = groups.get(offerId)
+    if (!b) {
+      b = {
+        lineRevenue: 0,
+        lineIds: [],
+        lineCount: 0,
+        claim: false,
+        allFreebies: true,
+        source, // 'line_property' | 'volume_discount'
+      }
+      groups.set(offerId, b)
+    }
+    return b
+  }
+
+  // Pass 1: line-property attribution (`_offer_id`).
   for (const line of order.line_items || []) {
     const offerId = readOfferId(line)
     if (!offerId) continue
     const isClaim = readClaimFlag(line)
     const isFreebie = readFreebieFlag(line)
-    const bucket = groups.get(offerId) ?? {
-      lineRevenue: 0,
-      lineIds: [],
-      lineCount: 0,
-      claim: false,
-      allFreebies: true,
-    }
+    const bucket = bucketFor(offerId, 'line_property')
     bucket.lineRevenue += lineSubtotalCents(line)
     bucket.lineIds.push(String(line.id))
     bucket.lineCount += line.quantity ?? 1
     if (isClaim) bucket.claim = true
     if (!isFreebie) bucket.allFreebies = false
-    groups.set(offerId, bucket)
+  }
+
+  // Pass 2: volume_discount attribution via discount_applications.
+  const volumeIndices = findVolumeApplicationIndices(order)
+  if (volumeIndices.size > 0) {
+    const variantToOffer = await loadVolumeOfferMap(shopId)
+    if (variantToOffer.size > 0) {
+      for (const line of order.line_items || []) {
+        if (!lineHasAllocationFrom(line, volumeIndices)) continue
+        const variantId = normalizeVariantId(line.variant_id)
+        const offerId = variantToOffer.get(variantId)
+        if (!offerId) continue
+        // Skip if this line was already credited via `_offer_id` to the same
+        // offer — avoids double-counting when both signals point at the same
+        // promotion.
+        const existing = groups.get(offerId)
+        if (existing && existing.lineIds.includes(String(line.id))) continue
+        const bucket = bucketFor(offerId, 'volume_discount')
+        bucket.lineRevenue += lineSubtotalCents(line)
+        bucket.lineIds.push(String(line.id))
+        bucket.lineCount += line.quantity ?? 1
+        bucket.allFreebies = false
+      }
+    }
   }
 
   const rows = []
@@ -151,9 +259,11 @@ export async function attributeOrder(shopId, order) {
 
   for (const [offerId, bucket] of groups.entries()) {
     // GWP / claim-gift: matched lines are all freebies → credit promotion
-    // with the spend the customer made to unlock them.
-    // Volume discount / other: matched lines carry real revenue → use that.
-    const attribution = bucket.allFreebies ? nonFreebieCents : bucket.lineRevenue
+    // with the order subtotal (= non-freebie spend, since subtotal_price
+    // already excludes the zeroed freebie lines).
+    // Volume discount / other: matched lines carry real post-discount
+    // revenue → credit that directly.
+    const attribution = bucket.allFreebies ? orderSubtotalCents : bucket.lineRevenue
     rows.push({
       shopId,
       event: ANALYTICS_EVENTS.ORDER_ATTRIBUTED,
@@ -167,6 +277,7 @@ export async function attributeOrder(shopId, order) {
         order_id: orderId,
         line_item_ids: bucket.lineIds,
         line_quantity: bucket.lineCount,
+        attribution_source: bucket.source,
         attribution_mode: bucket.allFreebies ? 'non_freebie_subtotal' : 'line_subtotal',
       },
       occurredAt,
