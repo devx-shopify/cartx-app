@@ -50,6 +50,12 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
   const savingsText = c.savings_text || "#ffffff";
   const savingsAmount = c.savings_amount || "#22c55e";
 
+  const li = settings.layout || {};
+  const emptyIconUrl = li.empty_icon_url || '';
+  const emptyIconSize = li.empty_icon_size || 'medium';
+  const emptyIconColor = li.empty_icon_color || accent;
+  const emptyIconPx = emptyIconSize === 'small' ? 64 : emptyIconSize === 'large' ? 96 : 80;
+
   const btnBase = {
     borderRadius: radius,
     padding: "10px 16px",
@@ -164,22 +170,29 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
         <div style={{
           flex: 1, display: "flex", flexDirection: "column",
           alignItems: "center", justifyContent: "center",
-          padding: "40px 28px", background: bg,
+          padding: "40px 28px", gap: 24, background: bg,
         }}>
-          <div style={{ color: "#d1d5db", marginBottom: 16 }}>
-            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" /><path d="M3 6h18" /><path d="M16 10a4 4 0 0 1-8 0" />
-            </svg>
+          <div style={{ color: emptyIconColor, width: emptyIconPx, height: emptyIconPx, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {emptyIconUrl
+              ? <img src={emptyIconUrl} alt="" aria-hidden style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+              : <svg width={emptyIconPx} height={emptyIconPx} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" /><path d="M3 6h18" /><path d="M16 10a4 4 0 0 1-8 0" />
+                </svg>
+            }
           </div>
-          <div style={{ fontSize: headingSize, fontWeight: 600, color: text, marginBottom: 4, textAlign: "center" }}>
-            {tx.empty_title || "Your cart is empty"}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: headingSize, fontWeight: 500, color: text, textAlign: "center" }}>
+              {tx.empty_title || "Your cart is empty"}
+            </div>
+            <div style={{ fontSize: bodySize, color: textSec, textAlign: "center", lineHeight: 1.5 }}>
+              {tx.empty_subtitle || "Looks like you haven't added anything yet"}
+            </div>
           </div>
-          <div style={{ fontSize: bodySize, color: textSec, marginBottom: 22, textAlign: "center", lineHeight: 1.5 }}>
-            {tx.empty_subtitle || "Looks like you haven't added anything yet"}
-          </div>
-          <div style={{ ...btnStyle, flex: "0 0 auto", padding: "12px 28px", minWidth: 180 }}>
-            {tx.empty_button || "Continue shopping"}
-          </div>
+          {(tx.empty_button !== "" && tx.empty_button !== undefined && tx.empty_button !== null) && (
+            <div style={{ ...btnStyle, flex: "0 0 auto", padding: "12px 28px", minWidth: 180 }}>
+              {tx.empty_button}
+            </div>
+          )}
         </div>
 
         {/* Upsells in empty state */}

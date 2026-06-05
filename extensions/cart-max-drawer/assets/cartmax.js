@@ -471,6 +471,7 @@
       if (l2.density && DENSITY_MAP[l2.density]) {
         s2.setProperty("--cartmax-density-padding", DENSITY_MAP[l2.density]);
       }
+      if (l2.empty_icon_color) s2.setProperty("--cartmax-empty-icon-color", l2.empty_icon_color);
     }
     var b2 = settings.behavior;
     if (b2 && b2.animation_speed && ANIM_SPEED_MAP[b2.animation_speed]) {
@@ -1900,7 +1901,10 @@
         image_style: l2.image_style || "rounded",
         qty_style: l2.qty_style || "bordered",
         show_variant_title: l2.show_variant_title !== false,
-        show_vendor: l2.show_vendor === true
+        show_vendor: l2.show_vendor === true,
+        empty_icon_url: l2.empty_icon_url || "",
+        empty_icon_size: l2.empty_icon_size || "medium",
+        empty_icon_color: l2.empty_icon_color || ""
       };
       var sh = drawer.shape || {};
       this._shape = { button_style: sh.button_style || "solid" };
@@ -2317,13 +2321,18 @@
     // ── Render: Empty state ───────────────────────────────────
     renderEmpty() {
       var self = this;
-      return /* @__PURE__ */ k("div", { class: "cartmax-empty" }, /* @__PURE__ */ k("div", { class: "cartmax-empty-icon" }, /* @__PURE__ */ k(IconBag, null)), /* @__PURE__ */ k("p", { class: "cartmax-empty-text" }, this._text.empty_title), /* @__PURE__ */ k("p", { class: "cartmax-empty-subtitle" }, this._text.empty_subtitle), /* @__PURE__ */ k("button", { class: "cartmax-empty-btn", onClick: function() {
+      var iconUrl = this._layout.empty_icon_url;
+      var iconSize = this._layout.empty_icon_size || "medium";
+      var iconColor = this._layout.empty_icon_color;
+      var iconStyle = iconColor ? { color: iconColor } : void 0;
+      var sizeClass = "cartmax-empty-icon cartmax-empty-icon--" + iconSize;
+      return /* @__PURE__ */ k("div", { class: "cartmax-empty" }, /* @__PURE__ */ k("div", { class: sizeClass, style: iconStyle }, iconUrl ? /* @__PURE__ */ k("img", { src: iconUrl, alt: "", "aria-hidden": "true", style: { width: "100%", height: "100%", objectFit: "contain", display: "block" } }) : /* @__PURE__ */ k(IconBag, null)), /* @__PURE__ */ k("div", { class: "cartmax-empty-text-group" }, /* @__PURE__ */ k("p", { class: "cartmax-empty-text" }, this._text.empty_title), /* @__PURE__ */ k("p", { class: "cartmax-empty-subtitle" }, this._text.empty_subtitle)), this._text.empty_button ? /* @__PURE__ */ k("button", { class: "cartmax-empty-btn", onClick: function() {
         if (self._text.continue_shopping_url) {
           window.location.href = self._text.continue_shopping_url;
         } else {
           self.close();
         }
-      } }, this._text.empty_button));
+      } }, this._text.empty_button) : null);
     }
     // ── Claim Gifts (button-level optimistic, line pessimistic) ─
     _showClaimError(key, message) {

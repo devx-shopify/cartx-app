@@ -218,6 +218,9 @@ export const DrawerConfigSchema = z.object({
     qty_style: z.enum(['bordered', 'minimal']).default('bordered'),
     show_variant_title: z.boolean().default(true),
     show_vendor: z.boolean().default(false),
+    empty_icon_url: z.string().default(''),
+    empty_icon_size: z.enum(['small', 'medium', 'large']).default('medium'),
+    empty_icon_color: z.string().default(''),
   }).default({}),
   sections: z.object({
     show_coupons: z.boolean().default(true),

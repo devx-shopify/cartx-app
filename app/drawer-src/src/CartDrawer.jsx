@@ -473,6 +473,9 @@ export default class CartDrawer extends Component {
       qty_style: l.qty_style || 'bordered',
       show_variant_title: l.show_variant_title !== false,
       show_vendor: l.show_vendor === true,
+      empty_icon_url: l.empty_icon_url || '',
+      empty_icon_size: l.empty_icon_size || 'medium',
+      empty_icon_color: l.empty_icon_color || '',
     };
     var sh = drawer.shape || {};
     this._shape = { button_style: sh.button_style || 'solid' };
@@ -1036,15 +1039,30 @@ export default class CartDrawer extends Component {
 
   renderEmpty() {
     var self = this;
+    var iconUrl = this._layout.empty_icon_url;
+    var iconSize = this._layout.empty_icon_size || 'medium';
+    var iconColor = this._layout.empty_icon_color;
+    var iconStyle = iconColor ? { color: iconColor } : undefined;
+    var sizeClass = 'cartmax-empty-icon cartmax-empty-icon--' + iconSize;
+
     return (
       <div class="cartmax-empty">
-        <div class="cartmax-empty-icon"><IconBag /></div>
-        <p class="cartmax-empty-text">{this._text.empty_title}</p>
-        <p class="cartmax-empty-subtitle">{this._text.empty_subtitle}</p>
-        <button class="cartmax-empty-btn" onClick={function () {
-          if (self._text.continue_shopping_url) { window.location.href = self._text.continue_shopping_url; }
-          else { self.close(); }
-        }}>{this._text.empty_button}</button>
+        <div class={sizeClass} style={iconStyle}>
+          {iconUrl
+            ? <img src={iconUrl} alt="" aria-hidden="true" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+            : <IconBag />
+          }
+        </div>
+        <div class="cartmax-empty-text-group">
+          <p class="cartmax-empty-text">{this._text.empty_title}</p>
+          <p class="cartmax-empty-subtitle">{this._text.empty_subtitle}</p>
+        </div>
+        {this._text.empty_button ? (
+          <button class="cartmax-empty-btn" onClick={function () {
+            if (self._text.continue_shopping_url) { window.location.href = self._text.continue_shopping_url; }
+            else { self.close(); }
+          }}>{this._text.empty_button}</button>
+        ) : null}
       </div>
     );
   }

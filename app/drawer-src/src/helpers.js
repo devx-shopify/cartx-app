@@ -258,6 +258,7 @@ export function applyDrawerSettings(settings) {
     if (l.density && DENSITY_MAP[l.density]) {
       s.setProperty('--cartmax-density-padding', DENSITY_MAP[l.density]);
     }
+    if (l.empty_icon_color) s.setProperty('--cartmax-empty-icon-color', l.empty_icon_color);
   }
 
   // Animation speed
