@@ -59,6 +59,50 @@ cart-notification-component [role="dialog"] {
   background: rgba(0, 0, 0, var(--cartmax-overlay-opacity, 0.45));
 }
 
+/* --- Announcement Bar --- */
+
+.cartmax-overlay .cartmax-announcement {
+  background: var(--cartmax-accent, #16a34a);
+  color: var(--cartmax-text, #1a1a1a);
+  padding: 7px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.cartmax-overlay .cartmax-announcement--static {
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cartmax-overlay .cartmax-announcement--marquee {
+  display: flex;
+}
+
+.cartmax-overlay .cartmax-announcement-track {
+  display: flex;
+  white-space: nowrap;
+  animation: cartmax-marquee 18s linear infinite;
+}
+
+.cartmax-overlay .cartmax-announcement-track:hover {
+  animation-play-state: paused;
+}
+
+.cartmax-overlay .cartmax-announcement-item {
+  flex-shrink: 0;
+  min-width: var(--cartmax-width, 420px);
+  padding-right: 24px;
+}
+
+@keyframes cartmax-marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
 /* --- Drawer --- */
 
 .cartmax-drawer {

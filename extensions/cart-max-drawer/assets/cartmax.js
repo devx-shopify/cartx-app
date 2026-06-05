@@ -1626,6 +1626,7 @@
       };
       this._layout = { drawer_position: "right", image_style: "rounded", qty_style: "bordered", show_variant_title: true, show_vendor: false };
       this._upsells = { card_layout: "horizontal", card_size: "medium", heading: "", btn_text: "ADD TO CART", show_compare_price: true };
+      this._announcement = { text: "", type: "static" };
       this._shape = { button_style: "solid" };
       this._sections = { show_progress_bar: true, show_claim_gifts: true, show_offer_cards: true, show_coupons: true, show_upsells: true, show_ribbon: true };
       this._behavior = { auto_open_on_add: true, animation_style: "slide", close_on_overlay_click: true, close_on_esc: true };
@@ -1913,6 +1914,11 @@
         heading: l2.upsells_heading || "",
         btn_text: l2.upsells_btn_text || "ADD TO CART",
         show_compare_price: l2.upsells_show_compare_price !== false
+      };
+      var ab = drawer.announcement_bar || {};
+      this._announcement = {
+        text: ab.text || "",
+        type: ab.type || "static"
       };
       var sh = drawer.shape || {};
       this._shape = { button_style: sh.button_style || "solid" };
@@ -2235,6 +2241,15 @@
         return this.state.pendingQty[item.key];
       }
       return item.quantity;
+    }
+    // ── Render: Announcement Bar ─────────────────────────────
+    renderAnnouncementBar() {
+      var a2 = this._announcement;
+      if (!a2.text) return null;
+      if (a2.type === "marquee") {
+        return /* @__PURE__ */ k("div", { class: "cartmax-announcement cartmax-announcement--marquee" }, /* @__PURE__ */ k("div", { class: "cartmax-announcement-track" }, /* @__PURE__ */ k("span", { class: "cartmax-announcement-item" }, a2.text), /* @__PURE__ */ k("span", { class: "cartmax-announcement-item", "aria-hidden": "true" }, a2.text)));
+      }
+      return /* @__PURE__ */ k("div", { class: "cartmax-announcement cartmax-announcement--static" }, a2.text);
     }
     // ── Render: Progress Bar ──────────────────────────────────
     renderProgressBar() {
@@ -2978,6 +2993,7 @@
           "aria-modal": "true",
           "aria-label": "Shopping cart"
         },
+        this.renderAnnouncementBar(),
         /* @__PURE__ */ k("div", { class: "cartmax-header" }, /* @__PURE__ */ k("span", { class: "cartmax-title" }, this._text.cart_title, count > 0 ? /* @__PURE__ */ k("span", { class: "cartmax-header-count" }, count) : null), /* @__PURE__ */ k("button", { class: "cartmax-close", onClick: this.close, "aria-label": "Close cart" }, /* @__PURE__ */ k(IconClose, null))),
         this.state.unavailableGifts.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-gift-unavailable" }, "A gift product is currently unavailable") : null,
         hasItems && sec.show_progress_bar ? this.renderProgressBar() : null,

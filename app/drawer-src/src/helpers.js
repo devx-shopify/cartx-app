@@ -266,6 +266,7 @@ export function applyDrawerSettings(settings) {
   if (b && b.animation_speed && ANIM_SPEED_MAP[b.animation_speed]) {
     s.setProperty('--cartmax-anim-speed', ANIM_SPEED_MAP[b.animation_speed]);
   }
+
 }
 
 // ── Shared utilities ────────────────────────────────────────

@@ -56,6 +56,7 @@ function deepSet(obj, path, value) {
   const keys = path.split(".");
   let target = next;
   for (let i = 0; i < keys.length - 1; i++) {
+    if (target[keys[i]] == null) target[keys[i]] = {};
     target = target[keys[i]];
   }
   target[keys[keys.length - 1]] = value;
@@ -671,8 +672,30 @@ function DesignTab({ s, update }) {
 }
 
 function ContentTab({ s, update }) {
+  const ab = s.announcement_bar || {};
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <s-section heading="Announcement bar" description="A full-width strip shown above the cart header.">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <s-text-field
+            label="Text"
+            value={ab.text || ""}
+            onInput={(e) => update("announcement_bar.text", e.target.value)}
+            placeholder="Free shipping on orders over $50"
+            details="Leave empty to hide the announcement bar."
+          />
+          <SegmentedControl
+            label="Animation"
+            options={[
+              { value: "static", label: "Static" },
+              { value: "marquee", label: "Marquee" },
+            ]}
+            value={ab.type || "static"}
+            onChange={(v) => update("announcement_bar.type", v)}
+          />
+        </div>
+      </s-section>
+
       <s-section heading="Cart copy" description="Customize the headings, button labels, and helper text.">
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <s-text-field label="Cart title" value={s.text.cart_title} onInput={(e) => update("text.cart_title", e.target.value)} />

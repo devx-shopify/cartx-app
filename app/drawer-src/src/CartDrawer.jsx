@@ -147,6 +147,7 @@ export default class CartDrawer extends Component {
     };
     this._layout = { drawer_position: 'right', image_style: 'rounded', qty_style: 'bordered', show_variant_title: true, show_vendor: false };
     this._upsells = { card_layout: 'horizontal', card_size: 'medium', heading: '', btn_text: 'ADD TO CART', show_compare_price: true };
+    this._announcement = { text: '', type: 'static' };
     this._shape = { button_style: 'solid' };
     this._sections = { show_progress_bar: true, show_claim_gifts: true, show_offer_cards: true, show_coupons: true, show_upsells: true, show_ribbon: true };
     this._behavior = { auto_open_on_add: true, animation_style: 'slide', close_on_overlay_click: true, close_on_esc: true };
@@ -484,6 +485,11 @@ export default class CartDrawer extends Component {
       heading: l.upsells_heading || '',
       btn_text: l.upsells_btn_text || 'ADD TO CART',
       show_compare_price: l.upsells_show_compare_price !== false,
+    };
+    var ab = drawer.announcement_bar || {};
+    this._announcement = {
+      text: ab.text || '',
+      type: ab.type || 'static',
     };
     var sh = drawer.shape || {};
     this._shape = { button_style: sh.button_style || 'solid' };
@@ -860,6 +866,24 @@ export default class CartDrawer extends Component {
       return this.state.pendingQty[item.key];
     }
     return item.quantity;
+  }
+
+  // ── Render: Announcement Bar ─────────────────────────────
+
+  renderAnnouncementBar() {
+    var a = this._announcement;
+    if (!a.text) return null;
+    if (a.type === 'marquee') {
+      return (
+        <div class="cartmax-announcement cartmax-announcement--marquee">
+          <div class="cartmax-announcement-track">
+            <span class="cartmax-announcement-item">{a.text}</span>
+            <span class="cartmax-announcement-item" aria-hidden="true">{a.text}</span>
+          </div>
+        </div>
+      );
+    }
+    return <div class="cartmax-announcement cartmax-announcement--static">{a.text}</div>;
   }
 
   // ── Render: Progress Bar ──────────────────────────────────
@@ -1866,6 +1890,9 @@ export default class CartDrawer extends Component {
             aria-modal="true"
             aria-label="Shopping cart"
           >
+            {/* Announcement bar */}
+            {this.renderAnnouncementBar()}
+
             {/* Header */}
             <div class="cartmax-header">
               <span class="cartmax-title">

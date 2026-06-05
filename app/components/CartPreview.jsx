@@ -163,6 +163,8 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
         : radius;
   const claimImgSize = Math.round(imgSize * 0.9);
 
+  const ab = settings.announcement_bar || {};
+
   return (
     <div
       style={{
@@ -181,6 +183,24 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
         border: "1px solid #e0e0e0",
       }}
     >
+      {/* ── Announcement bar ── */}
+      {ab.text ? (
+        <div style={{
+          background: accent,
+          color: text,
+          padding: "7px 16px",
+          fontSize: 12,
+          fontWeight: 500,
+          flexShrink: 0,
+          textAlign: "center",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}>
+          {ab.text}
+        </div>
+      ) : null}
+
       {/* ── Header ── */}
       <div
         style={{

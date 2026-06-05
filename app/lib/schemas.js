@@ -250,6 +250,10 @@ export const DrawerConfigSchema = z.object({
   advanced: z.object({
     custom_css: z.string().default(''),
   }).default({}),
+  announcement_bar: z.object({
+    text: z.string().default(''),
+    type: z.enum(['static', 'marquee']).default('static'),
+  }).default({}),
 }).default({})
 
 export const ConfigSchema = z.object({
