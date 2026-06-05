@@ -423,7 +423,7 @@
     };
   }
   var RADIUS_MAP = { none: "0", small: "4px", medium: "10px", large: "12px", pill: "999px" };
-  var HEADING_SIZE_MAP = { small: "14px", medium: "16px", large: "18px" };
+  var HEADING_SIZE_MAP = { small: "16px", medium: "18px", large: "20px" };
   var BODY_SIZE_MAP = { small: "12px", medium: "13px", large: "14px" };
   var IMG_SIZE_MAP = { small: "56px", medium: "72px", large: "96px" };
   var DENSITY_MAP = { compact: "8px", comfortable: "14px", spacious: "20px" };

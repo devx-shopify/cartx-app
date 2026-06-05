@@ -103,14 +103,14 @@ cart-notification-component [role="dialog"] {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  padding: 12px 20px;
   border-bottom: 1px solid var(--cartmax-border, #f0f0f0);
   flex-shrink: 0;
   background: var(--cartmax-bg, #ffffff);
 }
 
 .cartmax-title {
-  font-size: var(--cartmax-heading-size, 16px);
+  font-size: var(--cartmax-heading-size, 18px);
   font-weight: 600;
   color: var(--cartmax-text, #1a1a1a);
   display: flex;
@@ -119,17 +119,17 @@ cart-notification-component [role="dialog"] {
 }
 
 .cartmax-header-count {
-  font-weight: 700;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--cartmax-text-secondary, #6b7280);
   color: var(--cartmax-primary-text, #ffffff);
-  background: var(--cartmax-primary, #1a1a1a);
-  padding: 1px 9px;
-  border-radius: 999px;
   font-size: 11px;
-  line-height: 1.55;
-  letter-spacing: 0.2px;
-  min-width: 22px;
-  text-align: center;
-  display: inline-block;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .cartmax-close {
@@ -137,9 +137,10 @@ cart-notification-component [role="dialog"] {
   border: none;
   cursor: pointer;
   padding: 6px;
-  color: var(--cartmax-text-secondary, #6b7280);
+  color: var(--cartmax-primary, #1a1a1a);
+  background-color: color-mix(in srgb, var(--cartmax-text-secondary, #6b7280) 10%, transparent);
   line-height: 1;
-  border-radius: 6px;
+  border-radius: 50%;
   transition:
     background 0.15s ease,
     color 0.15s ease;
@@ -626,7 +627,7 @@ cart-notification-component [role="dialog"] {
 }
 
 .cartmax-empty-text {
-  font-size: var(--cartmax-heading-size, 16px);
+  font-size: var(--cartmax-heading-size, 18px);
   font-weight: 500;
   color: var(--cartmax-text, #1a1a1a);
   margin: 0;
