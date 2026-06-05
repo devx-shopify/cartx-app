@@ -24,6 +24,59 @@ const CLAIM_GIFTS = [
   { title: "Branded Tote Bag", inCart: true },
 ];
 
+const DUMMY_UPSELLS = [
+  { title: "Summer Hat", price: "$24.00", compare: "$32.00" },
+  { title: "Silk Scarf", price: "$35.00", compare: "$48.00" },
+];
+
+function UpsellsPreviewBlock({ bg, border, text, upsellLayout, upsellHDim, upsellVDim, upsellHeading, upsellBtnText, upsellShowCompare, upsellTitleSize }) {
+  const isVertical = upsellLayout === 'vertical';
+  return (
+    <div style={{ padding: "24px 20px", borderTop: `1px solid ${border}`, background: bg }}>
+      <div style={{ fontSize: 14, fontWeight: 400, color: "#5c6770", marginBottom: 16 }}>
+        {upsellHeading}
+      </div>
+      <div style={{ display: "flex", gap: 20, overflowX: "auto", overflowY: "hidden", scrollbarWidth: "none", msOverflowStyle: "none" }} className="cartmax-preview-upsells-scroll">
+        {DUMMY_UPSELLS.map((p, i) => (
+          isVertical ? (
+            <div key={i} style={{
+              flexShrink: 0, width: upsellVDim.card,
+              display: "flex", flexDirection: "column",
+              border: `1px solid rgba(92,103,112,0.10)`, borderRadius: 8, overflow: "hidden", background: bg,
+            }}>
+              <div style={{ width: "100%", height: upsellVDim.imgH, background: "#f3f4f6" }} />
+              <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ fontSize: upsellTitleSize, fontWeight: 400, color: text, lineHeight: 1.35 }}>{p.title}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                  <span style={{ fontWeight: 500, color: text }}>{p.price}</span>
+                  {upsellShowCompare && <span style={{ textDecoration: "line-through", color: "#80828d", fontWeight: 400 }}>{p.compare}</span>}
+                </div>
+                <span style={{ display: "inline-block", height: 28, lineHeight: "28px", padding: "0 14px", background: "transparent", color: text, border: "1px solid rgba(92,103,112,0.20)", borderRadius: 999, fontSize: 10, fontWeight: 500, cursor: "default", textTransform: "uppercase", width: "fit-content" }}>{upsellBtnText}</span>
+              </div>
+            </div>
+          ) : (
+            <div key={i} style={{
+              flexShrink: 0, width: upsellHDim.card,
+              display: "flex", flexDirection: "row", alignItems: "center", gap: 10,
+              padding: "9px 8px", border: `1px solid rgba(92,103,112,0.10)`, borderRadius: 8, background: bg,
+            }}>
+              <div style={{ width: upsellHDim.img, height: upsellHDim.img, minWidth: upsellHDim.img, background: "#f3f4f6", borderRadius: 6 }} />
+              <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ fontSize: upsellTitleSize, fontWeight: 400, color: text, lineHeight: 1.35 }}>{p.title}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                  <span style={{ fontWeight: 500, color: text }}>{p.price}</span>
+                  {upsellShowCompare && <span style={{ textDecoration: "line-through", color: "#80828d", fontWeight: 400 }}>{p.compare}</span>}
+                </div>
+                <span style={{ display: "inline-block", height: 30, lineHeight: "30px", padding: "0 14px", background: "transparent", color: text, border: "1px solid rgba(92,103,112,0.20)", borderRadius: 999, fontSize: 10, fontWeight: 500, cursor: "default", textTransform: "uppercase", width: "fit-content" }}>{upsellBtnText}</span>
+              </div>
+            </div>
+          )
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function CartPreview({ settings, showEmpty, minHeight }) {
   const c = settings.colors || {};
   const sh = settings.shape || {};
@@ -55,6 +108,19 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
   const emptyIconSize = li.empty_icon_size || 'medium';
   const emptyIconColor = li.empty_icon_color || accent;
   const emptyIconPx = emptyIconSize === 'small' ? 64 : emptyIconSize === 'large' ? 96 : 80;
+
+  const upsellLayout = li.upsells_card_layout || 'horizontal';
+  const upsellSize = li.upsells_card_size || 'medium';
+  const upsellHeading = li.upsells_heading || 'YOU MAY ALSO LIKE';
+  const upsellBtnText = li.upsells_btn_text || 'ADD TO CART';
+  const upsellShowCompare = li.upsells_show_compare_price !== false;
+
+  const UPSELL_H_DIMS = { small: { card: 220, img: 64 }, medium: { card: 300, img: 90 }, large: { card: 360, img: 112 } };
+  const UPSELL_V_DIMS = { small: { card: 130, imgH: 100 }, medium: { card: 160, imgH: 120 }, large: { card: 190, imgH: 140 } };
+  const upsellHDim = UPSELL_H_DIMS[upsellSize] || UPSELL_H_DIMS.medium;
+  const upsellVDim = UPSELL_V_DIMS[upsellSize] || UPSELL_V_DIMS.medium;
+
+  const upsellTitleSize = upsellSize === 'small' ? 11 : upsellSize === 'large' ? 13 : 12;
 
   const btnBase = {
     borderRadius: radius,
@@ -197,26 +263,12 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
 
         {/* Upsells in empty state */}
         {sec.show_upsells && (
-          <div style={{ padding: "8px 16px", borderTop: `1px solid ${border}`, background: bg }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: textSec, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
-              You may also like
-            </div>
-            <div style={{ display: "flex", gap: 8, overflowX: "auto" }}>
-              {[{ title: "Summer Hat", price: "$24.00" }, { title: "Silk Scarf", price: "$35.00" }].map((p, i) => (
-                <div key={i} style={{
-                  flexShrink: 0, width: "70%", display: "flex", alignItems: "center", gap: 8,
-                  border: `1px solid ${border}`, borderRadius: radius, overflow: "hidden", background: bg,
-                }}>
-                  <div style={{ width: 52, height: 52, minWidth: 52, background: "#f3f4f6" }} />
-                  <div style={{ flex: 1, padding: "6px 8px 6px 0" }}>
-                    <div style={{ fontSize: 12, fontWeight: 500, color: text }}>{p.title}</div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: text, marginBottom: 3 }}>{p.price}</div>
-                    <span style={{ ...smallBtnStyle, padding: "3px 8px", fontSize: 10, fontWeight: 700, cursor: "default", width: "fit-content", textTransform: "uppercase", letterSpacing: 0.5 }}>Add</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <UpsellsPreviewBlock
+            bg={bg} border={border} text={text}
+            upsellLayout={upsellLayout} upsellHDim={upsellHDim} upsellVDim={upsellVDim}
+            upsellHeading={upsellHeading} upsellBtnText={upsellBtnText}
+            upsellShowCompare={upsellShowCompare} upsellTitleSize={upsellTitleSize}
+          />
         )}
       </>)}
 
@@ -669,39 +721,12 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
 
       {/* ── Upsells ── */}
       {sec.show_upsells !== false && (
-        <div style={{ padding: "8px 16px", borderTop: `1px solid ${border}`, background: bg }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: textSec, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
-            You may also like
-          </div>
-          <div style={{ display: "flex", gap: 8, overflowX: "auto" }}>
-            {[{ title: "Summer Hat", price: "$24.00" }, { title: "Silk Scarf", price: "$35.00" }].map((p, i) => (
-              <div key={i} style={{
-                flexShrink: 0, width: "47%", display: "flex", alignItems: "center", gap: 10,
-                padding: "8px 10px 8px 8px",
-                border: `1px solid ${border}`, borderRadius: radius, overflow: "hidden", background: bg,
-              }}>
-                <div style={{ width: 52, height: 52, minWidth: 52, background: "#f3f4f6", borderRadius: 6 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: text, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: text, marginBottom: 4 }}>{p.price}</div>
-                  <span style={{
-                    display: "inline-block",
-                    padding: "4px 12px",
-                    background: "transparent",
-                    color: primary,
-                    border: `1.5px solid ${primary}`,
-                    borderRadius: 999,
-                    fontSize: 10,
-                    fontWeight: 700,
-                    cursor: "default",
-                    textTransform: "uppercase",
-                    letterSpacing: 0.6,
-                  }}>Add</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <UpsellsPreviewBlock
+          bg={bg} border={border} text={text}
+          upsellLayout={upsellLayout} upsellHDim={upsellHDim} upsellVDim={upsellVDim}
+          upsellHeading={upsellHeading} upsellBtnText={upsellBtnText}
+          upsellShowCompare={upsellShowCompare} upsellTitleSize={upsellTitleSize}
+        />
       )}
 
       {/* ── Footer ── */}

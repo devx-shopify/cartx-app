@@ -146,6 +146,7 @@ export default class CartDrawer extends Component {
       offer_cards_heading: 'Pick your free gift',
     };
     this._layout = { drawer_position: 'right', image_style: 'rounded', qty_style: 'bordered', show_variant_title: true, show_vendor: false };
+    this._upsells = { card_layout: 'horizontal', card_size: 'medium', heading: '', btn_text: 'ADD TO CART', show_compare_price: true };
     this._shape = { button_style: 'solid' };
     this._sections = { show_progress_bar: true, show_claim_gifts: true, show_offer_cards: true, show_coupons: true, show_upsells: true, show_ribbon: true };
     this._behavior = { auto_open_on_add: true, animation_style: 'slide', close_on_overlay_click: true, close_on_esc: true };
@@ -476,6 +477,13 @@ export default class CartDrawer extends Component {
       empty_icon_url: l.empty_icon_url || '',
       empty_icon_size: l.empty_icon_size || 'medium',
       empty_icon_color: l.empty_icon_color || '',
+    };
+    this._upsells = {
+      card_layout: l.upsells_card_layout || 'horizontal',
+      card_size: l.upsells_card_size || 'medium',
+      heading: l.upsells_heading || '',
+      btn_text: l.upsells_btn_text || 'ADD TO CART',
+      show_compare_price: l.upsells_show_compare_price !== false,
     };
     var sh = drawer.shape || {};
     this._shape = { button_style: sh.button_style || 'solid' };
@@ -1648,6 +1656,9 @@ export default class CartDrawer extends Component {
     if (products.length === 0) return null;
 
     var cart = this.state.cart;
+    var isEmpty = !cart || !cart.items || cart.items.length === 0;
+    if (isEmpty && upsells.show_on_empty_cart === false) return null;
+
     var cartVariantIds = (cart && cart.items || []).map(function (i) { return String(i.variant_id); });
     var filtered = products.filter(function (p) {
       var vid = String(p.variant_id);
@@ -1658,10 +1669,16 @@ export default class CartDrawer extends Component {
 
     var curr = this._currency;
     var self = this;
+    var u = this._upsells;
+    var layoutClass = 'cartmax-upsells--' + (u.card_layout || 'horizontal');
+    var sizeClass = 'cartmax-upsell-card--' + (u.card_size || 'medium');
+    var headingText = u.heading || upsells.heading || 'YOU MAY ALSO LIKE';
+    var btnText = u.btn_text || 'ADD TO CART';
+    var imgPx = { small: 130, medium: 180, large: 230 }[u.card_size] || 180;
 
     return (
-      <div class="cartmax-upsells">
-        <div class="cartmax-upsells-heading">{upsells.heading || 'You may also like'}</div>
+      <div class={'cartmax-upsells ' + layoutClass}>
+        <div class="cartmax-upsells-heading">{headingText}</div>
         {this.state.upsellError
           ? <div class="cartmax-upsell-error">{this.state.upsellError}</div>
           : null
@@ -1677,25 +1694,25 @@ export default class CartDrawer extends Component {
               price: p.price,
             };
             return (
-              <div class="cartmax-upsell-card" key={p.product_id}>
+              <div class={'cartmax-upsell-card ' + sizeClass} key={p.product_id}>
                 {p.image_url
-                  ? <img class="cartmax-upsell-img" src={resizeImage(p.image_url, 96)} alt={p.title} loading="lazy" />
+                  ? <img class="cartmax-upsell-img" src={resizeImage(p.image_url, imgPx)} alt={p.title} loading="lazy" />
                   : <div class="cartmax-upsell-img-placeholder"><span class="visually-hidden">No image</span></div>
                 }
                 <div class="cartmax-upsell-info">
                   <div class="cartmax-upsell-title">{p.title}</div>
                   <div class="cartmax-upsell-price">
-                    {p.compare_at_price
+                    <span class="cartmax-upsell-sale">{formatMoney(Number(p.price) * 100, curr)}</span>
+                    {(u.show_compare_price && p.compare_at_price)
                       ? <span class="cartmax-upsell-compare">{formatMoney(Number(p.compare_at_price) * 100, curr)}</span>
                       : null
                     }
-                    <span>{formatMoney(Number(p.price) * 100, curr)}</span>
                   </div>
                   <button
                     class="cartmax-upsell-add"
                     onClick={function () { self.handleUpsellAdd(vid, productMeta); }}
                     disabled={isAdding}
-                  >{isAdding ? 'Adding...' : 'Add'}</button>
+                  >{isAdding ? 'Adding...' : btnText}</button>
                 </div>
               </div>
             );

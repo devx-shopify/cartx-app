@@ -1340,23 +1340,21 @@ cart-notification-component [role="dialog"] {
 /* --- Upsells --- */
 
 .cartmax-upsells {
-  padding: 12px 16px 14px;
+  padding: 16px 20px;
   border-top: 1px solid var(--cartmax-border, #f0f0f0);
   flex-shrink: 0;
   background: var(--cartmax-bg, #ffffff);
 }
 
 .cartmax-upsells-heading {
-  font-size: 11px;
-  font-weight: 700;
-  margin-bottom: 10px;
-  color: var(--cartmax-text-secondary, #6b7280);
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
+  font-size: 14px;
+  font-weight: 400;
+  margin-bottom: 16px;
+  color: var(--cartmax-text-secondary, #5c6770);
 }
 
 .cartmax-upsell-error {
-  margin: -4px 0 8px;
+  margin: -8px 0 12px;
   padding: 6px 10px;
   background: #fef2f2;
   color: #b91c1c;
@@ -1367,78 +1365,104 @@ cart-notification-component [role="dialog"] {
 
 .cartmax-upsells-scroll {
   display: flex;
-  gap: 10px;
+  gap: 20px;
   overflow-x: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: 6px;
   scroll-snap-type: x mandatory;
   scroll-padding-left: 4px;
+  scrollbar-width: none;
 }
 
 .cartmax-upsells-scroll::-webkit-scrollbar {
-  height: 3px;
+  display: none;
 }
 
-.cartmax-upsells-scroll::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.08);
-  border-radius: 2px;
-}
+/* ── Card base (horizontal / medium) ── */
 
 .cartmax-upsell-card {
   flex-shrink: 0;
-  width: 47%;
+  width: 300px;
   display: flex;
   flex-direction: row;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px 8px 8px;
+  padding: 9px 8px;
   background: var(--cartmax-bg, #ffffff);
-  border: 1px solid var(--cartmax-border, #e5e7eb);
-  border-radius: calc(var(--cartmax-radius, 10px) + 2px);
+  border: 1px solid rgba(92, 103, 112, 0.10);
+  border-radius: 8px;
   overflow: hidden;
   transition:
     border-color 0.2s ease,
-    box-shadow 0.2s ease,
-    transform 0.15s ease;
+    box-shadow 0.2s ease;
   scroll-snap-align: start;
 }
 
 .cartmax-upsell-card:hover {
-  border-color: var(--cartmax-primary, #5e32e2);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.07);
-  transform: translateY(-1px);
+  border-color: rgba(92, 103, 112, 0.25);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
 }
 
+/* Horizontal size variants */
+
+.cartmax-upsell-card--small {
+  width: 220px;
+  padding: 8px;
+  gap: 8px;
+}
+
+.cartmax-upsell-card--large {
+  width: 360px;
+  padding: 10px 9px;
+  gap: 12px;
+}
+
+/* Product image */
+
 .cartmax-upsell-img {
-  width: 56px;
-  height: 56px;
+  width: 90px;
+  height: 90px;
   object-fit: cover;
   display: block;
   flex-shrink: 0;
-  border-radius: calc(var(--cartmax-radius, 8px) - 2px);
+  border-radius: 6px;
 }
 
 .cartmax-upsell-img-placeholder {
-  width: 56px;
-  height: 56px;
+  width: 90px;
+  height: 90px;
   background: #f3f4f6;
   flex-shrink: 0;
-  border-radius: calc(var(--cartmax-radius, 8px) - 2px);
+  border-radius: 6px;
 }
+
+.cartmax-upsell-card--small .cartmax-upsell-img,
+.cartmax-upsell-card--small .cartmax-upsell-img-placeholder {
+  width: 64px;
+  height: 64px;
+}
+
+.cartmax-upsell-card--large .cartmax-upsell-img,
+.cartmax-upsell-card--large .cartmax-upsell-img-placeholder {
+  width: 112px;
+  height: 112px;
+}
+
+/* Info column */
 
 .cartmax-upsell-info {
   flex: 1;
   min-width: 0;
-  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  justify-content: center;
 }
 
 .cartmax-upsell-title {
   font-size: 12px;
-  font-weight: 600;
-  line-height: 1.3;
+  font-weight: 400;
+  line-height: 1.35;
   color: var(--cartmax-text, #1a1a1a);
   overflow: hidden;
   display: -webkit-box;
@@ -1446,48 +1470,109 @@ cart-notification-component [role="dialog"] {
   -webkit-box-orient: vertical;
 }
 
+.cartmax-upsell-card--small .cartmax-upsell-title {
+  font-size: 11px;
+}
+
+.cartmax-upsell-card--large .cartmax-upsell-title {
+  font-size: 13px;
+}
+
 .cartmax-upsell-price {
   font-size: 12px;
-  font-weight: 700;
-  color: var(--cartmax-text, #1a1a1a);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
+}
+
+.cartmax-upsell-sale {
+  font-weight: 500;
+  color: var(--cartmax-text, #1a1a1a);
 }
 
 .cartmax-upsell-compare {
   text-decoration: line-through;
-  color: #d1d5db;
+  color: #80828d;
   font-weight: 400;
 }
 
 .cartmax-upsell-add {
-  padding: 5px 14px;
+  height: 30px;
+  padding: 0 14px;
   background: transparent;
-  color: var(--cartmax-primary, #1a1a1a);
-  border: 1.5px solid var(--cartmax-primary, #1a1a1a);
+  color: var(--cartmax-text, #1a1a1a);
+  border: 1px solid rgba(92, 103, 112, 0.20);
   border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 500;
   cursor: pointer;
   width: fit-content;
+  text-transform: uppercase;
   transition:
     background 0.15s ease,
-    color 0.15s ease;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
+    color 0.15s ease,
+    border-color 0.15s ease;
   margin-top: 2px;
+}
+
+.cartmax-upsell-card--small .cartmax-upsell-add {
+  height: 28px;
+}
+
+.cartmax-upsell-card--large .cartmax-upsell-add {
+  height: 34px;
+  font-size: 11px;
 }
 
 .cartmax-upsell-add:hover:not(:disabled) {
   background: var(--cartmax-primary, #1a1a1a);
   color: var(--cartmax-primary-text, #ffffff);
+  border-color: var(--cartmax-primary, #1a1a1a);
 }
 
 .cartmax-upsell-add:disabled {
-  border-color: #e5e7eb;
-  color: #9ca3af;
+  opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* ── Vertical layout ── */
+
+.cartmax-upsells--vertical .cartmax-upsell-card {
+  flex-direction: column;
+  align-items: stretch;
+  width: 160px;
+  padding: 0;
+  gap: 0;
+}
+
+.cartmax-upsells--vertical .cartmax-upsell-card--small {
+  width: 130px;
+}
+
+.cartmax-upsells--vertical .cartmax-upsell-card--large {
+  width: 190px;
+}
+
+.cartmax-upsells--vertical .cartmax-upsell-img,
+.cartmax-upsells--vertical .cartmax-upsell-img-placeholder {
+  width: 100%;
+  height: 120px;
+  border-radius: 8px 8px 0 0;
+}
+
+.cartmax-upsells--vertical .cartmax-upsell-card--small .cartmax-upsell-img,
+.cartmax-upsells--vertical .cartmax-upsell-card--small .cartmax-upsell-img-placeholder {
+  height: 100px;
+}
+
+.cartmax-upsells--vertical .cartmax-upsell-card--large .cartmax-upsell-img,
+.cartmax-upsells--vertical .cartmax-upsell-card--large .cartmax-upsell-img-placeholder {
+  height: 140px;
+}
+
+.cartmax-upsells--vertical .cartmax-upsell-info {
+  padding: 8px;
+  gap: 6px;
 }
 
 /* --- Gift Unavailable Notice --- */

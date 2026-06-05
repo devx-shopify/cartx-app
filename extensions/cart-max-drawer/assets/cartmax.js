@@ -1625,6 +1625,7 @@
         offer_cards_heading: "Pick your free gift"
       };
       this._layout = { drawer_position: "right", image_style: "rounded", qty_style: "bordered", show_variant_title: true, show_vendor: false };
+      this._upsells = { card_layout: "horizontal", card_size: "medium", heading: "", btn_text: "ADD TO CART", show_compare_price: true };
       this._shape = { button_style: "solid" };
       this._sections = { show_progress_bar: true, show_claim_gifts: true, show_offer_cards: true, show_coupons: true, show_upsells: true, show_ribbon: true };
       this._behavior = { auto_open_on_add: true, animation_style: "slide", close_on_overlay_click: true, close_on_esc: true };
@@ -1905,6 +1906,13 @@
         empty_icon_url: l2.empty_icon_url || "",
         empty_icon_size: l2.empty_icon_size || "medium",
         empty_icon_color: l2.empty_icon_color || ""
+      };
+      this._upsells = {
+        card_layout: l2.upsells_card_layout || "horizontal",
+        card_size: l2.upsells_card_size || "medium",
+        heading: l2.upsells_heading || "",
+        btn_text: l2.upsells_btn_text || "ADD TO CART",
+        show_compare_price: l2.upsells_show_compare_price !== false
       };
       var sh = drawer.shape || {};
       this._shape = { button_style: sh.button_style || "solid" };
@@ -2843,6 +2851,8 @@
       var products = upsells.products || [];
       if (products.length === 0) return null;
       var cart = this.state.cart;
+      var isEmpty = !cart || !cart.items || cart.items.length === 0;
+      if (isEmpty && upsells.show_on_empty_cart === false) return null;
       var cartVariantIds = (cart && cart.items || []).map(function(i2) {
         return String(i2.variant_id);
       });
@@ -2854,7 +2864,13 @@
       if (filtered.length === 0) return null;
       var curr = this._currency;
       var self = this;
-      return /* @__PURE__ */ k("div", { class: "cartmax-upsells" }, /* @__PURE__ */ k("div", { class: "cartmax-upsells-heading" }, upsells.heading || "You may also like"), this.state.upsellError ? /* @__PURE__ */ k("div", { class: "cartmax-upsell-error" }, this.state.upsellError) : null, /* @__PURE__ */ k("div", { class: "cartmax-upsells-scroll" }, filtered.map(function(p2) {
+      var u2 = this._upsells;
+      var layoutClass = "cartmax-upsells--" + (u2.card_layout || "horizontal");
+      var sizeClass = "cartmax-upsell-card--" + (u2.card_size || "medium");
+      var headingText = u2.heading || upsells.heading || "YOU MAY ALSO LIKE";
+      var btnText = u2.btn_text || "ADD TO CART";
+      var imgPx = { small: 130, medium: 180, large: 230 }[u2.card_size] || 180;
+      return /* @__PURE__ */ k("div", { class: "cartmax-upsells " + layoutClass }, /* @__PURE__ */ k("div", { class: "cartmax-upsells-heading" }, headingText), this.state.upsellError ? /* @__PURE__ */ k("div", { class: "cartmax-upsell-error" }, this.state.upsellError) : null, /* @__PURE__ */ k("div", { class: "cartmax-upsells-scroll" }, filtered.map(function(p2) {
         var vid = String(p2.variant_id);
         if (vid.startsWith("gid://")) vid = vid.split("/").pop();
         var isAdding = self.state.updating["upsell_" + vid];
@@ -2863,7 +2879,7 @@
           image: p2.image_url,
           price: p2.price
         };
-        return /* @__PURE__ */ k("div", { class: "cartmax-upsell-card", key: p2.product_id }, p2.image_url ? /* @__PURE__ */ k("img", { class: "cartmax-upsell-img", src: resizeImage(p2.image_url, 96), alt: p2.title, loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-upsell-img-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image")), /* @__PURE__ */ k("div", { class: "cartmax-upsell-info" }, /* @__PURE__ */ k("div", { class: "cartmax-upsell-title" }, p2.title), /* @__PURE__ */ k("div", { class: "cartmax-upsell-price" }, p2.compare_at_price ? /* @__PURE__ */ k("span", { class: "cartmax-upsell-compare" }, formatMoney(Number(p2.compare_at_price) * 100, curr)) : null, /* @__PURE__ */ k("span", null, formatMoney(Number(p2.price) * 100, curr))), /* @__PURE__ */ k(
+        return /* @__PURE__ */ k("div", { class: "cartmax-upsell-card " + sizeClass, key: p2.product_id }, p2.image_url ? /* @__PURE__ */ k("img", { class: "cartmax-upsell-img", src: resizeImage(p2.image_url, imgPx), alt: p2.title, loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-upsell-img-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image")), /* @__PURE__ */ k("div", { class: "cartmax-upsell-info" }, /* @__PURE__ */ k("div", { class: "cartmax-upsell-title" }, p2.title), /* @__PURE__ */ k("div", { class: "cartmax-upsell-price" }, /* @__PURE__ */ k("span", { class: "cartmax-upsell-sale" }, formatMoney(Number(p2.price) * 100, curr)), u2.show_compare_price && p2.compare_at_price ? /* @__PURE__ */ k("span", { class: "cartmax-upsell-compare" }, formatMoney(Number(p2.compare_at_price) * 100, curr)) : null), /* @__PURE__ */ k(
           "button",
           {
             class: "cartmax-upsell-add",
@@ -2872,7 +2888,7 @@
             },
             disabled: isAdding
           },
-          isAdding ? "Adding..." : "Add"
+          isAdding ? "Adding..." : btnText
         )));
       })));
     }

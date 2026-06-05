@@ -221,6 +221,11 @@ export const DrawerConfigSchema = z.object({
     empty_icon_url: z.string().default(''),
     empty_icon_size: z.enum(['small', 'medium', 'large']).default('medium'),
     empty_icon_color: z.string().default(''),
+    upsells_card_layout: z.enum(['horizontal', 'vertical']).default('horizontal'),
+    upsells_card_size: z.enum(['small', 'medium', 'large']).default('medium'),
+    upsells_heading: z.string().default('YOU MAY ALSO LIKE'),
+    upsells_btn_text: z.string().default('ADD TO CART'),
+    upsells_show_compare_price: z.boolean().default(true),
   }).default({}),
   sections: z.object({
     show_coupons: z.boolean().default(true),

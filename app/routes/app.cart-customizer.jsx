@@ -791,6 +791,49 @@ function ContentTab({ s, update }) {
         </div>
       </s-section>
 
+      <s-section heading="Upsells" description="Customize how recommended products are displayed.">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <SegmentedControl
+            label="Card layout"
+            options={[
+              { value: "horizontal", label: "Horizontal" },
+              { value: "vertical", label: "Vertical" },
+            ]}
+            value={s.layout.upsells_card_layout || "horizontal"}
+            onChange={(v) => update("layout.upsells_card_layout", v)}
+          />
+          <SegmentedControl
+            label="Card size"
+            options={[
+              { value: "small", label: "Small" },
+              { value: "medium", label: "Medium" },
+              { value: "large", label: "Large" },
+            ]}
+            value={s.layout.upsells_card_size || "medium"}
+            onChange={(v) => update("layout.upsells_card_size", v)}
+          />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <s-text-field
+              label="Section heading"
+              value={s.layout.upsells_heading}
+              onInput={(e) => update("layout.upsells_heading", e.target.value)}
+              placeholder="YOU MAY ALSO LIKE"
+            />
+            <s-text-field
+              label="Add to cart button text"
+              value={s.layout.upsells_btn_text}
+              onInput={(e) => update("layout.upsells_btn_text", e.target.value)}
+              placeholder="ADD TO CART"
+            />
+          </div>
+          <s-checkbox
+            label="Show compare-at (strikethrough) price"
+            checked={s.layout.upsells_show_compare_price !== false}
+            onChange={(e) => update("layout.upsells_show_compare_price", e.target.checked)}
+          />
+        </div>
+      </s-section>
+
       <s-section heading="Continue shopping" description="Optional link below the cart.">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           <s-text-field label="Link text" value={s.text.continue_shopping} onInput={(e) => update("text.continue_shopping", e.target.value)} />
