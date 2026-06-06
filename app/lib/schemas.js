@@ -254,6 +254,13 @@ export const DrawerConfigSchema = z.object({
     text: z.string().default(''),
     type: z.enum(['static', 'marquee']).default('static'),
   }).default({}),
+  progress_bar: z.object({
+    track_thickness: z.enum(['thin', 'normal', 'thick']).default('normal'),
+    milestone_icon_svg: z.string().default(''),
+    completed_icon_svg: z.string().default(''),
+    badge_bg_color: z.string().default(''),
+    badge_text_color: z.string().default(''),
+  }).default({}),
 }).default({})
 
 export const ConfigSchema = z.object({

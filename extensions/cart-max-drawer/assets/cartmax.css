@@ -766,7 +766,7 @@ cart-notification-component [role="dialog"] {
 /* --- Progress Bar --- */
 
 .cartmax-progress {
-  padding: 16px 20px 0;
+  padding: 16px 32px 0 0;
   border-bottom: 1px solid var(--cartmax-border, #f0f0f0);
   flex-shrink: 0;
   background: var(--cartmax-bg, #ffffff);
@@ -777,15 +777,16 @@ cart-notification-component [role="dialog"] {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--cartmax-accent, #16a34a);
-  background: color-mix(in srgb, var(--cartmax-accent, #16a34a) 10%, #ffffff);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  color: var(--cartmax-badge-text, var(--cartmax-accent, #16a34a));
+  background: var(--cartmax-badge-bg, color-mix(in srgb, var(--cartmax-accent, #16a34a) 10%, #ffffff));
   border: 1px solid
-    color-mix(in srgb, var(--cartmax-accent, #16a34a) 22%, transparent);
+    color-mix(in srgb, var(--cartmax-badge-bg, var(--cartmax-accent, #16a34a)) 22%, transparent);
   text-align: center;
-  margin: 0 auto 18px;
-  padding: 7px 18px;
+  margin: 0 auto 16px;
+  padding: 4px 14px;
   border-radius: 999px;
   line-height: 1.3;
   max-width: 100%;
@@ -798,11 +799,11 @@ cart-notification-component [role="dialog"] {
 
 .cartmax-progress-track {
   position: relative;
-  height: 8px;
+  height: var(--cartmax-track-h, 8px);
   background: #f1f3f5;
-  border-radius: 999px;
+  /* border-radius: 999px; */
   overflow: visible;
-  margin: 8px 8px 56px;
+  margin: 8px 30px 58px 0;
 }
 
 .cartmax-progress-fill {
@@ -810,14 +811,9 @@ cart-notification-component [role="dialog"] {
   left: 0;
   top: 0;
   height: 100%;
-  background: linear-gradient(
-    90deg,
-    var(--cartmax-accent, #16a34a) 0%,
-    var(--cartmax-primary, #5e32e2) 100%
-  );
-  border-radius: 999px;
+  background: var(--cartmax-accent, #16a34a);
+  border-radius: 0 999px 999px 0;
   transition: width 0.5s cubic-bezier(0.32, 0.72, 0, 1);
-  box-shadow: 0 1px 3px rgba(94, 50, 226, 0.18);
 }
 
 .cartmax-milestone {
@@ -831,8 +827,8 @@ cart-notification-component [role="dialog"] {
 }
 
 .cartmax-milestone-dot {
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: #ffffff;
   border: 2px solid #d1d5db;
@@ -846,6 +842,19 @@ cart-notification-component [role="dialog"] {
 
 .cartmax-milestone-dot svg {
   display: block;
+}
+
+.cartmax-milestone-custom-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.cartmax-milestone-custom-icon svg {
+  width: 100%;
+  height: 100%;
 }
 
 .cartmax-milestone--active .cartmax-milestone-dot {
@@ -862,42 +871,39 @@ cart-notification-component [role="dialog"] {
     color-mix(in srgb, var(--cartmax-primary, #5e32e2) 12%, transparent);
 }
 
+.cartmax-milestone--custom .cartmax-milestone-dot,
+.cartmax-milestone--active.cartmax-milestone--custom .cartmax-milestone-dot,
+.cartmax-milestone--next.cartmax-milestone--custom .cartmax-milestone-dot {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
 .cartmax-milestone-label {
   position: absolute;
-  top: 30px;
+  top: 36px;
   left: 50%;
   transform: translateX(-50%);
   width: max-content;
   max-width: 110px;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
   color: #6b7280;
   text-align: center;
   line-height: 1.25;
   word-break: break-word;
 }
 
-.cartmax-milestone:last-child .cartmax-milestone-label {
-  left: auto;
-  right: 0;
-  transform: none;
-  text-align: right;
-}
-
-.cartmax-milestone:first-child .cartmax-milestone-label {
-  left: 0;
-  transform: none;
-  text-align: left;
-}
 
 .cartmax-milestone--active .cartmax-milestone-label {
   color: var(--cartmax-text, #1a1a1a);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .cartmax-milestone--next .cartmax-milestone-label {
   color: var(--cartmax-primary, #5e32e2);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .cartmax-milestone-label-main {
@@ -908,7 +914,8 @@ cart-notification-component [role="dialog"] {
   display: block;
   margin-top: 2px;
   font-size: 10px;
-  font-weight: 500;
+  font-weight: 400;
+  letter-spacing: 0.5px;
   color: var(--cartmax-text-secondary, #9ca3af);
   line-height: 1.2;
 }

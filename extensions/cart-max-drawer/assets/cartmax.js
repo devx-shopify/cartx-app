@@ -477,6 +477,15 @@
     if (b2 && b2.animation_speed && ANIM_SPEED_MAP[b2.animation_speed]) {
       s2.setProperty("--cartmax-anim-speed", ANIM_SPEED_MAP[b2.animation_speed]);
     }
+    var TRACK_H_MAP = { thin: "4px", normal: "6px", thick: "8px" };
+    var pb = settings.progress_bar;
+    if (pb) {
+      if (pb.track_thickness && TRACK_H_MAP[pb.track_thickness]) {
+        s2.setProperty("--cartmax-track-h", TRACK_H_MAP[pb.track_thickness]);
+      }
+      if (pb.badge_bg_color) s2.setProperty("--cartmax-badge-bg", pb.badge_bg_color);
+      if (pb.badge_text_color) s2.setProperty("--cartmax-badge-text", pb.badge_text_color);
+    }
   }
   function normalizeVariantId(id) {
     if (typeof id === "string" && id.startsWith("gid://")) return id.split("/").pop();
@@ -1627,6 +1636,7 @@
       this._layout = { drawer_position: "right", image_style: "rounded", qty_style: "bordered", show_variant_title: true, show_vendor: false };
       this._upsells = { card_layout: "horizontal", card_size: "medium", heading: "", btn_text: "ADD TO CART", show_compare_price: true };
       this._announcement = { text: "", type: "static" };
+      this._progressBar = { track_thickness: "normal", milestone_icon_svg: "", completed_icon_svg: "" };
       this._shape = { button_style: "solid" };
       this._sections = { show_progress_bar: true, show_claim_gifts: true, show_offer_cards: true, show_coupons: true, show_upsells: true, show_ribbon: true };
       this._behavior = { auto_open_on_add: true, animation_style: "slide", close_on_overlay_click: true, close_on_esc: true };
@@ -1919,6 +1929,12 @@
       this._announcement = {
         text: ab.text || "",
         type: ab.type || "static"
+      };
+      var pb = drawer.progress_bar || {};
+      this._progressBar = {
+        track_thickness: pb.track_thickness || "normal",
+        milestone_icon_svg: pb.milestone_icon_svg || "",
+        completed_icon_svg: pb.completed_icon_svg || ""
       };
       var sh = drawer.shape || {};
       this._shape = { button_style: sh.button_style || "solid" };
@@ -2263,13 +2279,32 @@
       var pct = Math.min(bar.progress_pct || 0, 100);
       var trackPadRight = 30;
       var usableWidth = 100;
-      return /* @__PURE__ */ k("div", { id: "cartmax-progress", className: "cartmax-progress" }, bar.top_message ? /* @__PURE__ */ k("div", { class: "cartmax-progress-msg-wrap" }, /* @__PURE__ */ k("div", { class: "cartmax-progress-msg" }, /* @__PURE__ */ k(IconSparkle, null), /* @__PURE__ */ k("span", null, bar.top_message))) : null, /* @__PURE__ */ k("div", { className: "cartmax-progress-track", style: { marginRight: trackPadRight + "px" } }, /* @__PURE__ */ k("div", { className: "cartmax-progress-fill", style: { width: pct + "%" } }, /* @__PURE__ */ k("span", { className: "visually-hidden" }, "Progress fill")), tiers.map((tier, i2) => {
+      var pb = this._progressBar;
+      var milestoneIconSvg = pb.milestone_icon_svg || "";
+      var completedIconSvg = pb.completed_icon_svg || milestoneIconSvg;
+      return /* @__PURE__ */ k("div", { id: "cartmax-progress", className: "cartmax-progress" }, bar.top_message ? /* @__PURE__ */ k("div", { class: "cartmax-progress-msg-wrap" }, /* @__PURE__ */ k("div", { class: "cartmax-progress-msg" }, /* @__PURE__ */ k("span", null, bar.top_message))) : null, /* @__PURE__ */ k("div", { className: "cartmax-progress-track", style: { marginRight: trackPadRight + "px" } }, /* @__PURE__ */ k("div", { className: "cartmax-progress-fill", style: { width: pct + "%" } }, /* @__PURE__ */ k("span", { className: "visually-hidden" }, "Progress fill")), tiers.map((tier, i2) => {
         var pos = (i2 + 1) / n2 * usableWidth;
         var cls = "cartmax-milestone";
         var isActive = tier.state === "active";
         if (isActive) cls += " cartmax-milestone--active";
         else if (tier.state === "next") cls += " cartmax-milestone--next";
         var self = this;
+        var customSvgForState = isActive ? completedIconSvg : milestoneIconSvg;
+        if (customSvgForState) cls += " cartmax-milestone--custom";
+        var dotContent;
+        if (isActive) {
+          if (completedIconSvg) {
+            dotContent = /* @__PURE__ */ k("span", { class: "cartmax-milestone-custom-icon", dangerouslySetInnerHTML: { __html: completedIconSvg } });
+          } else {
+            dotContent = /* @__PURE__ */ k("svg", { width: "10", height: "10", viewBox: "0 0 24 24", fill: "none", stroke: "#fff", "stroke-width": "3", "stroke-linecap": "round", "stroke-linejoin": "round" }, /* @__PURE__ */ k("path", { d: "M20 6 9 17l-5-5" }));
+          }
+        } else {
+          if (milestoneIconSvg) {
+            dotContent = /* @__PURE__ */ k("span", { class: "cartmax-milestone-custom-icon", dangerouslySetInnerHTML: { __html: milestoneIconSvg } });
+          } else {
+            dotContent = /* @__PURE__ */ k("span", { class: "visually-hidden" }, "Milestone");
+          }
+        }
         return /* @__PURE__ */ k(
           "div",
           {
@@ -2282,7 +2317,7 @@
               self._observePromo(el);
             } : void 0
           },
-          /* @__PURE__ */ k("div", { class: "cartmax-milestone-dot" }, isActive ? /* @__PURE__ */ k("svg", { width: "10", height: "10", viewBox: "0 0 24 24", fill: "none", stroke: "#fff", "stroke-width": "3", "stroke-linecap": "round", "stroke-linejoin": "round" }, /* @__PURE__ */ k("path", { d: "M20 6 9 17l-5-5" })) : /* @__PURE__ */ k("span", { class: "visually-hidden" }, "Milestone")),
+          /* @__PURE__ */ k("div", { class: "cartmax-milestone-dot" }, dotContent),
           /* @__PURE__ */ k("div", { class: "cartmax-milestone-label" }, /* @__PURE__ */ k("div", { class: "cartmax-milestone-label-main" }, (tier.label || "").split("\n+ ")[0]), tier.sub_label ? /* @__PURE__ */ k("div", { class: "cartmax-milestone-sub-label" }, tier.sub_label) : null)
         );
       })));

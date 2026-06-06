@@ -267,6 +267,17 @@ export function applyDrawerSettings(settings) {
     s.setProperty('--cartmax-anim-speed', ANIM_SPEED_MAP[b.animation_speed]);
   }
 
+  // Progress bar
+  var TRACK_H_MAP = { thin: '4px', normal: '6px', thick: '8px' };
+  var pb = settings.progress_bar;
+  if (pb) {
+    if (pb.track_thickness && TRACK_H_MAP[pb.track_thickness]) {
+      s.setProperty('--cartmax-track-h', TRACK_H_MAP[pb.track_thickness]);
+    }
+    if (pb.badge_bg_color) s.setProperty('--cartmax-badge-bg', pb.badge_bg_color);
+    if (pb.badge_text_color) s.setProperty('--cartmax-badge-text', pb.badge_text_color);
+  }
+
 }
 
 // ── Shared utilities ────────────────────────────────────────

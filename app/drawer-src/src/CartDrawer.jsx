@@ -148,6 +148,7 @@ export default class CartDrawer extends Component {
     this._layout = { drawer_position: 'right', image_style: 'rounded', qty_style: 'bordered', show_variant_title: true, show_vendor: false };
     this._upsells = { card_layout: 'horizontal', card_size: 'medium', heading: '', btn_text: 'ADD TO CART', show_compare_price: true };
     this._announcement = { text: '', type: 'static' };
+    this._progressBar = { track_thickness: 'normal', milestone_icon_svg: '', completed_icon_svg: '' };
     this._shape = { button_style: 'solid' };
     this._sections = { show_progress_bar: true, show_claim_gifts: true, show_offer_cards: true, show_coupons: true, show_upsells: true, show_ribbon: true };
     this._behavior = { auto_open_on_add: true, animation_style: 'slide', close_on_overlay_click: true, close_on_esc: true };
@@ -490,6 +491,12 @@ export default class CartDrawer extends Component {
     this._announcement = {
       text: ab.text || '',
       type: ab.type || 'static',
+    };
+    var pb = drawer.progress_bar || {};
+    this._progressBar = {
+      track_thickness: pb.track_thickness || 'normal',
+      milestone_icon_svg: pb.milestone_icon_svg || '',
+      completed_icon_svg: pb.completed_icon_svg || '',
     };
     var sh = drawer.shape || {};
     this._shape = { button_style: sh.button_style || 'solid' };
@@ -901,12 +908,15 @@ export default class CartDrawer extends Component {
     var trackPadRight = 30;
     var usableWidth = 100;
 
+    var pb = this._progressBar;
+    var milestoneIconSvg = pb.milestone_icon_svg || '';
+    var completedIconSvg = pb.completed_icon_svg || milestoneIconSvg;
+
     return (
       <div id="cartmax-progress" className="cartmax-progress">
         {bar.top_message ? (
           <div class="cartmax-progress-msg-wrap">
             <div class="cartmax-progress-msg">
-              <IconSparkle />
               <span>{bar.top_message}</span>
             </div>
           </div>
@@ -920,6 +930,25 @@ export default class CartDrawer extends Component {
             if (isActive) cls += ' cartmax-milestone--active';
             else if (tier.state === 'next') cls += ' cartmax-milestone--next';
             var self = this;
+
+            var customSvgForState = isActive ? completedIconSvg : milestoneIconSvg;
+            if (customSvgForState) cls += ' cartmax-milestone--custom';
+
+            var dotContent;
+            if (isActive) {
+              if (completedIconSvg) {
+                dotContent = <span class="cartmax-milestone-custom-icon" dangerouslySetInnerHTML={{ __html: completedIconSvg }} />;
+              } else {
+                dotContent = <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>;
+              }
+            } else {
+              if (milestoneIconSvg) {
+                dotContent = <span class="cartmax-milestone-custom-icon" dangerouslySetInnerHTML={{ __html: milestoneIconSvg }} />;
+              } else {
+                dotContent = <span class="visually-hidden">Milestone</span>;
+              }
+            }
+
             return (
               <div
                 class={cls}
@@ -930,10 +959,7 @@ export default class CartDrawer extends Component {
                 ref={tier.promotion_id ? function (el) { self._observePromo(el); } : undefined}
               >
                 <div class="cartmax-milestone-dot">
-                  {isActive
-                    ? <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-                    : <span class="visually-hidden">Milestone</span>
-                  }
+                  {dotContent}
                 </div>
                 <div class="cartmax-milestone-label">
                   <div class="cartmax-milestone-label-main">

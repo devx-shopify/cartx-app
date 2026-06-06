@@ -5,7 +5,7 @@ const RADIUS_MAP = {
   large: "12px",
   pill: "999px",
 };
-const HEADING_SIZE_MAP = { small: "14px", medium: "16px", large: "18px" };
+const HEADING_SIZE_MAP = { small: "16px", medium: "18px", large: "20px" };
 const BODY_SIZE_MAP = { small: "12px", medium: "13px", large: "14px" };
 const IMG_SIZE_MAP = { small: 56, medium: 72, large: 96 };
 const DENSITY_MAP = { compact: 8, comfortable: 14, spacious: 20 };
@@ -164,6 +164,12 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
   const claimImgSize = Math.round(imgSize * 0.9);
 
   const ab = settings.announcement_bar || {};
+  const pb = settings.progress_bar || {};
+
+  const TRACK_H_MAP = { thin: 4, normal: 6, thick: 8 };
+  const trackH = TRACK_H_MAP[pb.track_thickness] || 6;
+  const badgeBg = pb.badge_bg_color || `${accent}1a`;
+  const badgeText = pb.badge_text_color || accent;
 
   return (
     <div
@@ -185,20 +191,41 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
     >
       {/* ── Announcement bar ── */}
       {ab.text ? (
-        <div style={{
-          background: accent,
-          color: text,
-          padding: "7px 16px",
-          fontSize: 12,
-          fontWeight: 500,
-          flexShrink: 0,
-          textAlign: "center",
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-        }}>
-          {ab.text}
-        </div>
+        ab.type === 'marquee' ? (
+          <>
+            <style>{`@keyframes cp-marquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}`}</style>
+            <div style={{
+              background: accent,
+              color: text,
+              padding: "7px 16px",
+              fontSize: 12,
+              fontWeight: 500,
+              flexShrink: 0,
+              overflow: "hidden",
+              display: "flex",
+            }}>
+              <div style={{ display: "flex", whiteSpace: "nowrap", animation: "cp-marquee 18s linear infinite" }}>
+                <span style={{ flexShrink: 0, paddingRight: 24 }}>{ab.text}</span>
+                <span style={{ flexShrink: 0, paddingRight: 24 }}>{ab.text}</span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div style={{
+            background: accent,
+            color: text,
+            padding: "7px 16px",
+            fontSize: 12,
+            fontWeight: 500,
+            flexShrink: 0,
+            textAlign: "center",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}>
+            {ab.text}
+          </div>
+        )
       ) : null}
 
       {/* ── Header ── */}
@@ -297,7 +324,7 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
       {sec.show_progress_bar !== false && (
       <div
         style={{
-          padding: "14px 16px 16px",
+          padding: "16px 32px 0 0",
           borderBottom: `1px solid ${border}`,
           background: bg,
         }}
@@ -307,45 +334,47 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: 6,
-              fontSize: 12,
-              fontWeight: 600,
-              color: accent,
-              background: `${accent}1a`,
-              border: `1px solid ${accent}3a`,
-              padding: "5px 14px",
+              gap: 7,
+              fontSize: 10,
+              fontWeight: 500,
+              letterSpacing: "0.5px",
+              color: badgeText,
+              background: badgeBg,
+              border: `1px solid color-mix(in srgb, ${badgeBg} 22%, transparent)`,
+              padding: "4px 14px",
               borderRadius: 999,
               lineHeight: 1.3,
               maxWidth: "100%",
             }}
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M12 2 13.5 8.5 20 10 13.5 11.5 12 18 10.5 11.5 4 10 10.5 8.5z" />
-            </svg>
             <span>Add $5 more for free shipping!</span>
           </div>
         </div>
-        <div style={{ position: "relative", height: 8, background: "#f1f3f5", borderRadius: 999, margin: "0 6px 38px" }}>
+        <div style={{ position: "relative", height: trackH, background: "#f1f3f5", margin: "8px 30px 58px 0" }}>
           <div
             style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
               width: "65%",
               height: "100%",
-              background: `linear-gradient(90deg, ${accent} 0%, ${primary} 100%)`,
-              borderRadius: 999,
-              boxShadow: `0 1px 3px ${primary}30`,
+              background: accent,
+              borderRadius: "0 999px 999px 0",
             }}
           />
           {[
             { pos: 33, state: "active", label: "Free Gift", sub: "Above $20" },
             { pos: 67, state: "active", label: "Free Shipping", sub: "At $25" },
             { pos: 100, state: "next", label: "10% Off", sub: "At $30" },
-          ].map((m, i, arr) => {
-            const isLast = i === arr.length - 1;
-            const isFirst = i === 0;
-            const dotBg = m.state === "active" ? primary : "#fff";
-            const dotBorder = m.state === "active" ? primary : primary;
-            const ring = `0 0 0 3px ${primary}1f`;
-            const labelColor = m.state === "active" ? text : m.state === "next" ? primary : "#9ca3af";
+          ].map((m, i) => {
+            const isActive = m.state === "active";
+            const hasCustomSvg = isActive ? !!(pb.completed_icon_svg || pb.milestone_icon_svg) : !!pb.milestone_icon_svg;
+            const dotBg = hasCustomSvg ? "transparent" : isActive ? primary : "#fff";
+            const dotBorder = hasCustomSvg ? "transparent" : primary;
+            const dotShadow = hasCustomSvg ? "none" : `0 0 0 3px ${primary}1f`;
+            const labelColor = isActive ? text : m.state === "next" ? primary : "#9ca3af";
+            const customSvg = isActive ? (pb.completed_icon_svg || pb.milestone_icon_svg) : pb.milestone_icon_svg;
+
             return (
               <div key={i} style={{
                 position: "absolute",
@@ -358,34 +387,36 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
                 zIndex: 1,
               }}>
                 <div style={{
-                  width: 22, height: 22, borderRadius: "50%",
+                  width: 28, height: 28, borderRadius: "50%",
                   background: dotBg,
                   border: `2px solid ${dotBorder}`,
-                  boxShadow: ring,
+                  boxShadow: dotShadow,
                   display: "flex", alignItems: "center", justifyContent: "center",
+                  overflow: "hidden",
                 }}>
-                  {m.state === "active" && (
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M20 6 9 17l-5-5" />
-                    </svg>
-                  )}
+                  {customSvg
+                    ? <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%" }} dangerouslySetInnerHTML={{ __html: customSvg }} />
+                    : isActive
+                      ? <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                      : null
+                  }
                 </div>
                 <div style={{
                   position: "absolute",
-                  top: 28,
-                  left: isFirst ? 0 : isLast ? "auto" : "50%",
-                  right: isLast ? 0 : "auto",
-                  transform: isFirst || isLast ? "none" : "translateX(-50%)",
+                  top: 36,
+                  left: "50%",
+                  transform: "translateX(-50%)",
                   width: "max-content",
                   maxWidth: 110,
-                  fontSize: 11,
-                  fontWeight: m.state === "active" || m.state === "next" ? 700 : 600,
+                  fontSize: 10,
+                  fontWeight: isActive || m.state === "next" ? 600 : 500,
+                  letterSpacing: "0.5px",
                   color: labelColor,
-                  textAlign: isFirst ? "left" : isLast ? "right" : "center",
+                  textAlign: "center",
                   lineHeight: 1.25,
                 }}>
                   <div>{m.label}</div>
-                  <div style={{ fontSize: 10, fontWeight: 500, color: m.state === "active" || m.state === "next" ? "#6b7280" : "#9ca3af", marginTop: 2 }}>
+                  <div style={{ fontSize: 10, fontWeight: 400, letterSpacing: "0.5px", color: isActive || m.state === "next" ? "#6b7280" : "#9ca3af", marginTop: 2 }}>
                     {m.sub}
                   </div>
                 </div>

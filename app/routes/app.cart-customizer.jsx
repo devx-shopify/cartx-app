@@ -673,6 +673,7 @@ function DesignTab({ s, update }) {
 
 function ContentTab({ s, update }) {
   const ab = s.announcement_bar || {};
+  const pb = s.progress_bar || {};
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <s-section heading="Announcement bar" description="A full-width strip shown above the cart header.">
@@ -692,6 +693,49 @@ function ContentTab({ s, update }) {
             ]}
             value={ab.type || "static"}
             onChange={(v) => update("announcement_bar.type", v)}
+          />
+        </div>
+      </s-section>
+
+      <s-section heading="Progress bar" description="Customize the milestone progress bar appearance.">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <SegmentedControl
+            label="Track thickness"
+            options={[
+              { value: "thin", label: "Thin" },
+              { value: "normal", label: "Normal" },
+              { value: "thick", label: "Thick" },
+            ]}
+            value={pb.track_thickness || "normal"}
+            onChange={(v) => update("progress_bar.track_thickness", v)}
+          />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <ColorField
+              label="Badge background"
+              value={pb.badge_bg_color || "#e6f9ee"}
+              onChange={(v) => update("progress_bar.badge_bg_color", v)}
+            />
+            <ColorField
+              label="Badge text"
+              value={pb.badge_text_color || "#16a34a"}
+              onChange={(v) => update("progress_bar.badge_text_color", v)}
+            />
+          </div>
+          <s-text-field
+            label="Milestone icon SVG"
+            value={pb.milestone_icon_svg || ""}
+            onInput={(e) => update("progress_bar.milestone_icon_svg", e.target.value)}
+            placeholder='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">...</svg>'
+            details="Paste raw SVG markup for incomplete milestone nodes. Leave empty to use the default circle."
+            multiline="3"
+          />
+          <s-text-field
+            label="Completed milestone icon SVG"
+            value={pb.completed_icon_svg || ""}
+            onInput={(e) => update("progress_bar.completed_icon_svg", e.target.value)}
+            placeholder='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">...</svg>'
+            details="Paste raw SVG for completed/reached milestones. Leave empty to fall back to the milestone icon, then the default circle with checkmark."
+            multiline="3"
           />
         </div>
       </s-section>
