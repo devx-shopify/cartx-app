@@ -711,32 +711,128 @@ function ContentTab({ s, update }) {
           />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             <ColorField
-              label="Badge background"
+              label="Top message background"
               value={pb.badge_bg_color || "#e6f9ee"}
               onChange={(v) => update("progress_bar.badge_bg_color", v)}
             />
             <ColorField
-              label="Badge text"
+              label="Top message text"
               value={pb.badge_text_color || "#16a34a"}
               onChange={(v) => update("progress_bar.badge_text_color", v)}
             />
           </div>
-          <s-text-field
-            label="Milestone icon SVG"
-            value={pb.milestone_icon_svg || ""}
-            onInput={(e) => update("progress_bar.milestone_icon_svg", e.target.value)}
-            placeholder='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">...</svg>'
-            details="Paste raw SVG markup for incomplete milestone nodes. Leave empty to use the default circle."
-            multiline="3"
-          />
-          <s-text-field
-            label="Completed milestone icon SVG"
-            value={pb.completed_icon_svg || ""}
-            onInput={(e) => update("progress_bar.completed_icon_svg", e.target.value)}
-            placeholder='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">...</svg>'
-            details="Paste raw SVG for completed/reached milestones. Leave empty to fall back to the milestone icon, then the default circle with checkmark."
-            multiline="3"
-          />
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: "#1a1a1a", marginBottom: 4 }}>Milestone icon</div>
+            <div style={{ fontSize: 12, color: "#6d7175", marginBottom: 10, lineHeight: 1.4 }}>
+              Replaces the default empty circle on incomplete milestone nodes.
+            </div>
+            {pb.milestone_icon_svg ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{
+                  width: 56, height: 56, borderRadius: 8, border: "1px solid #d4d6d8",
+                  background: "#f9f9f9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+                }} dangerouslySetInnerHTML={{ __html: pb.milestone_icon_svg }} />
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <s-button size="slim" onClick={() => {
+                    const input = document.createElement("input");
+                    input.type = "file";
+                    input.accept = ".svg,image/svg+xml";
+                    input.onchange = (e) => {
+                      const file = e.target.files[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => update("progress_bar.milestone_icon_svg", ev.target.result);
+                      reader.readAsText(file);
+                    };
+                    input.click();
+                  }}>Replace</s-button>
+                  <s-button size="slim" tone="critical" onClick={() => update("progress_bar.milestone_icon_svg", "")}>Remove</s-button>
+                </div>
+              </div>
+            ) : (
+              <div
+                onClick={() => {
+                  const input = document.createElement("input");
+                  input.type = "file";
+                  input.accept = ".svg,image/svg+xml";
+                  input.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => update("progress_bar.milestone_icon_svg", ev.target.result);
+                    reader.readAsText(file);
+                  };
+                  input.click();
+                }}
+                style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  gap: 6, padding: "20px 24px", border: "1.5px dashed #d4d6d8", borderRadius: 10,
+                  cursor: "pointer", background: "#fafafa",
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8c9196" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <span style={{ fontSize: 12, color: "#6d7175" }}>Click to upload SVG</span>
+              </div>
+            )}
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: "#1a1a1a", marginBottom: 4 }}>Completed milestone icon</div>
+            <div style={{ fontSize: 12, color: "#6d7175", marginBottom: 10, lineHeight: 1.4 }}>
+              Shown on reached milestones. Falls back to the milestone icon, then the default circle with checkmark.
+            </div>
+            {pb.completed_icon_svg ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{
+                  width: 56, height: 56, borderRadius: 8, border: "1px solid #d4d6d8",
+                  background: "#f9f9f9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+                }} dangerouslySetInnerHTML={{ __html: pb.completed_icon_svg }} />
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <s-button size="slim" onClick={() => {
+                    const input = document.createElement("input");
+                    input.type = "file";
+                    input.accept = ".svg,image/svg+xml";
+                    input.onchange = (e) => {
+                      const file = e.target.files[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => update("progress_bar.completed_icon_svg", ev.target.result);
+                      reader.readAsText(file);
+                    };
+                    input.click();
+                  }}>Replace</s-button>
+                  <s-button size="slim" tone="critical" onClick={() => update("progress_bar.completed_icon_svg", "")}>Remove</s-button>
+                </div>
+              </div>
+            ) : (
+              <div
+                onClick={() => {
+                  const input = document.createElement("input");
+                  input.type = "file";
+                  input.accept = ".svg,image/svg+xml";
+                  input.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => update("progress_bar.completed_icon_svg", ev.target.result);
+                    reader.readAsText(file);
+                  };
+                  input.click();
+                }}
+                style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  gap: 6, padding: "20px 24px", border: "1.5px dashed #d4d6d8", borderRadius: 10,
+                  cursor: "pointer", background: "#fafafa",
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8c9196" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <span style={{ fontSize: 12, color: "#6d7175" }}>Click to upload SVG</span>
+              </div>
+            )}
+          </div>
         </div>
       </s-section>
 

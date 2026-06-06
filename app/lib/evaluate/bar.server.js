@@ -18,9 +18,10 @@ function collectBarEntries(config, page, customer) {
     if (offer.reward?.type === 'volume_discount') {
       const tiers = (offer.reward.tiers || []).slice().sort((a, b) => a.quantity - b.quantity)
       for (const tier of tiers) {
-        const tierLabel = offer.reward.discount_mode === 'fixed_total'
-          ? `Buy ${tier.quantity} @ ${tier.value}`
-          : `Buy ${tier.quantity} get ${tier.value}% off`
+        const tierMainLabel = `Buy ${tier.quantity}`
+        const tierSubLabel = offer.reward.discount_mode === 'fixed_total'
+          ? `₹${tier.value}`
+          : `${tier.value}% OFF`
         entries.push({
           id: offer.id + '_tier_' + tier.quantity,
           source: 'volume_discount',
@@ -28,10 +29,10 @@ function collectBarEntries(config, page, customer) {
           promotion_type: 'offer',
           threshold: tier.quantity,
           trigger_type: 'quantity',
-          label: tierLabel,
-          sub_label: null,
+          label: tierMainLabel,
+          sub_label: tierSubLabel,
           icon_url: offer.bar.icon_url || null,
-          top_message: `Add [[QTY]] more for ${tierLabel}!`,
+          top_message: `Add [[QTY]] more for ${tierMainLabel} @ ${tierSubLabel}!`,
           ribbon_message: null,
           _volume_tier_value: tier.value,
           _volume_discount_mode: offer.reward.discount_mode,
