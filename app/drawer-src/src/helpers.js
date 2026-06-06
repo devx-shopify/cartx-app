@@ -200,11 +200,11 @@ export function getContext() {
 
 // ── Drawer settings → CSS custom properties ─────────────────
 
-var RADIUS_MAP = { none: '0', small: '4px', medium: '10px', large: '12px', pill: '999px' };
+var RADIUS_MAP = { none: '0', small: '6px', medium: '10px', large: '12px', pill: '999px' };
 var HEADING_SIZE_MAP = { small: '16px', medium: '18px', large: '20px' };
 var BODY_SIZE_MAP = { small: '12px', medium: '13px', large: '14px' };
-var IMG_SIZE_MAP = { small: '56px', medium: '72px', large: '96px' };
-var DENSITY_MAP = { compact: '8px', comfortable: '14px', spacious: '20px' };
+var IMG_SIZE_MAP = { small: '70px', medium: '90px', large: '110px' };
+var DENSITY_MAP = { compact: '8px', comfortable: '16px', spacious: '20px' };
 var ANIM_SPEED_MAP = { fast: '150ms', normal: '250ms', slow: '400ms' };
 
 export function applyDrawerSettings(settings) {
