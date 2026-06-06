@@ -223,6 +223,7 @@ export function applyDrawerSettings(settings) {
     if (c.secondary_text) s.setProperty('--cartmax-text-secondary', c.secondary_text);
     if (c.border) s.setProperty('--cartmax-border', c.border);
     if (c.accent) s.setProperty('--cartmax-accent', c.accent);
+    if (c.secondary_accent) s.setProperty('--cartmax-secondary-accent', c.secondary_accent);
     if (c.overlay_opacity != null) s.setProperty('--cartmax-overlay-opacity', c.overlay_opacity);
     if (c.savings_bg) s.setProperty('--cartmax-savings-bg', c.savings_bg);
     if (c.savings_text) s.setProperty('--cartmax-savings-text', c.savings_text);

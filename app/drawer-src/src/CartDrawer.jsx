@@ -1560,7 +1560,7 @@ export default class CartDrawer extends Component {
                           class="cartmax-claim-btn cartmax-claim-btn--add"
                           onClick={function () { self.handleClaimAdd(vid, cg._rule_id); }}
                           disabled={isClaiming || !g.available || limitReached}
-                        >{isClaiming ? 'Adding...' : (!g.available ? 'Unavailable' : (limitReached ? 'Limit reached' : 'Add'))}</button>
+                        >{isClaiming ? 'Adding...' : (!g.available ? 'Unavailable' : (limitReached ? 'Limit reached' : 'Claim gift'))}</button>
                   }
                   {claimErr ? <div class="cartmax-claim-error">{claimErr}</div> : null}
                 </div>

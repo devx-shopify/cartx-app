@@ -95,6 +95,7 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
   const primary = c.primary || "#1a1a1a";
   const primaryText = c.primary_text || "#ffffff";
   const accent = c.accent || "#16a34a";
+  const secondaryAccent = c.secondary_accent || "#ff4b7e";
   const savingsBg = c.savings_bg || "#1a1a1a";
   const savingsText = c.savings_text || "#ffffff";
   const savingsAmount = c.savings_amount || "#22c55e";
@@ -191,7 +192,7 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
           <>
             <style>{`@keyframes cp-marquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}`}</style>
             <div style={{
-              background: accent,
+              background: secondaryAccent,
               color: text,
               padding: "7px 16px",
               fontSize: 12,
@@ -208,7 +209,7 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
           </>
         ) : (
           <div style={{
-            background: accent,
+            background: secondaryAccent,
             color: text,
             padding: "7px 16px",
             fontSize: 12,
@@ -427,24 +428,24 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
       {sec.show_claim_gifts !== false && (
       <div
         style={{
-          padding: "12px 16px",
-          borderBottom: `1px solid ${border}`,
-          background: bg,
+          padding: "16px 20px",
+          background: `color-mix(in srgb, ${secondaryAccent} 6%, #ffffff)`,
+          border: `1px solid color-mix(in srgb, ${secondaryAccent} 30%, #ffffff)`,
         }}
       >
         <div
           style={{
-            fontSize: bodySize,
-            fontWeight: 700,
+            fontSize: 14,
+            fontWeight: 500,
             color: text,
             textTransform: "uppercase",
-            letterSpacing: 0.5,
+            textAlign: "center",
             marginBottom: 8,
           }}
         >
-          Choose your free gift
+          🎁 Claim your free gift 🎁
         </div>
-        <div style={{ display: "flex", gap: 8, overflowX: "auto" }}>
+        <div style={{ display: "flex", gap: 16, overflowX: "auto", overflowY: "hidden", scrollbarWidth: "none" }}>
           {CLAIM_GIFTS.map((gift, i) => {
             const isInCart = gift.inCart;
             return (
@@ -452,41 +453,47 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
                 key={i}
                 style={{
                   flexShrink: 0,
-                  width: "70%",
+                  width: 300,
                   display: "flex",
                   alignItems: "center",
-                  gap: 8,
+                  gap: 10,
+                  padding: "9px 8px",
                   border: isInCart
-                    ? `1px solid ${accent}`
-                    : `1px solid ${border}`,
-                  borderRadius: radius,
+                    ? `0.5px solid ${accent}`
+                    : `0.5px solid ${secondaryAccent}`,
+                  borderRadius: 12,
                   overflow: "hidden",
-                  background: isInCart ? `${accent}10` : bg,
+                  background: isInCart ? `color-mix(in srgb, ${accent} 6%, #ffffff)` : bg,
                 }}
               >
                 <div
                   style={{
-                    width: claimImgSize,
-                    height: claimImgSize,
-                    minWidth: claimImgSize,
+                    width: 70,
+                    height: 70,
+                    minWidth: 70,
                     background: "#f3f4f6",
+                    borderRadius: 4,
                   }}
                 />
                 <div
                   style={{
                     flex: 1,
-                    padding: "6px 8px 6px 0",
+                    padding: 0,
                     display: "flex",
                     flexDirection: "column",
-                    gap: 4,
+                    gap: 9,
                   }}
                 >
                   <div
                     style={{
                       fontSize: 12,
-                      fontWeight: 500,
-                      lineHeight: 1.3,
+                      fontWeight: 400,
+                      lineHeight: "16px",
                       color: text,
+                      overflow: "hidden",
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
                     }}
                   >
                     {gift.title}
@@ -507,17 +514,20 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
                   ) : (
                     <span
                       style={{
-                        ...smallBtnStyle,
-                        padding: "4px 10px",
-                        fontSize: 11,
-                        fontWeight: 700,
+                        background: secondaryAccent,
+                        color: text,
+                        border: `1px solid ${textSec}`,
+                        borderRadius: 50,
+                        padding: "4px 12px",
+                        fontSize: 10,
+                        fontWeight: 500,
                         cursor: "default",
                         width: "fit-content",
                         textTransform: "uppercase",
                         letterSpacing: 0.5,
                       }}
                     >
-                      Add
+                      Claim gift
                     </span>
                   )}
                 </div>

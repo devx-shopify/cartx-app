@@ -47,6 +47,7 @@ export const DEFAULT_CONFIG = {
       secondary_text: '#6b7280',
       border: '#f0f0f0',
       accent: '#16a34a',
+      secondary_accent: '#ff4b7e',
       overlay_opacity: 0.45,
       savings_bg: '#1a1a1a',
       savings_text: '#ffffff',

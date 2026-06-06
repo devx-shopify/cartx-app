@@ -442,6 +442,7 @@
       if (c2.secondary_text) s2.setProperty("--cartmax-text-secondary", c2.secondary_text);
       if (c2.border) s2.setProperty("--cartmax-border", c2.border);
       if (c2.accent) s2.setProperty("--cartmax-accent", c2.accent);
+      if (c2.secondary_accent) s2.setProperty("--cartmax-secondary-accent", c2.secondary_accent);
       if (c2.overlay_opacity != null) s2.setProperty("--cartmax-overlay-opacity", c2.overlay_opacity);
       if (c2.savings_bg) s2.setProperty("--cartmax-savings-bg", c2.savings_bg);
       if (c2.savings_text) s2.setProperty("--cartmax-savings-text", c2.savings_text);
@@ -2762,7 +2763,7 @@
               },
               disabled: isClaiming || !g2.available || limitReached
             },
-            isClaiming ? "Adding..." : !g2.available ? "Unavailable" : limitReached ? "Limit reached" : "Add"
+            isClaiming ? "Adding..." : !g2.available ? "Unavailable" : limitReached ? "Limit reached" : "Claim gift"
           ), claimErr ? /* @__PURE__ */ k("div", { class: "cartmax-claim-error" }, claimErr) : null));
         }))
       );

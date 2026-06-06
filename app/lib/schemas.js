@@ -180,6 +180,7 @@ export const DrawerConfigSchema = z.object({
     secondary_text: z.string().default('#6b7280'),
     border: z.string().default('#f0f0f0'),
     accent: z.string().default('#16a34a'),
+    secondary_accent: z.string().default('#ff4b7e'),
     overlay_opacity: z.number().min(0).max(1).default(0.45),
     savings_bg: z.string().default('#1a1a1a'),
     savings_text: z.string().default('#ffffff'),

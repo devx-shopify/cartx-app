@@ -590,6 +590,7 @@ function DesignTab({ s, update }) {
             <ColorField label="Secondary text" value={s.colors.secondary_text} onChange={(v) => update("colors.secondary_text", v)} />
             <ColorField label="Border" value={s.colors.border} onChange={(v) => update("colors.border", v)} />
             <ColorField label="Accent (gifts, discounts)" value={s.colors.accent} onChange={(v) => update("colors.accent", v)} />
+            <ColorField label="Secondary Accent (announcement, buttons)" value={s.colors.secondary_accent} onChange={(v) => update("colors.secondary_accent", v)} />
           </div>
 
           <s-divider />
