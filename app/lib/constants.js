@@ -82,8 +82,9 @@ export const DEFAULT_CONFIG = {
       image_size: 'medium',
       density: 'comfortable',
       qty_style: 'bordered',
-      show_variant_title: true,
       show_vendor: false,
+      show_variant_switcher: true,
+      show_remove_btn: true,
     },
     sections: {
       show_coupons: true,

@@ -11,12 +11,8 @@ const IMG_SIZE_MAP = { small: 56, medium: 72, large: 96 };
 const DENSITY_MAP = { compact: 8, comfortable: 14, spacious: 20 };
 
 const DUMMY_ITEMS = [
-  {
-    title: "Classic Cotton T-Shirt",
-    variant: "Black / M",
-    price: "$29.00",
-    qty: 2,
-  },
+  { title: "Classic Cotton T-Shirt", variant: "Black / M", price: "$29.00", qty: 2 },
+  { title: "Silk Scarf", variant: "One Size", price: "$35.00", qty: 1 },
 ];
 
 const CLAIM_GIFTS = [
@@ -534,127 +530,143 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
       )}
 
       {/* ── Regular line items ── */}
-      {DUMMY_ITEMS.map((item, i) => (
-        <div
-          key={i}
-          style={{
-            display: "flex",
-            gap: 10,
-            padding: `${density}px 16px`,
-            borderBottom: `1px solid ${border}`,
-            background: bg,
-          }}
-        >
+      {DUMMY_ITEMS.map((item, i) => {
+        const showVariantSwitcher = l.show_variant_switcher !== false;
+        const showRemoveBtn = l.show_remove_btn !== false && item.qty > 1;
+        return (
           <div
+            key={i}
             style={{
-              width: imgSize,
-              height: imgSize,
-              minWidth: imgSize,
-              borderRadius: imgRadius,
-              background: "#f3f4f6",
-              border: `1px solid ${border}`,
-            }}
-          />
-          <div
-            style={{
-              flex: 1,
-              minWidth: 0,
               display: "flex",
-              flexDirection: "column",
-              gap: 1,
+              gap: 10,
+              padding: `${density}px 16px`,
+              borderBottom: `1px solid ${border}`,
+              background: bg,
             }}
           >
-            {l.show_vendor && (
-              <div
-                style={{
-                  fontSize: 10,
-                  color: textSec,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.3,
-                  fontWeight: 600,
-                }}
-              >
-                Brand Name
-              </div>
-            )}
             <div
               style={{
-                fontWeight: 500,
-                fontSize: bodySize,
-                color: text,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
+                width: imgSize,
+                height: imgSize,
+                minWidth: imgSize,
+                borderRadius: imgRadius,
+                background: "#f3f4f6",
+                border: `1px solid ${border}`,
               }}
-            >
-              {item.title}
-            </div>
-            {l.show_variant_title !== false && (
-              <div
-                style={{ fontSize: `calc(${bodySize} - 1px)`, color: textSec }}
-              >
-                {item.variant}
-              </div>
-            )}
+            />
             <div
               style={{
-                fontWeight: 600,
-                fontSize: bodySize,
-                color: text,
-                marginTop: 1,
+                flex: 1,
+                minWidth: 0,
                 display: "flex",
-                alignItems: "center",
-                gap: 6,
+                flexDirection: "column",
+                gap: 1,
               }}
             >
-              {i === 0 && (
-                <span style={{ textDecoration: "line-through", color: "#d1d5db", fontWeight: 400 }}>
-                  $39.00
-                </span>
+              {l.show_vendor && (
+                <div style={{ fontSize: 10, color: textSec, textTransform: "uppercase", letterSpacing: 0.3, fontWeight: 600 }}>
+                  Brand Name
+                </div>
               )}
-              {item.price}
-            </div>
-            {i === 0 && (
-              <div style={{ marginTop: 4 }}>
-                <span style={{
+              {/* Title row — with optional remove button */}
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 6 }}>
+                <div
+                  style={{
+                    fontWeight: 500,
+                    fontSize: bodySize,
+                    color: text,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    flex: 1,
+                    minWidth: 0,
+                  }}
+                >
+                  {item.title}
+                </div>
+                {showRemoveBtn && (
+                  <span style={{ flexShrink: 0, lineHeight: 1, paddingTop: 1 }}>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M4.87183 13.6667C4.53939 13.6667 4.25539 13.549 4.01983 13.3135C3.78439 13.0779 3.66667 12.794 3.66667 12.4615V4.00001H3V3.00001H6V2.41034H10V3.00001H13V4.00001H12.3333V12.4615C12.3333 12.7983 12.2167 13.0833 11.9833 13.3167C11.75 13.55 11.4649 13.6667 11.1282 13.6667H4.87183ZM11.3333 4.00001H4.66667V12.4615C4.66667 12.5214 4.68589 12.5706 4.72433 12.609C4.76278 12.6474 4.81194 12.6667 4.87183 12.6667H11.1282C11.1795 12.6667 11.2265 12.6453 11.2692 12.6025C11.3119 12.5598 11.3333 12.5128 11.3333 12.4615V4.00001ZM6.26933 11.3333H7.26917V5.33334H6.26933V11.3333ZM8.73083 11.3333H9.73067V5.33334H8.73083V11.3333Z" fill="#5C6770"/>
+                    </svg>
+                  </span>
+                )}
+              </div>
+              {/* Variant — pill switcher */}
+              {showVariantSwitcher && (
+                <div style={{
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 5,
-                  fontSize: 10,
-                  padding: "2px 9px 2px 7px",
-                  background: `${accent}14`,
-                  color: accent,
-                  border: `1px solid ${accent}40`,
+                  fontSize: `calc(${bodySize} - 1px)`,
+                  color: text,
+                  border: `1px solid ${border}`,
                   borderRadius: 999,
-                  fontWeight: 600,
-                  letterSpacing: 0.2,
+                  padding: "3px 8px 3px 10px",
+                  marginTop: 2,
+                  width: "fit-content",
+                  maxWidth: "100%",
+                  overflow: "hidden",
                 }}>
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: accent }} />
-                  Volume Discount
-                </span>
+                  <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.variant}</span>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}>
+                    <path d="m6 9 6 6 6-6"/>
+                  </svg>
+                </div>
+              )}
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: bodySize,
+                  color: text,
+                  marginTop: 2,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                {i === 0 && (
+                  <span style={{ textDecoration: "line-through", color: "#d1d5db", fontWeight: 400 }}>
+                    $39.00
+                  </span>
+                )}
+                {item.price}
               </div>
-            )}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginTop: 4,
-              }}
-            >
-              <QtyMock
-                border={border}
-                text={text}
-                textSec={textSec}
-                bg={bg}
-                radius={radius}
-                qty={item.qty}
-                minimal={l.qty_style === "minimal"}
-              />
+              {i === 0 && (
+                <div style={{ marginTop: 4 }}>
+                  <span style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    fontSize: 10,
+                    padding: "2px 9px 2px 7px",
+                    background: `${accent}14`,
+                    color: accent,
+                    border: `1px solid ${accent}40`,
+                    borderRadius: 999,
+                    fontWeight: 600,
+                    letterSpacing: 0.2,
+                  }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: accent }} />
+                    Volume Discount
+                  </span>
+                </div>
+              )}
+              <div style={{ marginTop: 4 }}>
+                <QtyMock
+                  border={border}
+                  text={text}
+                  textSec={textSec}
+                  bg={bg}
+                  radius={radius}
+                  qty={item.qty}
+                  minimal={l.qty_style === "minimal"}
+                />
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {/* ── Free gift line item ── */}
       <div
@@ -690,13 +702,6 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
           <div style={{ fontWeight: 500, fontSize: bodySize, color: accent }}>
             Free Gift Lip Balm
           </div>
-          {l.show_variant_title !== false && (
-            <div
-              style={{ fontSize: `calc(${bodySize} - 1px)`, color: textSec }}
-            >
-              Rose
-            </div>
-          )}
           <span
             style={{
               display: "inline-flex",
@@ -892,15 +897,9 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
 }
 
 function QtyMock({ border, text, textSec, bg, radius, qty, minimal }) {
+  const isOne = qty <= 1;
   const minStyle = minimal
-    ? {
-        background: "#f3f4f6",
-        borderRadius: radius,
-        width: 24,
-        height: 24,
-        lineHeight: "24px",
-        fontSize: 12,
-      }
+    ? { background: "#f3f4f6", borderRadius: radius, width: 24, height: 24, lineHeight: "24px", fontSize: 12 }
     : {};
   return (
     <div
@@ -914,17 +913,25 @@ function QtyMock({ border, text, textSec, bg, radius, qty, minimal }) {
         background: minimal ? "transparent" : bg,
       }}
     >
+      {/* Left button: trash at qty=1, minus at qty>1 */}
       <span
         style={{
           width: 28,
-          textAlign: "center",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
           color: textSec,
           fontSize: 14,
           lineHeight: "28px",
           ...minStyle,
         }}
       >
-        −
+        {isOne
+          ? <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M4.87183 13.6667C4.53939 13.6667 4.25539 13.549 4.01983 13.3135C3.78439 13.0779 3.66667 12.794 3.66667 12.4615V4.00001H3V3.00001H6V2.41034H10V3.00001H13V4.00001H12.3333V12.4615C12.3333 12.7983 12.2167 13.0833 11.9833 13.3167C11.75 13.55 11.4649 13.6667 11.1282 13.6667H4.87183ZM11.3333 4.00001H4.66667V12.4615C4.66667 12.5214 4.68589 12.5706 4.72433 12.609C4.76278 12.6474 4.81194 12.6667 4.87183 12.6667H11.1282C11.1795 12.6667 11.2265 12.6453 11.2692 12.6025C11.3119 12.5598 11.3333 12.5128 11.3333 12.4615V4.00001ZM6.26933 11.3333H7.26917V5.33334H6.26933V11.3333ZM8.73083 11.3333H9.73067V5.33334H8.73083V11.3333Z" fill="#5C6770"/>
+            </svg>
+          : "−"
+        }
       </span>
       <span
         style={{

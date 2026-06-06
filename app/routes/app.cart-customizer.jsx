@@ -1085,14 +1085,19 @@ function LayoutTab({ s, update }) {
           <s-divider />
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <s-checkbox
-              label="Show variant title"
-              checked={s.layout.show_variant_title || undefined}
-              onChange={(e) => update("layout.show_variant_title", e.target.checked)}
+              label="Variant switcher"
+              checked={s.layout.show_variant_switcher || undefined}
+              onChange={(e) => update("layout.show_variant_switcher", e.target.checked)}
             />
             <s-checkbox
               label="Show vendor name"
               checked={s.layout.show_vendor || undefined}
               onChange={(e) => update("layout.show_vendor", e.target.checked)}
+            />
+            <s-checkbox
+              label="Show remove button"
+              checked={s.layout.show_remove_btn || undefined}
+              onChange={(e) => update("layout.show_remove_btn", e.target.checked)}
             />
           </div>
         </div>

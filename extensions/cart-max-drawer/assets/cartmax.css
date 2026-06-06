@@ -225,9 +225,7 @@ cart-notification-component [role="dialog"] {
   gap: 12px;
   padding: var(--cartmax-density-padding, 14px) 20px;
   border-bottom: 1px solid var(--cartmax-border, #f5f5f5);
-  max-height: 200px;
   opacity: 1;
-  overflow: hidden;
   background: var(--cartmax-bg, #ffffff);
   content-visibility: auto;
   contain-intrinsic-size: auto 100px;
@@ -268,6 +266,13 @@ cart-notification-component [role="dialog"] {
   gap: 2px;
 }
 
+.cartmax-line-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+
 .cartmax-line-title {
   font-weight: 500;
   font-size: var(--cartmax-body-size, 13px);
@@ -275,6 +280,8 @@ cart-notification-component [role="dialog"] {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--cartmax-text, #1a1a1a);
+  flex: 1;
+  min-width: 0;
 }
 
 .cartmax-line-variant {
@@ -460,6 +467,147 @@ cart-notification-component [role="dialog"] {
 
 .cartmax-remove-btn svg {
   display: block;
+}
+
+/* --- Line remove button (in title row, visible when qty > 1) --- */
+
+.cartmax-line-remove {
+  background: none;
+  border: none;
+  color: #d1d5db;
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.cartmax-line-remove:hover:not(:disabled) {
+  background: #fef2f2;
+  color: #ef4444;
+}
+
+.cartmax-line-remove:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* --- Variant switcher --- */
+
+.cartmax-variant-wrap {
+  position: relative;
+}
+
+.cartmax-variant-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: calc(var(--cartmax-body-size, 13px) - 1px);
+  color: var(--cartmax-text, #1a1a1a);
+  background: none;
+  border: 1px solid var(--cartmax-border, #e5e7eb);
+  border-radius: 999px;
+  padding: 3px 8px 3px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cartmax-variant-pill:hover:not(:disabled) {
+  border-color: var(--cartmax-text-secondary, #6b7280);
+}
+
+.cartmax-variant-pill--open {
+  border-color: var(--cartmax-primary, #1a1a1a);
+}
+
+.cartmax-variant-pill:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cartmax-variant-chevron {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.cartmax-variant-pill--open .cartmax-variant-chevron {
+  transform: rotate(180deg);
+}
+
+.cartmax-variant-loading {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid #e5e7eb;
+  border-top-color: var(--cartmax-text-secondary, #6b7280);
+  border-radius: 50%;
+  animation: cartmax-spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes cartmax-spin {
+  to { transform: rotate(360deg); }
+}
+
+.cartmax-variant-dropdown {
+  margin-top: 4px;
+  border: 1px solid var(--cartmax-border, #e5e7eb);
+  border-radius: var(--cartmax-radius, 8px);
+  background: var(--cartmax-bg, #ffffff);
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.cartmax-variant-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  font-size: calc(var(--cartmax-body-size, 13px) - 1px);
+  color: var(--cartmax-text, #1a1a1a);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--cartmax-border, #f0f0f0);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s ease;
+  gap: 8px;
+}
+
+.cartmax-variant-option:last-child {
+  border-bottom: none;
+}
+
+.cartmax-variant-option:hover:not(:disabled) {
+  background: #f9fafb;
+}
+
+.cartmax-variant-option--current {
+  font-weight: 600;
+  background: color-mix(in srgb, var(--cartmax-primary, #1a1a1a) 4%, #ffffff);
+}
+
+.cartmax-variant-option--oos {
+  opacity: 0.5;
+}
+
+.cartmax-variant-option:disabled {
+  cursor: not-allowed;
+}
+
+.cartmax-variant-oos-label {
+  font-size: 10px;
+  color: var(--cartmax-text-secondary, #9ca3af);
+  font-weight: 400;
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 /* --- Footer / Totals --- */

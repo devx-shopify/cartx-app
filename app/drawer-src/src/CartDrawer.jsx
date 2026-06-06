@@ -43,8 +43,8 @@ function IconPlus() {
 
 function IconTrash() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M4.87183 13.6667C4.53939 13.6667 4.25539 13.549 4.01983 13.3135C3.78439 13.0779 3.66667 12.794 3.66667 12.4615V4.00001H3V3.00001H6V2.41034H10V3.00001H13V4.00001H12.3333V12.4615C12.3333 12.7983 12.2167 13.0833 11.9833 13.3167C11.75 13.55 11.4649 13.6667 11.1282 13.6667H4.87183ZM11.3333 4.00001H4.66667V12.4615C4.66667 12.5214 4.68589 12.5706 4.72433 12.609C4.76278 12.6474 4.81194 12.6667 4.87183 12.6667H11.1282C11.1795 12.6667 11.2265 12.6453 11.2692 12.6025C11.3119 12.5598 11.3333 12.5128 11.3333 12.4615V4.00001ZM6.26933 11.3333H7.26917V5.33334H6.26933V11.3333ZM8.73083 11.3333H9.73067V5.33334H8.73083V11.3333Z" fill="currentColor"/>
     </svg>
   );
 }
@@ -118,6 +118,8 @@ export default class CartDrawer extends Component {
       claimed: {},        // key -> true, button-level optimistic state for freebie claims
       claimError: {},     // key -> message, inline error shown on offer/claim card
       upsellError: null,  // brief error message displayed near upsell list on rollback
+      variantOpen: {},    // item.key -> bool, controls dropdown visibility
+      variantLoading: {}, // item.key -> bool, true while fetching product variants
     };
     this.close = this.close.bind(this);
     this.handleOverlayClick = this.handleOverlayClick.bind(this);
@@ -145,7 +147,8 @@ export default class CartDrawer extends Component {
       savings_label: 'Congrats! You saved {amount} on this order.',
       offer_cards_heading: 'Pick your free gift',
     };
-    this._layout = { drawer_position: 'right', image_style: 'rounded', qty_style: 'bordered', show_variant_title: true, show_vendor: false };
+    this._layout = { drawer_position: 'right', image_style: 'rounded', qty_style: 'bordered', show_vendor: false, show_variant_switcher: true, show_remove_btn: true };
+    this._variantCache = {}; // product_id -> variants[]
     this._upsells = { card_layout: 'horizontal', card_size: 'medium', heading: '', btn_text: 'ADD TO CART', show_compare_price: true };
     this._announcement = { text: '', type: 'static' };
     this._progressBar = { track_thickness: 'normal', milestone_icon_svg: '', completed_icon_svg: '' };
@@ -474,8 +477,9 @@ export default class CartDrawer extends Component {
       drawer_position: l.drawer_position || 'right',
       image_style: l.image_style || 'rounded',
       qty_style: l.qty_style || 'bordered',
-      show_variant_title: l.show_variant_title !== false,
       show_vendor: l.show_vendor === true,
+      show_variant_switcher: l.show_variant_switcher !== false,
+      show_remove_btn: l.show_remove_btn !== false,
       empty_icon_url: l.empty_icon_url || '',
       empty_icon_size: l.empty_icon_size || 'medium',
       empty_icon_color: l.empty_icon_color || '',
@@ -990,6 +994,97 @@ export default class CartDrawer extends Component {
     );
   }
 
+  // ── Variant switcher ──────────────────────────────────────
+
+  async _fetchVariantData(item) {
+    var productId = String(item.product_id);
+    if (this._variantCache[productId]) return this._variantCache[productId];
+
+    var handle = null;
+    if (item.url) {
+      var parts = item.url.split('/products/');
+      if (parts[1]) handle = parts[1].split('?')[0];
+    }
+    if (!handle) return null;
+
+    try {
+      var res = await fetch('/products/' + handle + '.js');
+      var data = await res.json();
+      var variants = (data.variants || []).map(function (v) {
+        return { id: v.id, title: v.title, available: v.available };
+      });
+      this._variantCache[productId] = variants;
+      return variants;
+    } catch (err) {
+      console.error('[cartx] Failed to fetch variants:', err);
+      return null;
+    }
+  }
+
+  async handleVariantToggle(key, item) {
+    var isOpen = this.state.variantOpen[key];
+    var nextOpen = Object.assign({}, this.state.variantOpen);
+
+    if (isOpen) {
+      delete nextOpen[key];
+      this.setState({ variantOpen: nextOpen });
+      return;
+    }
+
+    nextOpen[key] = true;
+    var productId = String(item.product_id);
+
+    if (!this._variantCache[productId]) {
+      var nextLoading = Object.assign({}, this.state.variantLoading, { [key]: true });
+      this.setState({ variantOpen: nextOpen, variantLoading: nextLoading });
+      await this._fetchVariantData(item);
+      var clearLoading = Object.assign({}, this.state.variantLoading);
+      delete clearLoading[key];
+      this.setState({ variantLoading: clearLoading });
+    } else {
+      this.setState({ variantOpen: nextOpen });
+    }
+  }
+
+  async handleVariantSwitch(item, newVariantId) {
+    var key = item.key;
+    var qty = item.quantity;
+
+    var nextOpen = Object.assign({}, this.state.variantOpen);
+    delete nextOpen[key];
+
+    if (String(item.variant_id) === String(newVariantId)) {
+      this.setState({ variantOpen: nextOpen });
+      return;
+    }
+
+    var updating = Object.assign({}, this.state.updating, { [key]: true });
+    this.setState({ variantOpen: nextOpen, updating: updating });
+    this._startProcessingTimeout();
+
+    try {
+      await internalFetch('/cart/change.js', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: key, quantity: 0 }),
+      });
+      await internalFetch('/cart/add.js', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: Number(newVariantId), quantity: qty }),
+      });
+      var cart = await fetchCart();
+      this._currency = cart.currency || this._currency;
+      window.dispatchEvent(new CustomEvent('cartmax:internal-reload', { detail: { cart: cart } }));
+    } catch (err) {
+      console.error('[cartx] Variant switch error:', err);
+      var newUpdating = Object.assign({}, this.state.updating);
+      delete newUpdating[key];
+      this.setState({ updating: newUpdating });
+      this.loadCart();
+    }
+  }
+
   // ── Render: Line Item ─────────────────────────────────────
 
   renderLineItem(item) {
@@ -1000,6 +1095,14 @@ export default class CartDrawer extends Component {
     var curr = this._currency;
     var isFreebie = item.properties && item.properties['_freebie'] === 'true' && item.properties['_claimed'] !== 'true';
     var isClaimed = item.properties && (item.properties['_claimed'] === 'true' || item.properties['_cartmax_claim'] === 'true');
+    var isVariantOpen = this.state.variantOpen[item.key];
+    var isVariantLoading = this.state.variantLoading[item.key];
+    var cachedVariants = this._variantCache[String(item.product_id)] || [];
+
+    var showVariantSwitcher = this._layout.show_variant_switcher && item.variant_title && !isFreebie && !isClaimed;
+    // Separate remove button: only when qty > 1 (at qty=1 trash is in the qty row)
+    var showRemoveBtn = this._layout.show_remove_btn && displayQty > 1 && !isFreebie && !isClaimed;
+
     var cls = 'cartmax-line-item'
       + (isRemoving ? ' cartmax-line-removing' : '')
       + (isFreebie ? ' cartmax-line-freebie' : '');
@@ -1014,8 +1117,58 @@ export default class CartDrawer extends Component {
         </div>
         <div class="cartmax-line-details">
           {this._layout.show_vendor && item.vendor ? <div class="cartmax-line-vendor">{item.vendor}</div> : null}
-          <div class="cartmax-line-title">{item.product_title}</div>
-          {this._layout.show_variant_title && item.variant_title ? <div class="cartmax-line-variant">{item.variant_title}</div> : null}
+          <div class="cartmax-line-title-row">
+            <div class="cartmax-line-title">{item.product_title}</div>
+            {showRemoveBtn
+              ? <button
+                  class="cartmax-line-remove"
+                  onClick={() => this.handleRemove(item.key)}
+                  disabled={isUpdating || isRemoving}
+                  aria-label={'Remove ' + item.product_title}
+                ><IconTrash /></button>
+              : null
+            }
+          </div>
+          {showVariantSwitcher
+            ? <div class="cartmax-variant-wrap">
+                <button
+                  class={'cartmax-variant-pill' + (isVariantOpen ? ' cartmax-variant-pill--open' : '')}
+                  onClick={() => this.handleVariantToggle(item.key, item)}
+                  disabled={isUpdating}
+                  aria-haspopup="listbox"
+                  aria-expanded={isVariantOpen ? 'true' : 'false'}
+                >
+                  <span>{item.variant_title}</span>
+                  {isVariantLoading
+                    ? <span class="cartmax-variant-loading" aria-hidden="true" />
+                    : <svg class="cartmax-variant-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+                  }
+                </button>
+                {isVariantOpen && cachedVariants.length > 0
+                  ? <div class="cartmax-variant-dropdown" role="listbox">
+                      {cachedVariants.map((v) => {
+                        var isCurrent = String(v.id) === String(item.variant_id);
+                        return (
+                          <button
+                            class={'cartmax-variant-option' + (isCurrent ? ' cartmax-variant-option--current' : '') + (!v.available ? ' cartmax-variant-option--oos' : '')}
+                            key={v.id}
+                            role="option"
+                            aria-selected={isCurrent ? 'true' : 'false'}
+                            disabled={!v.available || isUpdating}
+                            onClick={() => this.handleVariantSwitch(item, v.id)}
+                          >
+                            <span>{v.title}</span>
+                            {isCurrent ? <IconCheck /> : null}
+                            {!v.available ? <span class="cartmax-variant-oos-label">Out of stock</span> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  : null
+                }
+              </div>
+            : null
+          }
           <div class="cartmax-line-price">
             {isFreebie && item.final_line_price === 0
               ? <span class="cartmax-line-price-free">
@@ -1044,10 +1197,10 @@ export default class CartDrawer extends Component {
                 <div class="cartmax-qty-controls">
                   <button
                     class="cartmax-qty-btn"
-                    onClick={() => this.queueQuantityChange(item.key, displayQty - 1)}
-                    disabled={isUpdating || displayQty <= 1}
-                    aria-label="Decrease quantity"
-                  ><IconMinus /></button>
+                    onClick={() => displayQty <= 1 ? this.handleRemove(item.key) : this.queueQuantityChange(item.key, displayQty - 1)}
+                    disabled={isUpdating || isRemoving}
+                    aria-label={displayQty <= 1 ? ('Remove ' + item.product_title) : 'Decrease quantity'}
+                  >{displayQty <= 1 ? <IconTrash /> : <IconMinus />}</button>
                   <span class={'cartmax-qty-value' + (isPending ? ' cartmax-qty-pending' : '')}>
                     {displayQty}
                   </span>
@@ -1058,12 +1211,6 @@ export default class CartDrawer extends Component {
                     aria-label="Increase quantity"
                   ><IconPlus /></button>
                 </div>
-                <button
-                  class="cartmax-remove-btn"
-                  onClick={() => this.handleRemove(item.key)}
-                  disabled={isUpdating || isRemoving}
-                  aria-label={'Remove ' + item.product_title}
-                ><IconTrash /></button>
               </div>
             : null
           }
