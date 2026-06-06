@@ -2436,7 +2436,10 @@
           "aria-label": "Remove " + item.product_title
         },
         /* @__PURE__ */ k(IconTrash, null)
-      ) : null), showVariantSwitcher ? /* @__PURE__ */ k("div", { class: "cartmax-variant-wrap" }, /* @__PURE__ */ k(
+      ) : null), /* @__PURE__ */ k("div", { class: "cartmax-line-price" }, isFreebie && item.final_line_price === 0 ? /* @__PURE__ */ k("span", { class: "cartmax-gift-badge" }, /* @__PURE__ */ k(IconGift, null), " FREE") : [
+        /* @__PURE__ */ k("span", { key: "final" }, formatMoney(item.final_line_price, curr)),
+        item.original_line_price !== item.final_line_price ? /* @__PURE__ */ k("span", { key: "orig", class: "cartmax-line-price-original" }, formatMoney(item.original_line_price, curr)) : null
+      ]), !isClaimed && !isFreebie && item.line_level_discount_allocations && item.line_level_discount_allocations.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-line-discounts" }, item.line_level_discount_allocations.map((d2) => /* @__PURE__ */ k("span", { class: "cartmax-line-discount-tag", key: d2.discount_application.title }, d2.discount_application.title))) : null, !isFreebie ? /* @__PURE__ */ k("div", { class: "cartmax-line-actions" }, showVariantSwitcher ? /* @__PURE__ */ k("div", { class: "cartmax-variant-wrap" }, /* @__PURE__ */ k(
         "button",
         {
           class: "cartmax-variant-pill" + (isVariantOpen ? " cartmax-variant-pill--open" : ""),
@@ -2463,10 +2466,7 @@
           isCurrent ? /* @__PURE__ */ k(IconCheck, null) : null,
           !v2.available ? /* @__PURE__ */ k("span", { class: "cartmax-variant-oos-label" }, "Out of stock") : null
         );
-      })) : null) : null, /* @__PURE__ */ k("div", { class: "cartmax-line-price" }, isFreebie && item.final_line_price === 0 ? /* @__PURE__ */ k("span", { class: "cartmax-line-price-free" }, /* @__PURE__ */ k("span", { class: "cartmax-gift-badge" }, /* @__PURE__ */ k(IconGift, null), " FREE")) : [
-        item.original_line_price !== item.final_line_price ? /* @__PURE__ */ k("span", { class: "cartmax-line-price-original" }, formatMoney(item.original_line_price, curr)) : null,
-        /* @__PURE__ */ k("span", null, formatMoney(item.final_line_price, curr))
-      ]), !isClaimed && !isFreebie && item.line_level_discount_allocations && item.line_level_discount_allocations.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-line-discounts" }, item.line_level_discount_allocations.map((d2) => /* @__PURE__ */ k("span", { class: "cartmax-line-discount-tag", key: d2.discount_application.title }, d2.discount_application.title))) : null, !isFreebie ? /* @__PURE__ */ k("div", { class: "cartmax-line-actions" }, /* @__PURE__ */ k("div", { class: "cartmax-qty-controls" }, /* @__PURE__ */ k(
+      })) : null) : null, /* @__PURE__ */ k("div", { class: "cartmax-qty-controls" }, /* @__PURE__ */ k(
         "button",
         {
           class: "cartmax-qty-btn",
@@ -3135,9 +3135,7 @@
         /* @__PURE__ */ k("div", { class: "cartmax-header" }, /* @__PURE__ */ k("span", { class: "cartmax-title" }, this._text.cart_title, count > 0 ? /* @__PURE__ */ k("span", { class: "cartmax-header-count" }, count) : null), /* @__PURE__ */ k("button", { class: "cartmax-close", onClick: this.close, "aria-label": "Close cart" }, /* @__PURE__ */ k(IconClose, null))),
         this.state.unavailableGifts.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-gift-unavailable" }, "A gift product is currently unavailable") : null,
         hasItems && sec.show_progress_bar ? this.renderProgressBar() : null,
-        hasItems && sec.show_claim_gifts ? this.renderClaimGifts() : null,
-        hasItems && sec.show_offer_cards ? this.renderOfferDisplays() : null,
-        /* @__PURE__ */ k("div", { class: "cartmax-body" }, loading ? this.renderLoading() : isEmpty ? this.renderEmpty() : hasItems ? this._displayItems().map((item) => this.renderLineItem(item)) : null, hasItems && sec.show_coupons ? this.renderCoupons() : null, sec.show_upsells ? this.renderUpsells() : null),
+        /* @__PURE__ */ k("div", { class: "cartmax-body" }, hasItems && sec.show_claim_gifts ? this.renderClaimGifts() : null, hasItems && sec.show_offer_cards ? this.renderOfferDisplays() : null, loading ? this.renderLoading() : isEmpty ? this.renderEmpty() : hasItems ? this._displayItems().map((item) => this.renderLineItem(item)) : null, hasItems && sec.show_coupons ? this.renderCoupons() : null, sec.show_upsells ? this.renderUpsells() : null),
         hasItems && sec.show_ribbon ? this.renderRibbon() : null,
         hasItems ? this.renderFooter() : null
       )));

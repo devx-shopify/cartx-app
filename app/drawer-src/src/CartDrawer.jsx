@@ -1129,56 +1129,14 @@ export default class CartDrawer extends Component {
               : null
             }
           </div>
-          {showVariantSwitcher
-            ? <div class="cartmax-variant-wrap">
-                <button
-                  class={'cartmax-variant-pill' + (isVariantOpen ? ' cartmax-variant-pill--open' : '')}
-                  onClick={() => this.handleVariantToggle(item.key, item)}
-                  disabled={isUpdating}
-                  aria-haspopup="listbox"
-                  aria-expanded={isVariantOpen ? 'true' : 'false'}
-                >
-                  <span>{item.variant_title}</span>
-                  {isVariantLoading
-                    ? <span class="cartmax-variant-loading" aria-hidden="true" />
-                    : <svg class="cartmax-variant-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
-                  }
-                </button>
-                {isVariantOpen && cachedVariants.length > 0
-                  ? <div class="cartmax-variant-dropdown" role="listbox">
-                      {cachedVariants.map((v) => {
-                        var isCurrent = String(v.id) === String(item.variant_id);
-                        return (
-                          <button
-                            class={'cartmax-variant-option' + (isCurrent ? ' cartmax-variant-option--current' : '') + (!v.available ? ' cartmax-variant-option--oos' : '')}
-                            key={v.id}
-                            role="option"
-                            aria-selected={isCurrent ? 'true' : 'false'}
-                            disabled={!v.available || isUpdating}
-                            onClick={() => this.handleVariantSwitch(item, v.id)}
-                          >
-                            <span>{v.title}</span>
-                            {isCurrent ? <IconCheck /> : null}
-                            {!v.available ? <span class="cartmax-variant-oos-label">Out of stock</span> : null}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  : null
-                }
-              </div>
-            : null
-          }
           <div class="cartmax-line-price">
             {isFreebie && item.final_line_price === 0
-              ? <span class="cartmax-line-price-free">
-                  <span class="cartmax-gift-badge"><IconGift /> FREE</span>
-                </span>
+              ? <span class="cartmax-gift-badge"><IconGift /> FREE</span>
               : [
+                  <span key="final">{formatMoney(item.final_line_price, curr)}</span>,
                   item.original_line_price !== item.final_line_price
-                    ? <span class="cartmax-line-price-original">{formatMoney(item.original_line_price, curr)}</span>
+                    ? <span key="orig" class="cartmax-line-price-original">{formatMoney(item.original_line_price, curr)}</span>
                     : null,
-                  <span>{formatMoney(item.final_line_price, curr)}</span>,
                 ]
             }
           </div>
@@ -1194,6 +1152,46 @@ export default class CartDrawer extends Component {
           }
           {!isFreebie
             ? <div class="cartmax-line-actions">
+                {showVariantSwitcher
+                  ? <div class="cartmax-variant-wrap">
+                      <button
+                        class={'cartmax-variant-pill' + (isVariantOpen ? ' cartmax-variant-pill--open' : '')}
+                        onClick={() => this.handleVariantToggle(item.key, item)}
+                        disabled={isUpdating}
+                        aria-haspopup="listbox"
+                        aria-expanded={isVariantOpen ? 'true' : 'false'}
+                      >
+                        <span>{item.variant_title}</span>
+                        {isVariantLoading
+                          ? <span class="cartmax-variant-loading" aria-hidden="true" />
+                          : <svg class="cartmax-variant-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+                        }
+                      </button>
+                      {isVariantOpen && cachedVariants.length > 0
+                        ? <div class="cartmax-variant-dropdown" role="listbox">
+                            {cachedVariants.map((v) => {
+                              var isCurrent = String(v.id) === String(item.variant_id);
+                              return (
+                                <button
+                                  class={'cartmax-variant-option' + (isCurrent ? ' cartmax-variant-option--current' : '') + (!v.available ? ' cartmax-variant-option--oos' : '')}
+                                  key={v.id}
+                                  role="option"
+                                  aria-selected={isCurrent ? 'true' : 'false'}
+                                  disabled={!v.available || isUpdating}
+                                  onClick={() => this.handleVariantSwitch(item, v.id)}
+                                >
+                                  <span>{v.title}</span>
+                                  {isCurrent ? <IconCheck /> : null}
+                                  {!v.available ? <span class="cartmax-variant-oos-label">Out of stock</span> : null}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        : null
+                      }
+                    </div>
+                  : null
+                }
                 <div class="cartmax-qty-controls">
                   <button
                     class="cartmax-qty-btn"
@@ -2075,14 +2073,14 @@ export default class CartDrawer extends Component {
             {/* Progress bar */}
             {hasItems && sec.show_progress_bar ? this.renderProgressBar() : null}
 
-            {/* Claim gifts */}
-            {hasItems && sec.show_claim_gifts ? this.renderClaimGifts() : null}
-
-            {/* Display-mode offer cards */}
-            {hasItems && sec.show_offer_cards ? this.renderOfferDisplays() : null}
-
             {/* Body */}
             <div class="cartmax-body">
+              {/* Claim gifts */}
+              {hasItems && sec.show_claim_gifts ? this.renderClaimGifts() : null}
+
+              {/* Display-mode offer cards */}
+              {hasItems && sec.show_offer_cards ? this.renderOfferDisplays() : null}
+
               {loading
                 ? this.renderLoading()
                 : isEmpty
