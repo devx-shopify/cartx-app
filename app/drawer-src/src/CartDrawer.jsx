@@ -1935,20 +1935,18 @@ export default class CartDrawer extends Component {
             {hasItems && sec.show_offer_cards ? this.renderOfferDisplays() : null}
 
             {/* Body */}
-            {loading
-              ? this.renderLoading()
-              : isEmpty
-                ? this.renderEmpty()
-                : hasItems
-                  ? <div class="cartmax-body">{this._displayItems().map((item) => this.renderLineItem(item))}</div>
-                  : null
-            }
-
-            {/* Coupons */}
-            {hasItems && sec.show_coupons ? this.renderCoupons() : null}
-
-            {/* Upsells */}
-            {sec.show_upsells ? this.renderUpsells() : null}
+            <div class="cartmax-body">
+              {loading
+                ? this.renderLoading()
+                : isEmpty
+                  ? this.renderEmpty()
+                  : hasItems
+                    ? this._displayItems().map((item) => this.renderLineItem(item))
+                    : null
+              }
+              {hasItems && sec.show_coupons ? this.renderCoupons() : null}
+              {sec.show_upsells ? this.renderUpsells() : null}
+            </div>
 
             {/* Ribbon */}
             {hasItems && sec.show_ribbon ? this.renderRibbon() : null}

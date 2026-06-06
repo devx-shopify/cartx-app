@@ -3021,9 +3021,7 @@
         hasItems && sec.show_progress_bar ? this.renderProgressBar() : null,
         hasItems && sec.show_claim_gifts ? this.renderClaimGifts() : null,
         hasItems && sec.show_offer_cards ? this.renderOfferDisplays() : null,
-        loading ? this.renderLoading() : isEmpty ? this.renderEmpty() : hasItems ? /* @__PURE__ */ k("div", { class: "cartmax-body" }, this._displayItems().map((item) => this.renderLineItem(item))) : null,
-        hasItems && sec.show_coupons ? this.renderCoupons() : null,
-        sec.show_upsells ? this.renderUpsells() : null,
+        /* @__PURE__ */ k("div", { class: "cartmax-body" }, loading ? this.renderLoading() : isEmpty ? this.renderEmpty() : hasItems ? this._displayItems().map((item) => this.renderLineItem(item)) : null, hasItems && sec.show_coupons ? this.renderCoupons() : null, sec.show_upsells ? this.renderUpsells() : null),
         hasItems && sec.show_ribbon ? this.renderRibbon() : null,
         hasItems ? this.renderFooter() : null
       )));
