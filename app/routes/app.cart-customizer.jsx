@@ -676,6 +676,132 @@ function ContentTab({ s, update }) {
   const pb = s.progress_bar || {};
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <s-section heading="Cart copy" description="Customize the headings, button labels, and helper text.">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <s-text-field label="Cart title" value={s.text.cart_title} onInput={(e) => update("text.cart_title", e.target.value)} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <s-text-field label="Checkout button" value={s.text.checkout_button} onInput={(e) => update("text.checkout_button", e.target.value)} />
+            <s-text-field label="Coupon placeholder" value={s.text.coupon_placeholder} onInput={(e) => update("text.coupon_placeholder", e.target.value)} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <s-text-field label="Total label" value={s.text.total_label} onInput={(e) => update("text.total_label", e.target.value)} />
+            <s-text-field label="Subtotal label" value={s.text.subtotal_label} onInput={(e) => update("text.subtotal_label", e.target.value)} />
+          </div>
+          <s-text-field
+            label="Savings ribbon text"
+            details="Use {amount} to show the saved value. Leave empty to hide."
+            value={s.text.savings_label}
+            onInput={(e) => update("text.savings_label", e.target.value)}
+          />
+          <s-text-field
+            label="Free gift offer card heading"
+            details='Shown above gift cards for offers with reward mode "Show offer card only".'
+            value={s.text.offer_cards_heading}
+            onInput={(e) => update("text.offer_cards_heading", e.target.value)}
+          />
+        </div>
+      </s-section>
+
+      <s-section heading="Empty cart" description="Shown when the cart is empty.">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Icon upload */}
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: "#1a1a1a", marginBottom: 4 }}>Empty state icon</div>
+            <div style={{ fontSize: 12, color: "#6d7175", marginBottom: 10, lineHeight: 1.4 }}>
+              Upload an SVG file to replace the default bag icon. Leave empty to use the default.
+            </div>
+            {s.layout.empty_icon_url ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{
+                  width: 56, height: 56, borderRadius: 8, border: "1px solid #d4d6d8",
+                  background: "#f9f9f9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+                }}>
+                  <img src={s.layout.empty_icon_url} alt="" style={{ width: 40, height: 40, objectFit: "contain" }} />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <s-button size="slim" onClick={() => {
+                    const input = document.createElement("input");
+                    input.type = "file";
+                    input.accept = ".svg,image/svg+xml";
+                    input.onchange = (e) => {
+                      const file = e.target.files[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => update("layout.empty_icon_url", ev.target.result);
+                      reader.readAsDataURL(file);
+                    };
+                    input.click();
+                  }}>Replace</s-button>
+                  <s-button size="slim" tone="critical" onClick={() => update("layout.empty_icon_url", "")}>Remove</s-button>
+                </div>
+              </div>
+            ) : (
+              <div
+                onClick={() => {
+                  const input = document.createElement("input");
+                  input.type = "file";
+                  input.accept = ".svg,image/svg+xml";
+                  input.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => update("layout.empty_icon_url", ev.target.result);
+                    reader.readAsDataURL(file);
+                  };
+                  input.click();
+                }}
+                style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  gap: 6, padding: "20px 24px", border: "1.5px dashed #d4d6d8", borderRadius: 10,
+                  cursor: "pointer", background: "#fafafa",
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8c9196" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <span style={{ fontSize: 12, color: "#6d7175" }}>Click to upload SVG</span>
+              </div>
+            )}
+          </div>
+
+          {/* Icon color */}
+          <ColorField
+            label="Icon color"
+            value={s.layout.empty_icon_color || "#16a34a"}
+            onChange={(v) => update("layout.empty_icon_color", v)}
+          />
+          <div style={{ fontSize: 12, color: "#6d7175", marginTop: -8, lineHeight: 1.4 }}>
+            Applies to the default icon only. Your uploaded SVG uses its own colors.
+          </div>
+
+          {/* Icon size */}
+          <SegmentedControl
+            label="Icon size"
+            options={[
+              { value: "small", label: "Small" },
+              { value: "medium", label: "Medium" },
+              { value: "large", label: "Large" },
+            ]}
+            value={s.layout.empty_icon_size || "medium"}
+            onChange={(v) => update("layout.empty_icon_size", v)}
+          />
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <s-text-field label="Empty state title" value={s.text.empty_title} onInput={(e) => update("text.empty_title", e.target.value)} />
+            <s-text-field label="Empty state button" details="Leave empty to hide the button." value={s.text.empty_button} onInput={(e) => update("text.empty_button", e.target.value)} />
+          </div>
+          <s-text-field label="Empty state subtitle" value={s.text.empty_subtitle} onInput={(e) => update("text.empty_subtitle", e.target.value)} />
+
+          <s-text-field
+            label="Empty state button URL"
+            value={s.text.continue_shopping_url}
+            onInput={(e) => update("text.continue_shopping_url", e.target.value)}
+            placeholder="Leave empty to close drawer"
+            details="Where the empty cart button takes the customer. Leave empty to close the drawer, or enter a URL to redirect."
+          />
+        </div>
+      </s-section>
+
       <s-section heading="Announcement bar" description="A full-width strip shown above the cart header.">
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <s-text-field
@@ -836,124 +962,6 @@ function ContentTab({ s, update }) {
         </div>
       </s-section>
 
-      <s-section heading="Cart copy" description="Customize the headings, button labels, and helper text.">
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <s-text-field label="Cart title" value={s.text.cart_title} onInput={(e) => update("text.cart_title", e.target.value)} />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            <s-text-field label="Checkout button" value={s.text.checkout_button} onInput={(e) => update("text.checkout_button", e.target.value)} />
-            <s-text-field label="Coupon placeholder" value={s.text.coupon_placeholder} onInput={(e) => update("text.coupon_placeholder", e.target.value)} />
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            <s-text-field label="Total label" value={s.text.total_label} onInput={(e) => update("text.total_label", e.target.value)} />
-            <s-text-field label="Subtotal label" value={s.text.subtotal_label} onInput={(e) => update("text.subtotal_label", e.target.value)} />
-          </div>
-          <s-text-field
-            label="Savings ribbon text"
-            details="Use {amount} to show the saved value. Leave empty to hide."
-            value={s.text.savings_label}
-            onInput={(e) => update("text.savings_label", e.target.value)}
-          />
-          <s-text-field
-            label="Free gift offer card heading"
-            details='Shown above gift cards for offers with reward mode "Show offer card only".'
-            value={s.text.offer_cards_heading}
-            onInput={(e) => update("text.offer_cards_heading", e.target.value)}
-          />
-        </div>
-      </s-section>
-
-      <s-section heading="Empty cart" description="Shown when the cart is empty.">
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {/* Icon upload */}
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 500, color: "#1a1a1a", marginBottom: 4 }}>Empty state icon</div>
-            <div style={{ fontSize: 12, color: "#6d7175", marginBottom: 10, lineHeight: 1.4 }}>
-              Upload an SVG file to replace the default bag icon. Leave empty to use the default.
-            </div>
-            {s.layout.empty_icon_url ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{
-                  width: 56, height: 56, borderRadius: 8, border: "1px solid #d4d6d8",
-                  background: "#f9f9f9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
-                }}>
-                  <img src={s.layout.empty_icon_url} alt="" style={{ width: 40, height: 40, objectFit: "contain" }} />
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <s-button size="slim" onClick={() => {
-                    const input = document.createElement("input");
-                    input.type = "file";
-                    input.accept = ".svg,image/svg+xml";
-                    input.onchange = (e) => {
-                      const file = e.target.files[0];
-                      if (!file) return;
-                      const reader = new FileReader();
-                      reader.onload = (ev) => update("layout.empty_icon_url", ev.target.result);
-                      reader.readAsDataURL(file);
-                    };
-                    input.click();
-                  }}>Replace</s-button>
-                  <s-button size="slim" tone="critical" onClick={() => update("layout.empty_icon_url", "")}>Remove</s-button>
-                </div>
-              </div>
-            ) : (
-              <div
-                onClick={() => {
-                  const input = document.createElement("input");
-                  input.type = "file";
-                  input.accept = ".svg,image/svg+xml";
-                  input.onchange = (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-                    const reader = new FileReader();
-                    reader.onload = (ev) => update("layout.empty_icon_url", ev.target.result);
-                    reader.readAsDataURL(file);
-                  };
-                  input.click();
-                }}
-                style={{
-                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                  gap: 6, padding: "20px 24px", border: "1.5px dashed #d4d6d8", borderRadius: 10,
-                  cursor: "pointer", background: "#fafafa",
-                }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8c9196" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
-                </svg>
-                <span style={{ fontSize: 12, color: "#6d7175" }}>Click to upload SVG</span>
-              </div>
-            )}
-          </div>
-
-          {/* Icon color */}
-          <ColorField
-            label="Icon color"
-            value={s.layout.empty_icon_color || "#16a34a"}
-            onChange={(v) => update("layout.empty_icon_color", v)}
-          />
-          <div style={{ fontSize: 12, color: "#6d7175", marginTop: -8, lineHeight: 1.4 }}>
-            Applies to the default icon only. Your uploaded SVG uses its own colors.
-          </div>
-
-          {/* Icon size */}
-          <SegmentedControl
-            label="Icon size"
-            options={[
-              { value: "small", label: "Small" },
-              { value: "medium", label: "Medium" },
-              { value: "large", label: "Large" },
-            ]}
-            value={s.layout.empty_icon_size || "medium"}
-            onChange={(v) => update("layout.empty_icon_size", v)}
-          />
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            <s-text-field label="Empty state title" value={s.text.empty_title} onInput={(e) => update("text.empty_title", e.target.value)} />
-            <s-text-field label="Empty state button" details="Leave empty to hide the button." value={s.text.empty_button} onInput={(e) => update("text.empty_button", e.target.value)} />
-          </div>
-          <s-text-field label="Empty state subtitle" value={s.text.empty_subtitle} onInput={(e) => update("text.empty_subtitle", e.target.value)} />
-        </div>
-      </s-section>
-
       <s-section heading="Upsells" description="Customize how recommended products are displayed.">
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <SegmentedControl
@@ -993,18 +1001,6 @@ function ContentTab({ s, update }) {
             label="Show compare-at (strikethrough) price"
             checked={s.layout.upsells_show_compare_price !== false}
             onChange={(e) => update("layout.upsells_show_compare_price", e.target.checked)}
-          />
-        </div>
-      </s-section>
-
-      <s-section heading="Continue shopping" description="Optional link below the cart.">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          <s-text-field label="Link text" value={s.text.continue_shopping} onInput={(e) => update("text.continue_shopping", e.target.value)} />
-          <s-text-field
-            label="Link URL"
-            value={s.text.continue_shopping_url}
-            onInput={(e) => update("text.continue_shopping_url", e.target.value)}
-            placeholder="Leave empty to close drawer"
           />
         </div>
       </s-section>

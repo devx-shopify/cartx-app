@@ -2974,20 +2974,7 @@
         },
         /* @__PURE__ */ k(IconLock, null),
         /* @__PURE__ */ k("span", null, this.state.checkoutWaiting ? "Preparing..." : this._text.checkout_button)
-      )), /* @__PURE__ */ k("div", { class: "cartmax-footer-trust" }, /* @__PURE__ */ k(IconLock, null), /* @__PURE__ */ k("span", null, "Guaranteed safe & secure checkout")), this._text.continue_shopping && /* @__PURE__ */ k("div", { style: { textAlign: "center", marginTop: "6px" } }, /* @__PURE__ */ k(
-        "button",
-        {
-          class: "cartmax-coupons-viewall",
-          onClick: () => {
-            if (this._text.continue_shopping_url) {
-              window.location.href = this._text.continue_shopping_url;
-            } else {
-              this.close();
-            }
-          }
-        },
-        this._text.continue_shopping
-      )));
+      )), /* @__PURE__ */ k("div", { class: "cartmax-footer-trust" }, /* @__PURE__ */ k(IconLock, null), /* @__PURE__ */ k("span", null, "Guaranteed safe & secure checkout")));
     }
     // ── Main render ───────────────────────────────────────────
     render(props, { visible, open, cart, loading }) {

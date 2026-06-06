@@ -201,7 +201,6 @@ export const DrawerConfigSchema = z.object({
     empty_subtitle: z.string().default("Looks like you haven't added anything yet"),
     empty_button: z.string().default('Continue shopping'),
     checkout_button: z.string().default('Checkout'),
-    continue_shopping: z.string().default('Continue shopping'),
     continue_shopping_url: z.string().default(''),
     coupon_placeholder: z.string().default('Discount code'),
     total_label: z.string().default('Total'),

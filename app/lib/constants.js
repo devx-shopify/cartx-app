@@ -68,7 +68,6 @@ export const DEFAULT_CONFIG = {
       empty_subtitle: "Looks like you haven't added anything yet",
       empty_button: 'Continue shopping',
       checkout_button: 'Checkout',
-      continue_shopping: 'Continue shopping',
       continue_shopping_url: '',
       coupon_placeholder: 'Discount code',
       total_label: 'Total',

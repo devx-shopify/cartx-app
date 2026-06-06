@@ -1856,17 +1856,6 @@ export default class CartDrawer extends Component {
           <IconLock />
           <span>Guaranteed safe &amp; secure checkout</span>
         </div>
-        {this._text.continue_shopping && (
-          <div style={{ textAlign: 'center', marginTop: '6px' }}>
-            <button
-              class="cartmax-coupons-viewall"
-              onClick={() => {
-                if (this._text.continue_shopping_url) { window.location.href = this._text.continue_shopping_url; }
-                else { this.close(); }
-              }}
-            >{this._text.continue_shopping}</button>
-          </div>
-        )}
       </div>
     );
   }

@@ -884,13 +884,6 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
           </svg>
           <span>Guaranteed safe &amp; secure checkout</span>
         </div>
-        {(tx.continue_shopping || tx.continue_shopping_url) && (
-          <div style={{ textAlign: "center", marginTop: 6 }}>
-            <span style={{ fontSize: 12, color: textSec, textDecoration: "underline", textUnderlineOffset: 2 }}>
-              {tx.continue_shopping || "Continue shopping"}
-            </span>
-          </div>
-        )}
         </div>
       </div>
       </>)}
