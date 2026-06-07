@@ -1638,7 +1638,7 @@
         savings_label: "Congrats! You saved {amount} on this order.",
         offer_cards_heading: "Pick your free gift"
       };
-      this._layout = { drawer_position: "right", image_style: "rounded", qty_style: "bordered", show_vendor: false, show_variant_switcher: true, show_remove_btn: true };
+      this._layout = { drawer_position: "right", image_style: "rounded", qty_style: "bordered", show_vendor: false, show_variant_switcher: true, show_remove_btn: true, savings_animated: false };
       this._variantCache = {};
       this._upsells = { card_layout: "horizontal", card_size: "medium", heading: "", btn_text: "ADD TO CART", show_compare_price: true };
       this._announcement = { text: "", type: "static" };
@@ -1864,6 +1864,25 @@
         attributes: true,
         attributeFilter: ["class"]
       });
+      this._onBodyScroll = () => {
+        if (!this._layout.savings_animated) return;
+        var ribbon = this._drawerRef && this._drawerRef.querySelector(".cartmax-footer-savings");
+        if (!ribbon) return;
+        if (this._savingsRestoring) return;
+        ribbon.classList.add("is-scrolling");
+        if (this._savingsScrollTimer) clearTimeout(this._savingsScrollTimer);
+        this._savingsScrollTimer = setTimeout(() => {
+          ribbon.classList.remove("is-scrolling");
+          this._savingsRestoring = true;
+          setTimeout(() => {
+            this._savingsRestoring = false;
+          }, 300);
+        }, 150);
+      };
+      setTimeout(() => {
+        this._bodyScrollEl = this._drawerRef && this._drawerRef.querySelector(".cartmax-body");
+        if (this._bodyScrollEl) this._bodyScrollEl.addEventListener("scroll", this._onBodyScroll, { passive: true });
+      }, 0);
     }
     componentWillUnmount() {
       window.removeEventListener("cartmax:cart-changed", this._onCartChanged);
@@ -1882,6 +1901,8 @@
       Object.values(this._errorTimers || {}).forEach(clearTimeout);
       if (this._upsellErrorTimer) clearTimeout(this._upsellErrorTimer);
       this._clearProcessingTimeout();
+      if (this._bodyScrollEl) this._bodyScrollEl.removeEventListener("scroll", this._onBodyScroll);
+      if (this._savingsScrollTimer) clearTimeout(this._savingsScrollTimer);
       tracker.flush({ useBeacon: true });
     }
     // Ref callback for elements that represent a promotion impression target.
@@ -1923,7 +1944,8 @@
         show_remove_btn: l2.show_remove_btn !== false,
         empty_icon_url: l2.empty_icon_url || "",
         empty_icon_size: l2.empty_icon_size || "medium",
-        empty_icon_color: l2.empty_icon_color || ""
+        empty_icon_color: l2.empty_icon_color || "",
+        savings_animated: l2.savings_animated === true
       };
       this._upsells = {
         card_layout: l2.upsells_card_layout || "horizontal",
@@ -3070,7 +3092,7 @@
       var discounts = cart.cart_level_discount_applications || [];
       var savings = Number(this.state.savings) || 0;
       var savingsParts = savings > 0 && this._text.savings_label ? this._text.savings_label.split("{amount}") : null;
-      return /* @__PURE__ */ k("div", { class: "cartmax-footer" }, savingsParts ? /* @__PURE__ */ k("div", { class: "cartmax-footer-savings" }, /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-icon" }, /* @__PURE__ */ k(IconSparkle, null)), /* @__PURE__ */ k("span", null, savingsParts[0]), /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-amount" }, formatMoney(savings, curr)), /* @__PURE__ */ k("span", null, savingsParts[1] || "")) : null, hasDiscount ? /* @__PURE__ */ k("div", { class: "cartmax-totals" }, /* @__PURE__ */ k("div", { class: "cartmax-totals-row" }, /* @__PURE__ */ k("span", null, this._text.subtotal_label), /* @__PURE__ */ k("span", null, formatMoney(cart.items_subtotal_price, curr))), discounts.length > 0 ? discounts.map((d2) => {
+      return /* @__PURE__ */ k("div", { class: "cartmax-footer" }, savingsParts ? /* @__PURE__ */ k("div", { class: "cartmax-footer-savings" + (this._layout.savings_animated ? " cartmax-footer-savings--animated" : "") }, /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-icon" }, /* @__PURE__ */ k(IconSparkle, null)), /* @__PURE__ */ k("span", null, savingsParts[0]), /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-amount" }, formatMoney(savings, curr)), /* @__PURE__ */ k("span", null, savingsParts[1] || "")) : null, hasDiscount ? /* @__PURE__ */ k("div", { class: "cartmax-totals" }, /* @__PURE__ */ k("div", { class: "cartmax-totals-row" }, /* @__PURE__ */ k("span", null, this._text.subtotal_label), /* @__PURE__ */ k("span", null, formatMoney(cart.items_subtotal_price, curr))), discounts.length > 0 ? discounts.map((d2) => {
         var amt = d2.total_allocated_amount || d2.amount || 0;
         return /* @__PURE__ */ k("div", { class: "cartmax-totals-row cartmax-discount-row", key: d2.title }, /* @__PURE__ */ k("span", null, d2.title || "Discount"), /* @__PURE__ */ k("span", null, "\u2212" + formatMoney(amt, curr)));
       }) : cart.total_discount > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-totals-row cartmax-discount-row" }, /* @__PURE__ */ k("span", null, "Discounts"), /* @__PURE__ */ k("span", null, "\u2212" + formatMoney(cart.total_discount, curr))) : null) : null, /* @__PURE__ */ k("div", { class: "cartmax-footer-checkout" }, /* @__PURE__ */ k("div", { class: "cartmax-footer-total" }, /* @__PURE__ */ k("span", null, this._text.total_label), /* @__PURE__ */ k("span", null, formatMoney(cart.total_price, curr))), /* @__PURE__ */ k(

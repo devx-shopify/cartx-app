@@ -593,17 +593,6 @@ function DesignTab({ s, update }) {
             <ColorField label="Secondary Accent (announcement, buttons)" value={s.colors.secondary_accent} onChange={(v) => update("colors.secondary_accent", v)} />
           </div>
 
-          <s-divider />
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <s-text fontWeight="medium">Savings ribbon</s-text>
-            <s-text color="subdued" variant="bodySm">Shown above the total when the cart has discounts.</s-text>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16 }}>
-            <ColorField label="Background" value={s.colors.savings_bg} onChange={(v) => update("colors.savings_bg", v)} />
-            <ColorField label="Text" value={s.colors.savings_text} onChange={(v) => update("colors.savings_text", v)} />
-            <ColorField label="Amount" value={s.colors.savings_amount} onChange={(v) => update("colors.savings_amount", v)} />
-          </div>
 
           <s-divider />
 
@@ -688,12 +677,6 @@ function ContentTab({ s, update }) {
             <s-text-field label="Total label" value={s.text.total_label} onInput={(e) => update("text.total_label", e.target.value)} />
             <s-text-field label="Subtotal label" value={s.text.subtotal_label} onInput={(e) => update("text.subtotal_label", e.target.value)} />
           </div>
-          <s-text-field
-            label="Savings ribbon text"
-            details="Use {amount} to show the saved value. Leave empty to hide."
-            value={s.text.savings_label}
-            onInput={(e) => update("text.savings_label", e.target.value)}
-          />
           <s-text-field
             label="Free gift offer card heading"
             details='Shown above gift cards for offers with reward mode "Show offer card only".'
@@ -821,6 +804,22 @@ function ContentTab({ s, update }) {
             value={ab.type || "static"}
             onChange={(v) => update("announcement_bar.type", v)}
           />
+        </div>
+      </s-section>
+
+      <s-section heading="Savings ribbon" description="Shown above the total when the cart has discounts.">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <s-text-field
+            label="Savings ribbon text"
+            details="Use {amount} to show the saved value. Leave empty to hide."
+            value={s.text.savings_label}
+            onInput={(e) => update("text.savings_label", e.target.value)}
+          />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16 }}>
+            <ColorField label="Background" value={s.colors.savings_bg} onChange={(v) => update("colors.savings_bg", v)} />
+            <ColorField label="Text" value={s.colors.savings_text} onChange={(v) => update("colors.savings_text", v)} />
+            <ColorField label="Amount color" value={s.colors.savings_amount} onChange={(v) => update("colors.savings_amount", v)} />
+          </div>
         </div>
       </s-section>
 
