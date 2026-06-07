@@ -213,13 +213,12 @@ cart-notification-component [role="dialog"] {
   flex-direction: column;
 }
 
-.cartmax-body::-webkit-scrollbar {
-  width: 4px;
+.cartmax-body {
+  scrollbar-width: none;
 }
 
-.cartmax-body::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.1);
-  border-radius: 2px;
+.cartmax-body::-webkit-scrollbar {
+  display: none;
 }
 
 .cartmax-line-item {
@@ -1352,144 +1351,234 @@ cart-notification-component [role="dialog"] {
 /* --- Coupons --- */
 
 .cartmax-coupons {
-  padding: 8px 16px;
-  border-top: 1px solid var(--cartmax-border, #f0f0f0);
   flex-shrink: 0;
-  background: var(--cartmax-bg, #ffffff);
 }
 
-.cartmax-coupon-input-row {
+/* Applied coupon banner */
+
+.cartmax-applied-coupon-banner {
+  background: var(--cartmax-accent, #ff4b7e);
+  padding: 16px 20px;
+}
+
+.cartmax-applied-coupon-card {
   display: flex;
-  gap: 6px;
-}
-
-.cartmax-coupon-input {
-  flex: 1;
-  padding: 7px 10px;
-  border: 1px solid var(--cartmax-border, #e5e7eb);
-  border-radius: calc(var(--cartmax-radius, 6px) * 0.75);
-  font-size: 12px;
-  font-family: inherit;
-  outline: none;
-  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   background: var(--cartmax-bg, #ffffff);
+  border: 1px dashed var(--cartmax-text, #1a1a1a);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.cartmax-applied-coupon-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 4px;
+}
+
+.cartmax-applied-label {
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 14px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--cartmax-text-secondary, #6b7280);
+}
+
+.cartmax-applied-code {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
   color: var(--cartmax-text, #1a1a1a);
-  transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
 }
 
-.cartmax-coupon-input:focus {
-  border-color: var(--cartmax-primary, #1a1a1a);
-  box-shadow: 0 0 0 2px rgba(26, 26, 26, 0.06);
-}
-
-.cartmax-coupon-input::placeholder {
-  color: #d1d5db;
-}
-
-.cartmax-coupon-apply-btn {
-  padding: 7px 12px;
-  background: var(--cartmax-bg, #ffffff);
-  color: var(--cartmax-text, #1a1a1a);
-  border: 1px solid var(--cartmax-border, #e5e7eb);
-  border-radius: calc(var(--cartmax-radius, 6px) * 0.75);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
+.cartmax-applied-remove {
   flex-shrink: 0;
-  transition: all 0.15s ease;
+  background: var(--cartmax-accent, #ff4b7e);
+  color: var(--cartmax-bg, #ffffff);
+  border: none;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 15px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
 }
 
-.cartmax-coupon-apply-btn:hover:not(:disabled) {
-  background: #f9fafb;
-  border-color: #1a1a1a;
-}
-
-.cartmax-coupon-apply-btn:disabled {
-  opacity: 0.4;
+.cartmax-applied-remove:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
-.cartmax-coupon-error {
-  color: #dc2626;
-  font-size: 11px;
-  margin-top: 4px;
-}
+/* Discount block */
 
-.cartmax-coupons-viewall {
-  background: none;
-  border: none;
-  color: #6b7280;
-  font-size: 12px;
-  cursor: pointer;
-  padding: 0;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  margin-top: 6px;
-  display: block;
-  transition: color 0.15s ease;
-}
-
-.cartmax-coupons-viewall:hover {
-  color: #1a1a1a;
-}
-
-/* Applied discount codes */
-
-.cartmax-applied-discounts {
+.cartmax-discount-block {
+  background: color-mix(in srgb, var(--cartmax-accent, #ff4b7e) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cartmax-accent, #ff4b7e) 30%, transparent);
+  padding: 16px 20px;
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 6px;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.cartmax-applied-discount {
-  display: inline-flex;
+.cartmax-discount-header {
+  display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  background: color-mix(in srgb, var(--cartmax-accent, #16a34a) 6%, #ffffff);
-  border: 1px solid color-mix(in srgb, var(--cartmax-accent, #16a34a) 35%, transparent);
+  gap: 8px;
+  width: 100%;
+  background: var(--cartmax-bg, #ffffff);
+  border: 1px solid var(--cartmax-border, #e5e7eb);
   border-radius: 6px;
+  padding: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: opacity 0.15s ease;
+}
+
+.cartmax-discount-header:hover {
+  opacity: 0.9;
+}
+
+.cartmax-discount-header-icon {
+  display: flex;
+  align-items: center;
+  color: var(--cartmax-text-secondary, #6b7280);
+  flex-shrink: 0;
+}
+
+.cartmax-discount-header-label {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  letter-spacing: 0.7px;
+  color: var(--cartmax-text, #1a1a1a);
+}
+
+.cartmax-discount-viewall {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 20px;
+  letter-spacing: 0.6px;
+  color: var(--cartmax-text, #1a1a1a);
+  flex-shrink: 0;
+}
+
+/* Horizontal scrollable coupon cards */
+
+.cartmax-discount-cards {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.cartmax-discount-cards::-webkit-scrollbar {
+  display: none;
+}
+
+.cartmax-discount-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-shrink: 0;
+  width: 280px;
+  height: 67px;
+  background: var(--cartmax-bg, #ffffff);
+  border: 1px dashed var(--cartmax-text, #1a1a1a);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.cartmax-discount-card-accent {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 100%;
+  background: var(--cartmax-accent, #ff4b7e);
+  padding: 0 4px;
+}
+
+.cartmax-discount-card-accent span {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  letter-spacing: 0.5px;
+  color: var(--cartmax-bg, #ffffff);
+  writing-mode: vertical-lr;
+  transform: rotate(180deg);
+  white-space: nowrap;
+}
+
+.cartmax-discount-card-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 16px;
+  min-width: 0;
+}
+
+.cartmax-discount-card-code {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--cartmax-text, #1a1a1a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cartmax-discount-card-savings {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  color: var(--cartmax-text-secondary, #6b7280);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cartmax-discount-card-btn {
+  flex-shrink: 0;
+  margin-right: 12px;
+  width: 56px;
+  height: 27px;
+  background: var(--cartmax-accent, #ff4b7e);
+  color: var(--cartmax-bg, #ffffff);
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
   transition: all 0.15s ease;
 }
 
-.cartmax-applied-discount-info {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.cartmax-discount-card-btn--applied {
+  background: var(--cartmax-primary, #1a1a1a);
+  color: var(--cartmax-accent, #ff4b7e);
 }
 
-.cartmax-applied-discount-code {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--cartmax-accent, #166534);
+.cartmax-discount-card-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
-.cartmax-applied-discount-remove {
-  background: none;
-  border: none;
-  color: color-mix(in srgb, var(--cartmax-accent, #16a34a) 60%, #ffffff);
-  cursor: pointer;
-  padding: 0;
-  line-height: 1;
-  transition: color 0.15s ease;
-  display: flex;
-  align-items: center;
-}
+/* Offers & Coupons panel */
 
-.cartmax-applied-discount-remove:hover {
-  color: #dc2626;
-}
-
-/* Coupon drawer */
-
-.cartmax-coupon-drawer {
+.cartmax-offers-panel {
   position: absolute;
   inset: 0;
-  background: #fff;
+  background: var(--cartmax-bg, #ffffff);
   z-index: 10;
   display: flex;
   flex-direction: column;
@@ -1498,143 +1587,214 @@ cart-notification-component [role="dialog"] {
   will-change: transform;
 }
 
-.cartmax-coupon-drawer--open {
+.cartmax-offers-panel--open {
   transform: translateX(0);
 }
 
-.cartmax-coupon-drawer-header {
+.cartmax-offers-panel-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 16px 20px;
-  border-bottom: 1px solid #f0f0f0;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--cartmax-border, #e5e7eb);
   flex-shrink: 0;
+  min-height: 56px;
 }
 
-.cartmax-coupon-drawer-back {
-  background: none;
-  border: none;
-  font-size: 18px;
-  cursor: pointer;
-  color: #6b7280;
-  padding: 4px;
-  line-height: 1;
-  border-radius: 4px;
-  transition: color 0.15s ease;
-}
-
-.cartmax-coupon-drawer-back:hover {
-  color: #1a1a1a;
-}
-
-.cartmax-coupon-drawer-title {
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.cartmax-coupon-drawer-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px 20px;
+.cartmax-offers-back {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  -webkit-overflow-scrolling: touch;
-}
-
-.cartmax-coupon-card {
-  border: 1px solid var(--cartmax-border, #e5e7eb);
-  border-radius: var(--cartmax-radius, 10px);
-  padding: 12px 14px;
-  background: var(--cartmax-bg, #ffffff);
-  transition: all 0.15s ease;
-}
-
-.cartmax-coupon-card:hover {
-  border-color: #d1d5db;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
-}
-
-.cartmax-coupon-card--applied {
-  border-color: color-mix(in srgb, var(--cartmax-accent, #16a34a) 45%, transparent);
-  background: color-mix(in srgb, var(--cartmax-accent, #16a34a) 6%, #ffffff);
-}
-
-.cartmax-coupon-card-header {
-  display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 4px;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--cartmax-text-secondary, #6b7280);
+  color: var(--cartmax-bg, #ffffff);
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
 }
 
-.cartmax-coupon-card-type {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  color: #6b7280;
-  letter-spacing: 0.5px;
+.cartmax-offers-back:hover {
+  opacity: 0.85;
 }
 
-.cartmax-coupon-card-code {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border: 1px dashed #d1d5db;
-  border-radius: 4px;
-  letter-spacing: 0.5px;
-  color: #374151;
-  font-family: monospace;
-}
-
-.cartmax-coupon-card-auto {
-  font-size: 10px;
-  color: #9ca3af;
+.cartmax-offers-title {
+  font-size: 18px;
   font-weight: 500;
-}
-
-.cartmax-coupon-card-title {
-  font-size: 13px;
-  font-weight: 500;
-  margin-bottom: 2px;
+  line-height: 26px;
   color: var(--cartmax-text, #1a1a1a);
 }
 
-.cartmax-coupon-card-msg {
-  font-size: 12px;
-  color: #6b7280;
-  margin-bottom: 6px;
+.cartmax-offers-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  -webkit-overflow-scrolling: touch;
 }
 
-.cartmax-coupon-card-btn {
-  padding: 6px 14px;
-  background: var(--cartmax-primary, #1a1a1a);
-  color: var(--cartmax-primary-text, #fff);
+/* Input row inside offers panel */
+
+.cartmax-offers-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.cartmax-offers-input {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--cartmax-border, #e5e7eb);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  min-width: 0;
+  background: var(--cartmax-bg, #ffffff);
+  color: var(--cartmax-text, #1a1a1a);
+  transition: border-color 0.2s ease;
+}
+
+.cartmax-offers-input:focus {
+  border-color: var(--cartmax-text-secondary, #6b7280);
+}
+
+.cartmax-offers-input::placeholder {
+  color: var(--cartmax-border, #e5e7eb);
+}
+
+.cartmax-offers-apply-btn {
+  flex-shrink: 0;
+  padding: 10px 16px;
+  background: var(--cartmax-accent, #ff4b7e);
+  color: var(--cartmax-bg, #ffffff);
   border: none;
-  border-radius: calc(var(--cartmax-radius, 6px) * 0.75);
-  font-size: 12px;
-  font-weight: 600;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
-  margin-top: 4px;
-  transition: background 0.15s ease;
+  transition: opacity 0.15s ease;
 }
 
-.cartmax-coupon-card-btn:hover:not(:disabled) {
-  background: #333333;
-}
-
-.cartmax-coupon-card-btn:disabled {
+.cartmax-offers-apply-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-.cartmax-coupon-card-applied {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+.cartmax-coupon-error {
+  color: #dc2626;
   font-size: 12px;
-  font-weight: 600;
-  color: var(--cartmax-accent, #16a34a);
-  margin-top: 4px;
+  margin-top: -12px;
+}
+
+/* Available coupons label */
+
+.cartmax-offers-label {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: var(--cartmax-text-secondary, #6b7280);
+}
+
+/* Vertical coupon card list in panel */
+
+.cartmax-offers-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cartmax-offers-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+  height: 67px;
+  background: var(--cartmax-bg, #ffffff);
+  border: 1px dashed var(--cartmax-text, #1a1a1a);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.cartmax-offers-card-accent {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 100%;
+  background: var(--cartmax-accent, #ff4b7e);
+  padding: 0 4px;
+}
+
+.cartmax-offers-card-accent span {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  letter-spacing: 0.5px;
+  color: var(--cartmax-bg, #ffffff);
+  writing-mode: vertical-lr;
+  transform: rotate(180deg);
+  white-space: nowrap;
+}
+
+.cartmax-offers-card-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 16px;
+  min-width: 0;
+}
+
+.cartmax-offers-card-code {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--cartmax-text, #1a1a1a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cartmax-offers-card-savings {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  color: var(--cartmax-text-secondary, #6b7280);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cartmax-offers-card-btn {
+  flex-shrink: 0;
+  margin-right: 12px;
+  width: 56px;
+  height: 27px;
+  background: var(--cartmax-accent, #ff4b7e);
+  color: var(--cartmax-bg, #ffffff);
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cartmax-offers-card-btn--applied {
+  background: var(--cartmax-primary, #1a1a1a);
+  color: var(--cartmax-accent, #ff4b7e);
+}
+
+.cartmax-offers-card-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* --- Upsells --- */

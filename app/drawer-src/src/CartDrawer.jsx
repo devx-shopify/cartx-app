@@ -135,6 +135,28 @@ function IconPaymentMethods() {
   );
 }
 
+function IconTag() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 21C11.677 21 11.3714 20.9398 11.0833 20.8195C10.7952 20.6992 10.5399 20.5253 10.3173 20.298C9.79542 19.789 9.34992 19.4563 8.98075 19.3C8.61158 19.1437 8.05775 19.0655 7.31925 19.0655C6.65692 19.0655 6.09383 18.8337 5.63 18.37C5.16633 17.9062 4.9345 17.3431 4.9345 16.6807C4.9345 15.9551 4.85583 15.404 4.6985 15.0275C4.54117 14.651 4.209 14.2028 3.702 13.6827C3.46983 13.4506 3.29483 13.1911 3.177 12.9043C3.059 12.6173 3 12.3173 3 12.0043C3 11.6911 3.059 11.3897 3.177 11.1C3.29483 10.8103 3.46983 10.5494 3.702 10.3173C4.209 9.80442 4.54117 9.36225 4.6985 8.99075C4.85583 8.61925 4.9345 8.06208 4.9345 7.31925C4.9345 6.65692 5.16633 6.09383 5.63 5.63C6.09383 5.16633 6.65692 4.9345 7.31925 4.9345C8.04492 4.9345 8.596 4.85583 8.9725 4.6985C9.349 4.54117 9.79725 4.209 10.3173 3.702C10.5406 3.47467 10.7968 3.30083 11.086 3.1805C11.375 3.06017 11.6772 3 11.9925 3C12.3078 3 12.6103 3.059 12.9 3.177C13.1897 3.29483 13.4506 3.46983 13.6827 3.702C14.1956 4.209 14.6377 4.54117 15.0092 4.6985C15.3807 4.85583 15.9379 4.9345 16.6807 4.9345C17.3431 4.9345 17.9062 5.16633 18.37 5.63C18.8337 6.09383 19.0655 6.65692 19.0655 7.31925C19.0655 8.04492 19.1442 8.596 19.3015 8.9725C19.4588 9.349 19.791 9.79725 20.298 10.3173C20.5302 10.5494 20.7052 10.8089 20.823 11.0958C20.941 11.3828 21 11.6827 21 11.9957C21 12.3089 20.941 12.6103 20.823 12.9C20.7052 13.1897 20.5302 13.4506 20.298 13.6827C19.789 14.2046 19.4563 14.6501 19.3 15.0192C19.1437 15.3884 19.0655 15.9422 19.0655 16.6807C19.0655 17.3431 18.8337 17.9062 18.37 18.37C17.9062 18.8337 17.3431 19.0655 16.6807 19.0655C15.9551 19.0655 15.404 19.1442 15.0275 19.3015C14.651 19.4588 14.2028 19.791 13.6827 20.298C13.4601 20.5253 13.2048 20.6992 12.9167 20.8195C12.6286 20.9398 12.323 21 12 21ZM12.0025 20C12.1855 20 12.3651 19.9644 12.5413 19.8932C12.7176 19.8221 12.8667 19.7256 12.9885 19.6038C13.5692 19.0103 14.122 18.6055 14.647 18.3895C15.1718 18.1735 15.8497 18.0655 16.6807 18.0655C17.0731 18.0655 17.4019 17.9328 17.6673 17.6673C17.9328 17.4019 18.0655 17.0731 18.0655 16.6807C18.0655 15.8551 18.1735 15.1817 18.3895 14.6605C18.6055 14.1393 19.0038 13.582 19.5845 12.9885C19.8615 12.7115 20 12.382 20 12C20 11.618 19.8679 11.2949 19.6038 11.0307C19.0103 10.4372 18.6055 9.878 18.3895 9.353C18.1735 8.82817 18.0655 8.15025 18.0655 7.31925C18.0655 6.92692 17.9328 6.59808 17.6673 6.33275C17.4019 6.06725 17.0731 5.9345 16.6807 5.9345C15.8366 5.9345 15.1562 5.82967 14.6395 5.62C14.1227 5.41017 13.5659 5.00867 12.9693 4.4155C12.8474 4.29367 12.6983 4.19392 12.522 4.11625C12.3458 4.03875 12.1718 4 12 4C11.8282 4 11.6509 4.04042 11.4683 4.12125C11.2856 4.20192 11.1333 4.3 11.0115 4.4155C10.4308 4.99617 9.878 5.3945 9.353 5.6105C8.82817 5.8265 8.15025 5.9345 7.31925 5.9345C6.92692 5.9345 6.59808 6.06725 6.33275 6.33275C6.06725 6.59808 5.9345 6.92692 5.9345 7.31925C5.9345 8.15775 5.8265 8.83758 5.6105 9.35875C5.3945 9.87992 4.98975 10.4372 4.39625 11.0307C4.13208 11.2949 4 11.618 4 12C4 12.382 4.13208 12.7115 4.39625 12.9885C4.98975 13.582 5.3945 14.1371 5.6105 14.6538C5.8265 15.1704 5.9345 15.8461 5.9345 16.6807C5.9345 17.0731 6.06725 17.4019 6.33275 17.6673C6.59808 17.9328 6.92692 18.0655 7.31925 18.0655C8.15908 18.0655 8.836 18.1735 9.35 18.3895C9.86417 18.6055 10.4244 19.0103 11.0308 19.6038C11.1526 19.7256 11.2992 19.8221 11.4707 19.8932C11.6423 19.9644 11.8195 20 12.0025 20ZM14.3688 15.327C14.6421 15.327 14.8702 15.2357 15.053 15.053C15.2357 14.8702 15.327 14.6421 15.327 14.3688C15.327 14.0954 15.2357 13.8631 15.053 13.6718C14.8702 13.4803 14.6421 13.3845 14.3688 13.3845C14.0954 13.3845 13.8631 13.4803 13.6718 13.6718C13.4803 13.8631 13.3845 14.0954 13.3845 14.3688C13.3845 14.6421 13.4803 14.8702 13.6718 15.053C13.8631 15.2357 14.0954 15.327 14.3688 15.327ZM9.5845 15.1038L15.1038 9.60375L14.3962 8.89625L8.89625 14.4155L9.5845 15.1038ZM9.63125 10.6155C9.90458 10.6155 10.1369 10.5198 10.3283 10.3283C10.5198 10.1369 10.6155 9.90458 10.6155 9.63125C10.6155 9.35792 10.5198 9.12983 10.3283 8.947C10.1369 8.76433 9.90458 8.673 9.63125 8.673C9.35792 8.673 9.12983 8.76433 8.947 8.947C8.76433 9.12983 8.673 9.35792 8.673 9.63125C8.673 9.90458 8.76433 10.1369 8.947 10.3283C9.12983 10.5198 9.35792 10.6155 9.63125 10.6155Z" fill="currentColor"/>
+    </svg>
+  );
+}
+
+function IconChevronLeft() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M16.3335 20.1924L10.1411 14L16.3335 7.80762L17.1592 8.63333L11.7925 14L17.1592 19.3667L16.3335 20.1924Z" fill="currentColor"/>
+    </svg>
+  );
+}
+
+var HARDCODED_COUPONS = [
+  { code: 'SAVE100',     accent: '₹100 OFF', savings: 'Save ₹100 on this order' },
+  { code: 'ENDYEARSALE', accent: '20% OFF',  savings: 'Save 20% on this order'  },
+  { code: 'FLAT200',     accent: '₹200 OFF', savings: 'Save ₹200 on this order' },
+];
+
 // ── CartDrawer Component ────────────────────────────────────
 
 export default class CartDrawer extends Component {
@@ -1728,97 +1750,120 @@ export default class CartDrawer extends Component {
     var self = this;
     var isLoading = this.state.couponLoading;
     var appliedDiscounts = this.getAppliedDiscounts();
-    var result = this.state.evalResult;
-    var available = (result && result.available_coupons) || [];
     var showPanel = this.state.couponPanelOpen;
 
     return (
       <div class="cartmax-coupons">
-        <div class="cartmax-coupon-input-row">
-          <input
-            class="cartmax-coupon-input"
-            type="text"
-            placeholder={this._text.coupon_placeholder}
-            value={this.state.couponInput || ''}
-            onInput={function (e) { self.setState({ couponInput: e.target.value, couponError: null }); }}
-            onKeyDown={function (e) { if (e.key === 'Enter') self.handleCouponApply(self.state.couponInput); }}
-            disabled={isLoading}
-          />
-          <button
-            class="cartmax-coupon-apply-btn"
-            onClick={function () { self.handleCouponApply(self.state.couponInput); }}
-            disabled={isLoading || !(self.state.couponInput || '').trim()}
-          >{isLoading ? '...' : 'Apply'}</button>
-        </div>
-        {this.state.couponError
-          ? <div class="cartmax-coupon-error">{this.state.couponError}</div>
-          : null
-        }
 
-        {available.length > 0 && (
-          <button
-            class="cartmax-coupons-viewall"
-            onClick={function () { self.setState({ couponPanelOpen: !showPanel }); }}
-          >{showPanel ? 'Hide coupons' : 'View all coupons (' + available.length + ')'}</button>
-        )}
+        {/* Applied coupon banners — one per applied code, stacked above block */}
+        {appliedDiscounts.map(function (d) {
+          return (
+            <div class="cartmax-applied-coupon-banner" key={d.code}>
+              <div class="cartmax-applied-coupon-card">
+                <div class="cartmax-applied-coupon-left">
+                  <span class="cartmax-applied-label">Applied Coupon</span>
+                  <span class="cartmax-applied-code">{d.code}</span>
+                </div>
+                <button
+                  class="cartmax-applied-remove"
+                  onClick={function () { self.handleCouponRemove(d.code); }}
+                  disabled={isLoading}
+                  aria-label={'Remove ' + d.code}
+                >REMOVE</button>
+              </div>
+            </div>
+          );
+        })}
 
-        {appliedDiscounts.length > 0 && (
-          <div class="cartmax-applied-discounts">
-            {appliedDiscounts.map(function (d) {
+        {/* Discount block — pink wrapper, header opens panel, horizontal card scroll */}
+        <div class="cartmax-discount-block">
+          <button
+            class="cartmax-discount-header"
+            onClick={function () { self.setState({ couponPanelOpen: true }); }}
+          >
+            <span class="cartmax-discount-header-icon"><IconTag /></span>
+            <span class="cartmax-discount-header-label">Apply Coupon</span>
+            <span class="cartmax-discount-viewall">View All</span>
+          </button>
+          <div class="cartmax-discount-cards">
+            {HARDCODED_COUPONS.map(function (c) {
+              var isApplied = appliedDiscounts.some(function (d) { return d.code === c.code; });
               return (
-                <div class="cartmax-applied-discount" key={d.code}>
-                  <div class="cartmax-applied-discount-info">
-                    <span class="cartmax-applied-discount-code">{d.code}</span>
+                <div class="cartmax-discount-card" key={c.code}>
+                  <div class="cartmax-discount-card-accent">
+                    <span>{c.accent}</span>
+                  </div>
+                  <div class="cartmax-discount-card-info">
+                    <span class="cartmax-discount-card-code">{c.code}</span>
+                    <span class="cartmax-discount-card-savings">{c.savings}</span>
                   </div>
                   <button
-                    class="cartmax-applied-discount-remove"
-                    onClick={function () { self.handleCouponRemove(d.code); }}
+                    class={'cartmax-discount-card-btn' + (isApplied ? ' cartmax-discount-card-btn--applied' : '')}
+                    onClick={function () { self.handleCouponApply(c.code); }}
                     disabled={isLoading}
-                    aria-label={'Remove ' + d.code}
-                  ><IconRemoveX /></button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <div class={'cartmax-coupon-drawer' + (showPanel ? ' cartmax-coupon-drawer--open' : '')}>
-          <div class="cartmax-coupon-drawer-header">
-            <button
-              class="cartmax-coupon-drawer-back"
-              onClick={function () { self.setState({ couponPanelOpen: false }); }}
-              aria-label="Back to cart"
-            >&#8592;</button>
-            <span class="cartmax-coupon-drawer-title">Available Coupons</span>
-          </div>
-          <div class="cartmax-coupon-drawer-body">
-            {available.map(function (c) {
-              return (
-                <div class={'cartmax-coupon-card' + (c.applied ? ' cartmax-coupon-card--applied' : '')} key={c.id}>
-                  <div class="cartmax-coupon-card-header">
-                    <span class="cartmax-coupon-card-type">{c.type_label}</span>
-                    {!c.is_automatic
-                      ? <span class="cartmax-coupon-card-code">{c.code}</span>
-                      : <span class="cartmax-coupon-card-auto">Automatic</span>
-                    }
-                  </div>
-                  <div class="cartmax-coupon-card-title">{c.title}</div>
-                  {c.display_message ? <div class="cartmax-coupon-card-msg">{c.display_message}</div> : null}
-                  {c.applied
-                    ? <span class="cartmax-coupon-card-applied"><IconCheck /> Applied</span>
-                    : !c.is_automatic
-                      ? <button
-                          class="cartmax-coupon-card-btn"
-                          onClick={function () { self.handleCouponApply(c.code); }}
-                          disabled={isLoading}
-                        >{isLoading ? 'Applying...' : 'Apply'}</button>
-                      : null
-                  }
+                  >{isApplied ? 'Applied' : 'Apply'}</button>
                 </div>
               );
             })}
           </div>
         </div>
+
+        {/* Offers & Coupons panel — slides in from right */}
+        <div class={'cartmax-offers-panel' + (showPanel ? ' cartmax-offers-panel--open' : '')}>
+          <div class="cartmax-offers-panel-header">
+            <button
+              class="cartmax-offers-back"
+              onClick={function () { self.setState({ couponPanelOpen: false }); }}
+              aria-label="Back to cart"
+            ><IconChevronLeft /></button>
+            <span class="cartmax-offers-title">Offers & Coupons</span>
+          </div>
+          <div class="cartmax-offers-body">
+            <div class="cartmax-offers-input-row">
+              <input
+                class="cartmax-offers-input"
+                type="text"
+                placeholder={self._text.coupon_placeholder}
+                value={self.state.couponInput || ''}
+                onInput={function (e) { self.setState({ couponInput: e.target.value, couponError: null }); }}
+                onKeyDown={function (e) { if (e.key === 'Enter') self.handleCouponApply(self.state.couponInput); }}
+                disabled={isLoading}
+              />
+              <button
+                class="cartmax-offers-apply-btn"
+                onClick={function () { self.handleCouponApply(self.state.couponInput); }}
+                disabled={isLoading || !(self.state.couponInput || '').trim()}
+              >{isLoading ? '...' : 'Apply'}</button>
+            </div>
+            {self.state.couponError
+              ? <div class="cartmax-coupon-error">{self.state.couponError}</div>
+              : null
+            }
+            <span class="cartmax-offers-label">Available Coupons</span>
+            <div class="cartmax-offers-cards">
+              {HARDCODED_COUPONS.map(function (c) {
+                var isApplied = appliedDiscounts.some(function (d) { return d.code === c.code; });
+                return (
+                  <div class="cartmax-offers-card" key={c.code}>
+                    <div class="cartmax-offers-card-accent">
+                      <span>{c.accent}</span>
+                    </div>
+                    <div class="cartmax-offers-card-info">
+                      <span class="cartmax-offers-card-code">{c.code}</span>
+                      <span class="cartmax-offers-card-savings">{c.savings}</span>
+                    </div>
+                    <button
+                      class={'cartmax-offers-card-btn' + (isApplied ? ' cartmax-offers-card-btn--applied' : '')}
+                      onClick={function () { self.handleCouponApply(c.code); }}
+                      disabled={isLoading}
+                    >{isApplied ? 'Applied' : 'Apply'}</button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
       </div>
     );
   }

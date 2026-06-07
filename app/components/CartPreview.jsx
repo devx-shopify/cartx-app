@@ -737,44 +737,111 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
         </div>
       </div>
 
-      {/* ── Coupon input ── */}
-      {sec.show_coupons !== false && (<div
-        style={{
-          padding: "10px 16px",
-          borderTop: `1px solid ${border}`,
-          background: bg,
-        }}
-      >
-        <div style={{ display: "flex", gap: 6 }}>
-          <div
-            style={{
-              flex: 1,
-              padding: "7px 10px",
-              fontSize: 12,
-              color: "#d1d5db",
-              border: `1px solid ${border}`,
-              borderRadius: `calc(${radius} * 0.75)`,
-              background: bg,
-            }}
-          >
-            {tx.coupon_placeholder || "Discount code"}
+      {/* ── Discount block (coupon) ── */}
+      {sec.show_coupons !== false && (
+        <div style={{
+          background: `color-mix(in srgb, ${accent} 6%, transparent)`,
+          border: `1px solid color-mix(in srgb, ${accent} 30%, transparent)`,
+          padding: "16px 20px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}>
+          {/* Header card */}
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            background: bg,
+            border: `1px solid ${border}`,
+            borderRadius: 6,
+            padding: 12,
+            cursor: "default",
+          }}>
+            <span style={{ display: "flex", alignItems: "center", color: textSec, flexShrink: 0 }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 21C11.677 21 11.3714 20.9398 11.0833 20.8195C10.7952 20.6992 10.5399 20.5253 10.3173 20.298C9.79542 19.789 9.34992 19.4563 8.98075 19.3C8.61158 19.1437 8.05775 19.0655 7.31925 19.0655C6.65692 19.0655 6.09383 18.8337 5.63 18.37C5.16633 17.9062 4.9345 17.3431 4.9345 16.6807C4.9345 15.9551 4.85583 15.404 4.6985 15.0275C4.54117 14.651 4.209 14.2028 3.702 13.6827C3.46983 13.4506 3.29483 13.1911 3.177 12.9043C3.059 12.6173 3 12.3173 3 12.0043C3 11.6911 3.059 11.3897 3.177 11.1C3.29483 10.8103 3.46983 10.5494 3.702 10.3173C4.209 9.80442 4.54117 9.36225 4.6985 8.99075C4.85583 8.61925 4.9345 8.06208 4.9345 7.31925C4.9345 6.65692 5.16633 6.09383 5.63 5.63C6.09383 5.16633 6.65692 4.9345 7.31925 4.9345C8.04492 4.9345 8.596 4.85583 8.9725 4.6985C9.349 4.54117 9.79725 4.209 10.3173 3.702C10.5406 3.47467 10.7968 3.30083 11.086 3.1805C11.375 3.06017 11.6772 3 11.9925 3C12.3078 3 12.6103 3.059 12.9 3.177C13.1897 3.29483 13.4506 3.46983 13.6827 3.702C14.1956 4.209 14.6377 4.54117 15.0092 4.6985C15.3807 4.85583 15.9379 4.9345 16.6807 4.9345C17.3431 4.9345 17.9062 5.16633 18.37 5.63C18.8337 6.09383 19.0655 6.65692 19.0655 7.31925C19.0655 8.04492 19.1442 8.596 19.3015 8.9725C19.4588 9.349 19.791 9.79725 20.298 10.3173C20.5302 10.5494 20.7052 10.8089 20.823 11.0958C20.941 11.3828 21 11.6827 21 11.9957C21 12.3089 20.941 12.6103 20.823 12.9C20.7052 13.1897 20.5302 13.4506 20.298 13.6827C19.789 14.2046 19.4563 14.6501 19.3 15.0192C19.1437 15.3884 19.0655 15.9422 19.0655 16.6807C19.0655 17.3431 18.8337 17.9062 18.37 18.37C17.9062 18.8337 17.3431 19.0655 16.6807 19.0655C15.9551 19.0655 15.404 19.1442 15.0275 19.3015C14.651 19.4588 14.2028 19.791 13.6827 20.298C13.4601 20.5253 13.2048 20.6992 12.9167 20.8195C12.6286 20.9398 12.323 21 12 21ZM14.3688 15.327C14.6421 15.327 14.8702 15.2357 15.053 15.053C15.2357 14.8702 15.327 14.6421 15.327 14.3688C15.327 14.0954 15.2357 13.8631 15.053 13.6718C14.8702 13.4803 14.6421 13.3845 14.3688 13.3845C14.0954 13.3845 13.8631 13.4803 13.6718 13.6718C13.4803 13.8631 13.3845 14.0954 13.3845 14.3688C13.3845 14.6421 13.4803 14.8702 13.6718 15.053C13.8631 15.2357 14.0954 15.327 14.3688 15.327ZM9.5845 15.1038L15.1038 9.60375L14.3962 8.89625L8.89625 14.4155L9.5845 15.1038ZM9.63125 10.6155C9.90458 10.6155 10.1369 10.5198 10.3283 10.3283C10.5198 10.1369 10.6155 9.90458 10.6155 9.63125C10.6155 9.35792 10.5198 9.12983 10.3283 8.947C10.1369 8.76433 9.90458 8.673 9.63125 8.673C9.35792 8.673 9.12983 8.76433 8.947 8.947C8.76433 9.12983 8.673 9.35792 8.673 9.63125C8.673 9.90458 8.76433 10.1369 8.947 10.3283C9.12983 10.5198 9.35792 10.6155 9.63125 10.6155Z" fill="currentColor"/>
+              </svg>
+            </span>
+            <span style={{ flex: 1, fontSize: 14, fontWeight: 500, lineHeight: "20px", letterSpacing: "0.7px", color: text }}>
+              Apply Coupon
+            </span>
+            <span style={{ fontSize: 12, fontWeight: 400, lineHeight: "20px", letterSpacing: "0.6px", color: text, flexShrink: 0 }}>
+              View All
+            </span>
           </div>
-          <div
-            style={{
-              padding: "7px 12px",
-              fontSize: 12,
-              fontWeight: 600,
-              color: text,
-              border: `1px solid ${border}`,
-              borderRadius: `calc(${radius} * 0.75)`,
-              background: bg,
-            }}
-          >
-            Apply
+
+          {/* Horizontal scrollable coupon cards */}
+          <div style={{ display: "flex", flexDirection: "row", gap: 8, overflowX: "auto", overflowY: "hidden", scrollbarWidth: "none", msOverflowStyle: "none" }}>
+            {[
+              { code: 'SAVE100',     accentLabel: '₹100 OFF', savings: 'Save ₹100 on this order' },
+              { code: 'ENDYEARSALE', accentLabel: '20% OFF',  savings: 'Save 20% on this order'  },
+              { code: 'FLAT200',     accentLabel: '₹200 OFF', savings: 'Save ₹200 on this order' },
+            ].map((c, i) => (
+              <div key={i} style={{
+                display: "flex",
+                flexDirection: "row",
+                alignItems: "center",
+                flexShrink: 0,
+                width: 280,
+                height: 67,
+                background: bg,
+                border: `1px dashed ${text}`,
+                borderRadius: 6,
+                overflow: "hidden",
+              }}>
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  width: 34,
+                  height: "100%",
+                  background: accent,
+                  padding: "0 4px",
+                }}>
+                  <span style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    lineHeight: "14px",
+                    letterSpacing: "0.5px",
+                    color: bg,
+                    writingMode: "vertical-lr",
+                    transform: "rotate(180deg)",
+                    whiteSpace: "nowrap",
+                  }}>
+                    {c.accentLabel}
+                  </span>
+                </div>
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 3, padding: "0 16px", minWidth: 0 }}>
+                  <span style={{ fontSize: 14, fontWeight: 500, lineHeight: "20px", color: text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {c.code}
+                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 400, lineHeight: "16px", color: textSec, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {c.savings}
+                  </span>
+                </div>
+                <div style={{
+                  flexShrink: 0,
+                  marginRight: 12,
+                  width: 56,
+                  height: 27,
+                  background: accent,
+                  color: bg,
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "default",
+                }}>
+                  Apply
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-      </div>
-
       )}
 
       {/* ── Upsells ── */}
