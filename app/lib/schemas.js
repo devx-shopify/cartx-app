@@ -208,6 +208,7 @@ export const DrawerConfigSchema = z.object({
     subtotal_label: z.string().default('Subtotal'),
     savings_label: z.string().default('Congrats! You saved {amount} on this order.'),
     offer_cards_heading: z.string().default('Pick your free gift'),
+    checkout_trust_message: z.string().default('Guaranteed safe & secure checkout'),
   }).default({}),
   layout: z.object({
     drawer_width: z.number().min(320).max(560).default(420),
@@ -229,6 +230,7 @@ export const DrawerConfigSchema = z.object({
     upsells_show_on_empty: z.enum(['filled', 'always']).default('filled'),
     upsells_btn_text: z.string().default('ADD TO CART'),
     upsells_show_compare_price: z.boolean().default(true),
+    show_payment_icons: z.boolean().default(true),
   }).default({}),
   sections: z.object({
     show_coupons: z.boolean().default(true),

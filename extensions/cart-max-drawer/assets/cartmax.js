@@ -1582,6 +1582,9 @@
   function IconLock() {
     return /* @__PURE__ */ k("svg", { width: "13", height: "13", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" }, /* @__PURE__ */ k("rect", { width: "18", height: "11", x: "3", y: "11", rx: "2" }), /* @__PURE__ */ k("path", { d: "M7 11V7a5 5 0 0 1 10 0v4" }));
   }
+  function IconPaymentMethods() {
+    return /* @__PURE__ */ k("svg", { width: "62", height: "24", viewBox: "0 0 62 24", fill: "none", xmlns: "http://www.w3.org/2000/svg" }, /* @__PURE__ */ k("rect", { x: "0.5", y: "0.5", width: "23", height: "23", rx: "11.5", fill: "white" }), /* @__PURE__ */ k("rect", { x: "0.5", y: "0.5", width: "23", height: "23", rx: "11.5", stroke: "#D8D9E0" }), /* @__PURE__ */ k("path", { d: "M18.286 7.99168C16.7707 7.11701 14.833 7.63668 13.9577 9.15201L11.75 12.9757C11.1113 14.0797 11.9337 14.4657 12.8503 15.0153L14.9743 16.2413C15.6937 16.6563 16.6123 16.41 17.027 15.6917L19.296 11.762C20.0587 10.4417 19.6063 8.75401 18.286 7.99168Z", fill: "#E64A19" }), /* @__PURE__ */ k("path", { d: "M15.7884 9.57436L13.6644 8.34836C12.492 7.69736 11.828 7.65436 11.3464 8.41969L8.21369 13.8447C7.33902 15.359 7.85969 17.2957 9.37402 18.1684C10.6944 18.9307 12.382 18.4784 13.1444 17.158L16.337 11.628C16.7537 10.909 16.5077 9.98936 15.7884 9.57436Z", fill: "#FBC02D" }), /* @__PURE__ */ k("path", { d: "M16.197 6.78532L14.705 5.92366C13.055 4.97133 10.945 5.53599 9.99265 7.18599L7.15232 12.1057C6.73265 12.8313 6.98199 13.7603 7.70765 14.179L9.37832 15.1437C10.2033 15.6203 11.258 15.3377 11.7347 14.5123L14.9797 8.89232C15.652 7.72832 17.14 7.32932 18.3043 8.00166L16.197 6.78532Z", fill: "#43A047" }), /* @__PURE__ */ k("path", { d: "M10.3963 8.59369L8.78367 7.66469C8.06434 7.25069 7.14567 7.49602 6.73101 8.21336L4.79634 11.5567C3.84401 13.202 4.40867 15.3074 6.05867 16.257L7.28634 16.964L8.77534 17.8217L9.42167 18.1934C8.27434 17.4254 7.91001 15.8867 8.61167 14.675L9.11267 13.8097L10.9473 10.6397C11.361 9.92469 11.1147 9.00769 10.3963 8.59369Z", fill: "#1E88E5" }), /* @__PURE__ */ k("rect", { x: "19.5", y: "0.5", width: "23", height: "23", rx: "11.5", fill: "white" }), /* @__PURE__ */ k("rect", { x: "19.5", y: "0.5", width: "23", height: "23", rx: "11.5", stroke: "#D8D9E0" }), /* @__PURE__ */ k("g", { "clip-path": "url(#cartmax-clip-phonepe)" }, /* @__PURE__ */ k("path", { d: "M37.9467 17.0556C37.9467 18.1297 37.0763 19 36.0022 19H25.8911C24.8174 19 23.9467 18.1297 23.9467 17.0556V6.94444C23.9467 5.87033 24.8174 5 25.8911 5H36.0022C37.0763 5 37.9467 5.87033 37.9467 6.94444V17.0556Z", fill: "#4527A0" }), /* @__PURE__ */ k("path", { d: "M34.1616 10.5109C34.1616 10.2461 33.9345 10.0194 33.67 10.0194H32.7624L30.6818 7.58883C30.4928 7.36171 30.1903 7.28627 29.8873 7.36171L29.1687 7.58883C29.0551 7.62655 29.0174 7.77783 29.0928 7.85366L31.3624 10.0571H27.9203C27.8068 10.0571 27.7313 10.1329 27.7313 10.2461V10.6245C27.7313 10.8893 27.9584 11.2102 28.2229 11.2102H28.9898V12.8843C28.9898 14.2462 29.6163 15.0403 30.8265 15.0403C31.2049 15.0403 31.3624 15.0026 31.7404 14.8513V16.0615C31.7404 16.4018 32.0052 16.6667 32.3455 16.6667H32.6512C32.7647 16.6667 32.8783 16.5531 32.8783 16.4395V11.2102H33.9718C34.0854 11.2102 34.1608 11.1343 34.1608 11.0212V10.5109H34.1616ZM31.7412 13.7162C31.514 13.8297 31.2115 13.8674 30.9848 13.8674C30.3797 13.8674 30.1693 13.5649 30.1693 12.8839V11.2098H31.7415V13.7162H31.7412Z", fill: "white" })), /* @__PURE__ */ k("rect", { x: "38.5", y: "0.5", width: "23", height: "23", rx: "11.5", fill: "white" }), /* @__PURE__ */ k("rect", { x: "38.5", y: "0.5", width: "23", height: "23", rx: "11.5", stroke: "#D8D9E0" }), /* @__PURE__ */ k("path", { d: "M61.0915 10.5647C60.8887 9.98508 60.3363 9.56885 59.6874 9.56885H59.6738C59.2519 9.56885 58.8718 9.74442 58.6012 10.0263C58.3301 9.74442 57.9499 9.56885 57.5285 9.56885H57.515C57.1441 9.56885 56.8052 9.70462 56.5449 9.92936V9.81512C56.536 9.70134 56.4423 9.61193 56.3267 9.61193H55.3313C55.2096 9.61193 55.1113 9.71025 55.1113 9.83244V15.2378C55.1113 15.36 55.2096 15.4583 55.3313 15.4583H56.3267C56.4376 15.4583 56.5289 15.3754 56.5435 15.2682L56.543 11.3878C56.5429 11.3748 56.5435 11.3618 56.5449 11.3489C56.5608 11.1757 56.6877 11.0334 56.8881 11.0156H57.0716C57.1554 11.0231 57.2261 11.0526 57.2818 11.097C57.3684 11.1659 57.4166 11.2717 57.4166 11.3878L57.4204 15.249C57.4204 15.3712 57.5191 15.47 57.6404 15.47H58.6358C58.7533 15.47 58.8488 15.3763 58.8544 15.2598L58.854 11.3826C58.8535 11.2553 58.9125 11.1401 59.016 11.0718C59.067 11.039 59.1283 11.017 59.199 11.0104H59.3826C59.5979 11.0291 59.7281 11.1925 59.7276 11.3826L59.7314 15.2387C59.7314 15.3609 59.8302 15.4592 59.9514 15.4592H60.9468C61.068 15.4592 61.1668 15.3609 61.1668 15.2387V11.0914C61.1668 10.8086 61.135 10.6883 61.0915 10.5647ZM54.353 9.62601H53.7837V8.70085C53.7837 8.58989 53.6938 8.5 53.5828 8.5C53.5697 8.5 53.5571 8.50186 53.5449 8.50421C52.9138 8.67744 53.0402 9.55157 51.888 9.62601H51.776C51.7592 9.62601 51.7433 9.62835 51.7278 9.63162C51.6295 9.65364 51.5555 9.74118 51.5555 9.84607V10.8414C51.5555 10.9627 51.6543 11.0615 51.776 11.0615H52.3767L52.3758 15.2823C52.3758 15.4026 52.4732 15.5 52.5935 15.5H53.5777C53.6975 15.5 53.7949 15.4026 53.7949 15.2823L53.7954 11.0615H54.353C54.4742 11.0615 54.573 10.9627 54.573 10.8414V9.84607C54.573 9.72481 54.4742 9.62601 54.353 9.62601Z", fill: "#00BAF2" }), /* @__PURE__ */ k("path", { d: "M50.7715 9.62646H49.7761C49.6549 9.62646 49.5566 9.72525 49.5566 9.8465V11.9047C49.5542 12.032 49.4512 12.1341 49.3234 12.1341H48.9067C48.7775 12.1341 48.6731 12.0302 48.6731 11.901L48.6693 9.84652C48.6693 9.72525 48.5705 9.62647 48.4493 9.62647H47.4539C47.3322 9.62647 47.2339 9.72525 47.2339 9.84652V12.1023C47.2339 12.9591 47.8449 13.5701 48.7021 13.5701C48.7021 13.5701 49.3454 13.5701 49.3651 13.5738C49.4812 13.5869 49.5715 13.6843 49.5715 13.8042C49.5715 13.9226 49.4831 14.0195 49.3683 14.0341C49.3627 14.035 49.3576 14.0364 49.3515 14.0373L47.8959 14.0425C47.7742 14.0425 47.6758 14.1413 47.6758 14.2625V15.2575C47.6758 15.3792 47.7742 15.4775 47.8959 15.4775H49.5233C50.381 15.4775 50.9916 14.867 50.9916 14.0097V9.84652C50.9916 9.72525 50.8932 9.62646 50.7715 9.62646ZM41.137 11.4503V12.0646C41.137 12.1933 41.0326 12.2982 40.9038 12.2982L40.2722 12.2987V11.0678H40.9038C41.0326 11.0678 41.137 11.1717 41.137 11.301V11.4503ZM41.2245 9.62622H39.0488C38.9295 9.62622 38.833 9.72314 38.833 9.84206V10.8173C38.833 10.8192 38.8335 10.8211 38.8335 10.8229C38.8335 10.8276 38.833 10.8323 38.833 10.8365V15.2507C38.833 15.3705 38.9229 15.4684 39.0343 15.4712H40.0484C40.1697 15.4712 40.2685 15.3729 40.2685 15.2511L40.2722 13.7384H41.2245C42.0214 13.7384 42.5767 13.1855 42.5767 12.3853V10.9812C42.5767 10.181 42.0214 9.62622 41.2245 9.62622ZM45.2669 13.7872V13.9426C45.2669 13.9553 45.2651 13.9674 45.2632 13.9791C45.2609 13.9901 45.2577 14.0009 45.2538 14.0114C45.2229 14.0985 45.1358 14.1617 45.0324 14.1617H44.618C44.4888 14.1617 44.3835 14.0634 44.3835 13.9426V13.7549C44.3835 13.7525 44.383 13.7502 44.383 13.7479L44.3835 13.2483V13.0919L44.3839 13.0905C44.3844 12.9702 44.4888 12.8728 44.618 12.8728H45.0324C45.1621 12.8728 45.2669 12.9706 45.2669 13.0919L45.2669 13.7872ZM45.1087 9.63194H43.7275C43.6053 9.63194 43.5066 9.72464 43.5066 9.83841V10.2256C43.5066 10.2279 43.507 10.2308 43.507 10.2331C43.507 10.2359 43.5065 10.2387 43.5065 10.2415V10.772C43.5065 10.8923 43.6114 10.9906 43.7407 10.9906H45.0558C45.1597 11.007 45.2421 11.0829 45.2538 11.2013V11.3296C45.2421 11.4425 45.1607 11.5248 45.0614 11.5342H44.4102C43.544 11.5342 42.9269 12.1096 42.9269 12.9177V14.0751C42.9269 14.8785 43.4574 15.4502 44.3175 15.4502H46.1223C46.4463 15.4502 46.709 15.2049 46.709 14.9029V11.1259C46.709 10.2102 46.2371 9.63194 45.1087 9.63194Z", fill: "#1F336B" }), /* @__PURE__ */ k("defs", null, /* @__PURE__ */ k("clipPath", { id: "cartmax-clip-phonepe" }, /* @__PURE__ */ k("rect", { x: "23.611", y: "5", width: "14.7778", height: "14", rx: "2", fill: "white" }))));
+  }
   var CartDrawer = class extends C {
     constructor() {
       super();
@@ -1604,8 +1607,9 @@
         // brief error message displayed near upsell list on rollback
         variantOpen: {},
         // item.key -> bool, controls dropdown visibility
-        variantLoading: {}
+        variantLoading: {},
         // item.key -> bool, true while fetching product variants
+        priceBreakupOpen: false
       };
       this.close = this.close.bind(this);
       this.handleOverlayClick = this.handleOverlayClick.bind(this);
@@ -1636,9 +1640,10 @@
         total_label: "Total",
         subtotal_label: "Subtotal",
         savings_label: "Congrats! You saved {amount} on this order.",
-        offer_cards_heading: "Pick your free gift"
+        offer_cards_heading: "Pick your free gift",
+        checkout_trust_message: "Guaranteed safe & secure checkout"
       };
-      this._layout = { drawer_position: "right", image_style: "rounded", qty_style: "bordered", show_vendor: false, show_variant_switcher: true, show_remove_btn: true, savings_animated: false };
+      this._layout = { drawer_position: "right", image_style: "rounded", qty_style: "bordered", show_vendor: false, show_variant_switcher: true, show_remove_btn: true, show_payment_icons: true };
       this._variantCache = {};
       this._upsells = { card_layout: "horizontal", card_size: "medium", heading: "", btn_text: "ADD TO CART", show_compare_price: true };
       this._announcement = { text: "", type: "static" };
@@ -1864,25 +1869,6 @@
         attributes: true,
         attributeFilter: ["class"]
       });
-      this._onBodyScroll = () => {
-        if (!this._layout.savings_animated) return;
-        var ribbon = this._drawerRef && this._drawerRef.querySelector(".cartmax-footer-savings");
-        if (!ribbon) return;
-        if (this._savingsRestoring) return;
-        ribbon.classList.add("is-scrolling");
-        if (this._savingsScrollTimer) clearTimeout(this._savingsScrollTimer);
-        this._savingsScrollTimer = setTimeout(() => {
-          ribbon.classList.remove("is-scrolling");
-          this._savingsRestoring = true;
-          setTimeout(() => {
-            this._savingsRestoring = false;
-          }, 300);
-        }, 150);
-      };
-      setTimeout(() => {
-        this._bodyScrollEl = this._drawerRef && this._drawerRef.querySelector(".cartmax-body");
-        if (this._bodyScrollEl) this._bodyScrollEl.addEventListener("scroll", this._onBodyScroll, { passive: true });
-      }, 0);
     }
     componentWillUnmount() {
       window.removeEventListener("cartmax:cart-changed", this._onCartChanged);
@@ -1901,8 +1887,6 @@
       Object.values(this._errorTimers || {}).forEach(clearTimeout);
       if (this._upsellErrorTimer) clearTimeout(this._upsellErrorTimer);
       this._clearProcessingTimeout();
-      if (this._bodyScrollEl) this._bodyScrollEl.removeEventListener("scroll", this._onBodyScroll);
-      if (this._savingsScrollTimer) clearTimeout(this._savingsScrollTimer);
       tracker.flush({ useBeacon: true });
     }
     // Ref callback for elements that represent a promotion impression target.
@@ -1945,7 +1929,7 @@
         empty_icon_url: l2.empty_icon_url || "",
         empty_icon_size: l2.empty_icon_size || "medium",
         empty_icon_color: l2.empty_icon_color || "",
-        savings_animated: l2.savings_animated === true
+        show_payment_icons: l2.show_payment_icons !== false
       };
       this._upsells = {
         card_layout: l2.upsells_card_layout || "horizontal",
@@ -3088,14 +3072,17 @@
     renderFooter() {
       var cart = this.state.cart;
       var curr = this._currency;
-      var hasDiscount = cart.total_discount > 0;
-      var discounts = cart.cart_level_discount_applications || [];
       var savings = Number(this.state.savings) || 0;
       var savingsParts = savings > 0 && this._text.savings_label ? this._text.savings_label.split("{amount}") : null;
-      return /* @__PURE__ */ k("div", { class: "cartmax-footer" }, savingsParts ? /* @__PURE__ */ k("div", { class: "cartmax-footer-savings" + (this._layout.savings_animated ? " cartmax-footer-savings--animated" : "") }, /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-icon" }, /* @__PURE__ */ k(IconSparkle, null)), /* @__PURE__ */ k("span", null, savingsParts[0]), /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-amount" }, formatMoney(savings, curr)), /* @__PURE__ */ k("span", null, savingsParts[1] || "")) : null, hasDiscount ? /* @__PURE__ */ k("div", { class: "cartmax-totals" }, /* @__PURE__ */ k("div", { class: "cartmax-totals-row" }, /* @__PURE__ */ k("span", null, this._text.subtotal_label), /* @__PURE__ */ k("span", null, formatMoney(cart.items_subtotal_price, curr))), discounts.length > 0 ? discounts.map((d2) => {
-        var amt = d2.total_allocated_amount || d2.amount || 0;
-        return /* @__PURE__ */ k("div", { class: "cartmax-totals-row cartmax-discount-row", key: d2.title }, /* @__PURE__ */ k("span", null, d2.title || "Discount"), /* @__PURE__ */ k("span", null, "\u2212" + formatMoney(amt, curr)));
-      }) : cart.total_discount > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-totals-row cartmax-discount-row" }, /* @__PURE__ */ k("span", null, "Discounts"), /* @__PURE__ */ k("span", null, "\u2212" + formatMoney(cart.total_discount, curr))) : null) : null, /* @__PURE__ */ k("div", { class: "cartmax-footer-checkout" }, /* @__PURE__ */ k("div", { class: "cartmax-footer-total" }, /* @__PURE__ */ k("span", null, this._text.total_label), /* @__PURE__ */ k("span", null, formatMoney(cart.total_price, curr))), /* @__PURE__ */ k(
+      var trustMsg = this._text.checkout_trust_message || "";
+      return /* @__PURE__ */ k("div", { class: "cartmax-footer" }, savingsParts ? /* @__PURE__ */ k("div", { class: "cartmax-footer-savings" }, /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-icon" }, /* @__PURE__ */ k(IconSparkle, null)), /* @__PURE__ */ k("span", null, savingsParts[0]), /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-amount" }, formatMoney(savings, curr)), /* @__PURE__ */ k("span", null, savingsParts[1] || ""), /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-icon" }, /* @__PURE__ */ k(IconSparkle, null))) : null, /* @__PURE__ */ k("div", { class: "cartmax-footer-checkout" }, /* @__PURE__ */ k("div", { class: "cartmax-footer-price" }, /* @__PURE__ */ k("span", { class: "cartmax-footer-price-amount" }, formatMoney(cart.total_price, curr)), /* @__PURE__ */ k(
+        "button",
+        {
+          class: "cartmax-price-breakup-link",
+          onClick: () => this.setState({ priceBreakupOpen: true })
+        },
+        "VIEW PRICE BREAKUP"
+      )), /* @__PURE__ */ k(
         "a",
         {
           class: "cartmax-checkout-btn" + (this.state.checkoutWaiting ? " cartmax-checkout-waiting" : ""),
@@ -3114,9 +3101,25 @@
             }
           }
         },
-        /* @__PURE__ */ k(IconLock, null),
-        /* @__PURE__ */ k("span", null, this.state.checkoutWaiting ? "Preparing..." : this._text.checkout_button)
-      )), /* @__PURE__ */ k("div", { class: "cartmax-footer-trust" }, /* @__PURE__ */ k(IconLock, null), /* @__PURE__ */ k("span", null, "Guaranteed safe & secure checkout")));
+        /* @__PURE__ */ k("span", null, this.state.checkoutWaiting ? "Preparing..." : this._text.checkout_button),
+        this._layout.show_payment_icons && !this.state.checkoutWaiting ? /* @__PURE__ */ k("span", { class: "cartmax-payment-methods" }, /* @__PURE__ */ k(IconPaymentMethods, null)) : null
+      )), trustMsg ? /* @__PURE__ */ k("div", { class: "cartmax-footer-trust" }, /* @__PURE__ */ k(IconLock, null), /* @__PURE__ */ k("span", null, trustMsg), /* @__PURE__ */ k(IconLock, null)) : null);
+    }
+    // ── Render: Price Breakup Panel ───────────────────────────
+    renderPriceBreakup() {
+      var cart = this.state.cart;
+      var curr = this._currency;
+      var totalMRP = cart.items_subtotal_price;
+      var discountTotal = cart.total_discount || 0;
+      return /* @__PURE__ */ k("div", { class: "cartmax-pb-backdrop", onClick: () => this.setState({ priceBreakupOpen: false }) }, /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-panel", onClick: (e2) => e2.stopPropagation() }, /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-header" }, /* @__PURE__ */ k("span", null, "Price Break Up"), /* @__PURE__ */ k(
+        "button",
+        {
+          class: "cartmax-price-breakup-close",
+          "aria-label": "Close",
+          onClick: () => this.setState({ priceBreakupOpen: false })
+        },
+        /* @__PURE__ */ k(IconClose, null)
+      )), /* @__PURE__ */ k("div", { class: "cartmax-pb-divider" }), /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-rows" }, /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, "Total"), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount" }, formatMoney(totalMRP, curr))), discountTotal > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, "Coupon Discount"), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount cartmax-pb-discount" }, "-", formatMoney(discountTotal, curr))) : null, /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, "Delivery Fee"), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount" }, formatMoney(0, curr)))), /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-total" }, /* @__PURE__ */ k("span", null, "Total Amount"), /* @__PURE__ */ k("span", null, formatMoney(cart.total_price, curr)))));
     }
     // ── Main render ───────────────────────────────────────────
     render(props, { visible, open, cart, loading }) {
@@ -3163,7 +3166,8 @@
         /* @__PURE__ */ k("div", { class: "cartmax-body" }, hasItems && sec.show_progress_bar ? this.renderProgressBar() : null, hasItems && sec.show_claim_gifts ? this.renderClaimGifts() : null, hasItems && sec.show_offer_cards ? this.renderOfferDisplays() : null, loading ? this.renderLoading() : isEmpty ? this.renderEmpty() : hasItems ? this._displayItems().map((item) => this.renderLineItem(item)) : null, hasItems && sec.show_coupons ? this.renderCoupons() : null, hasItems && sec.show_upsells ? this.renderUpsells() : null),
         hasItems && sec.show_ribbon ? this.renderRibbon() : null,
         isEmpty && sec.show_upsells ? this.renderUpsells() : null,
-        hasItems ? this.renderFooter() : null
+        hasItems ? this.renderFooter() : null,
+        this.state.priceBreakupOpen ? this.renderPriceBreakup() : null
       )));
     }
   };

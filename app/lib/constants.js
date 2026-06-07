@@ -75,6 +75,7 @@ export const DEFAULT_CONFIG = {
       subtotal_label: 'Subtotal',
       savings_label: 'Congrats! You saved {amount} on this order.',
       offer_cards_heading: 'Pick your free gift',
+      checkout_trust_message: 'Guaranteed safe & secure checkout',
     },
     layout: {
       drawer_width: 420,
@@ -86,6 +87,7 @@ export const DEFAULT_CONFIG = {
       show_vendor: false,
       show_variant_switcher: true,
       show_remove_btn: true,
+      show_payment_icons: true,
     },
     sections: {
       show_coupons: true,

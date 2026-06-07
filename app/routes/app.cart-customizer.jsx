@@ -807,8 +807,20 @@ function ContentTab({ s, update }) {
         </div>
       </s-section>
 
-      <s-section heading="Savings ribbon" description="Shown above the total when the cart has discounts.">
+      <s-section heading="Checkout" description="Customize the checkout footer bar and savings ribbon.">
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <s-text-field
+            label="Checkout message"
+            details="Shown between two lock icons below the checkout button. Leave empty to hide."
+            value={s.text.checkout_trust_message}
+            onInput={(e) => update("text.checkout_trust_message", e.target.value)}
+          />
+          <s-checkbox
+            label="Show payment icons"
+            details="Displays Google Pay, PhonePe and Paytm icons inside the checkout button."
+            checked={s.layout.show_payment_icons !== false || undefined}
+            onChange={(e) => update("layout.show_payment_icons", e.target.checked)}
+          />
           <s-text-field
             label="Savings ribbon text"
             details="Use {amount} to show the saved value. Leave empty to hide."
@@ -816,9 +828,9 @@ function ContentTab({ s, update }) {
             onInput={(e) => update("text.savings_label", e.target.value)}
           />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16 }}>
-            <ColorField label="Background" value={s.colors.savings_bg} onChange={(v) => update("colors.savings_bg", v)} />
-            <ColorField label="Text" value={s.colors.savings_text} onChange={(v) => update("colors.savings_text", v)} />
-            <ColorField label="Amount color" value={s.colors.savings_amount} onChange={(v) => update("colors.savings_amount", v)} />
+            <ColorField label="Ribbon background" value={s.colors.savings_bg} onChange={(v) => update("colors.savings_bg", v)} />
+            <ColorField label="Ribbon text" value={s.colors.savings_text} onChange={(v) => update("colors.savings_text", v)} />
+            <ColorField label="Ribbon amount color" value={s.colors.savings_amount} onChange={(v) => update("colors.savings_amount", v)} />
           </div>
         </div>
       </s-section>
