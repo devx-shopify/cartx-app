@@ -25,11 +25,11 @@ const DUMMY_UPSELLS = [
   { title: "Silk Scarf", price: "$35.00", compare: "$48.00" },
 ];
 
-function UpsellsPreviewBlock({ bg, border, text, upsellLayout, upsellHDim, upsellVDim, upsellHeading, upsellBtnText, upsellShowCompare, upsellTitleSize }) {
+function UpsellsPreviewBlock({ bg, border, text, upsellLayout, upsellHDim, upsellVDim, upsellHeading, upsellHeadingAlign, upsellBtnText, upsellShowCompare, upsellTitleSize }) {
   const isVertical = upsellLayout === 'vertical';
   return (
     <div style={{ padding: "24px 20px", borderTop: `1px solid ${border}`, background: bg }}>
-      <div style={{ fontSize: 14, fontWeight: 400, color: "#5c6770", marginBottom: 16 }}>
+      <div style={{ fontSize: 14, fontWeight: 400, color: "#5c6770", marginBottom: 16, textAlign: upsellHeadingAlign === 'center' ? 'center' : 'left' }}>
         {upsellHeading}
       </div>
       <div style={{ display: "flex", gap: 20, overflowX: "auto", overflowY: "hidden", scrollbarWidth: "none", msOverflowStyle: "none" }} className="cartmax-preview-upsells-scroll">
@@ -109,6 +109,8 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
   const upsellLayout = li.upsells_card_layout || 'horizontal';
   const upsellSize = li.upsells_card_size || 'medium';
   const upsellHeading = li.upsells_heading || 'YOU MAY ALSO LIKE';
+  const upsellHeadingAlign = li.upsells_heading_position || 'left';
+  const upsellShowOnEmpty = li.upsells_show_on_empty || 'filled';
   const upsellBtnText = li.upsells_btn_text || 'ADD TO CART';
   const upsellShowCompare = li.upsells_show_compare_price !== false;
 
@@ -306,11 +308,11 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
         </div>
 
         {/* Upsells in empty state */}
-        {sec.show_upsells && (
+        {sec.show_upsells && upsellShowOnEmpty === 'always' && (
           <UpsellsPreviewBlock
             bg={bg} border={border} text={text}
             upsellLayout={upsellLayout} upsellHDim={upsellHDim} upsellVDim={upsellVDim}
-            upsellHeading={upsellHeading} upsellBtnText={upsellBtnText}
+            upsellHeading={upsellHeading} upsellHeadingAlign={upsellHeadingAlign} upsellBtnText={upsellBtnText}
             upsellShowCompare={upsellShowCompare} upsellTitleSize={upsellTitleSize}
           />
         )}
@@ -781,7 +783,7 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
         <UpsellsPreviewBlock
           bg={bg} border={border} text={text}
           upsellLayout={upsellLayout} upsellHDim={upsellHDim} upsellVDim={upsellVDim}
-          upsellHeading={upsellHeading} upsellBtnText={upsellBtnText}
+          upsellHeading={upsellHeading} upsellHeadingAlign={upsellHeadingAlign} upsellBtnText={upsellBtnText}
           upsellShowCompare={upsellShowCompare} upsellTitleSize={upsellTitleSize}
         />
       )}

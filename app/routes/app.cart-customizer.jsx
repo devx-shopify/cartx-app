@@ -998,6 +998,24 @@ function ContentTab({ s, update }) {
               placeholder="ADD TO CART"
             />
           </div>
+          <SegmentedControl
+            label="Heading position"
+            options={[
+              { value: "left", label: "Left" },
+              { value: "center", label: "Center" },
+            ]}
+            value={s.layout.upsells_heading_position || "left"}
+            onChange={(v) => update("layout.upsells_heading_position", v)}
+          />
+          <SegmentedControl
+            label="When to show"
+            options={[
+              { value: "filled", label: "Only with items" },
+              { value: "always", label: "Always" },
+            ]}
+            value={s.layout.upsells_show_on_empty || "filled"}
+            onChange={(v) => update("layout.upsells_show_on_empty", v)}
+          />
           <s-checkbox
             label="Show compare-at (strikethrough) price"
             checked={s.layout.upsells_show_compare_price !== false}

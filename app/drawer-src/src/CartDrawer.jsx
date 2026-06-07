@@ -496,6 +496,8 @@ export default class CartDrawer extends Component {
       card_layout: l.upsells_card_layout || 'horizontal',
       card_size: l.upsells_card_size || 'medium',
       heading: l.upsells_heading || '',
+      heading_position: l.upsells_heading_position || 'left',
+      show_on_empty: l.upsells_show_on_empty || 'filled',
       btn_text: l.upsells_btn_text || 'ADD TO CART',
       show_compare_price: l.upsells_show_compare_price !== false,
     };
@@ -1866,7 +1868,7 @@ export default class CartDrawer extends Component {
 
     var cart = this.state.cart;
     var isEmpty = !cart || !cart.items || cart.items.length === 0;
-    if (isEmpty && upsells.show_on_empty_cart === false) return null;
+    if (isEmpty && this._upsells.show_on_empty !== 'always') return null;
 
     var cartVariantIds = (cart && cart.items || []).map(function (i) { return String(i.variant_id); });
     var filtered = products.filter(function (p) {
@@ -1881,13 +1883,13 @@ export default class CartDrawer extends Component {
     var u = this._upsells;
     var layoutClass = 'cartmax-upsells--' + (u.card_layout || 'horizontal');
     var sizeClass = 'cartmax-upsell-card--' + (u.card_size || 'medium');
-    var headingText = u.heading || upsells.heading || 'YOU MAY ALSO LIKE';
+    var headingText = u.heading || 'YOU MAY ALSO LIKE';
     var btnText = u.btn_text || 'ADD TO CART';
     var imgPx = { small: 130, medium: 180, large: 230 }[u.card_size] || 180;
 
     return (
       <div class={'cartmax-upsells ' + layoutClass}>
-        <div class="cartmax-upsells-heading">{headingText}</div>
+        <div class="cartmax-upsells-heading" style={{ justifyContent: u.heading_position === 'center' ? 'center' : 'flex-start' }}>{headingText}</div>
         {this.state.upsellError
           ? <div class="cartmax-upsell-error">{this.state.upsellError}</div>
           : null
@@ -2104,11 +2106,14 @@ export default class CartDrawer extends Component {
                     : null
               }
               {hasItems && sec.show_coupons ? this.renderCoupons() : null}
-              {sec.show_upsells ? this.renderUpsells() : null}
+              {hasItems && sec.show_upsells ? this.renderUpsells() : null}
             </div>
 
             {/* Ribbon */}
             {hasItems && sec.show_ribbon ? this.renderRibbon() : null}
+
+            {/* Upsells pinned to bottom on empty cart */}
+            {isEmpty && sec.show_upsells ? this.renderUpsells() : null}
 
             {/* Footer */}
             {hasItems ? this.renderFooter() : null}

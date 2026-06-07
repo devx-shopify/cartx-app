@@ -209,6 +209,8 @@ cart-notification-component [role="dialog"] {
   overflow-y: auto;
   padding: 0;
   -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
 }
 
 .cartmax-body::-webkit-scrollbar {
@@ -1138,11 +1140,6 @@ cart-notification-component [role="dialog"] {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-.cartmax-claim-card--in-cart {
-  border-color: color-mix(in srgb, var(--cartmax-accent, #16a34a) 45%, transparent);
-  background: color-mix(in srgb, var(--cartmax-accent, #16a34a) 6%, #ffffff);
-}
-
 .cartmax-claim-img {
   width: 70px;
   height: 70px;
@@ -1212,7 +1209,7 @@ cart-notification-component [role="dialog"] {
 
 .cartmax-claim-btn--remove {
   background: none;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--cartmax-secondary-text, #FDAAC8);
   color: #6b7280;
 }
 
@@ -1544,10 +1541,12 @@ cart-notification-component [role="dialog"] {
 }
 
 .cartmax-upsells-heading {
+  display: flex;
+  justify-content: center;
   font-size: 14px;
-  font-weight: 400;
-  margin-bottom: 16px;
-  color: var(--cartmax-text-secondary, #5c6770);
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: var(--cartmax-text, #1a1a1a);
 }
 
 .cartmax-upsell-error {

@@ -178,8 +178,6 @@ export const action = async ({ request }) => {
     config.upsells.products = [];
   }
   config.upsells.enabled = body.upsells_enabled;
-  config.upsells.heading = body.upsells_heading;
-  config.upsells.show_on_empty_cart = body.show_on_empty_cart;
   config.bottom_ribbon = body.bottom_ribbon;
   config.cross_page_removal_behavior = body.cross_page_removal_behavior;
 
@@ -443,8 +441,6 @@ export default function Settings() {
   const [dragOverId, setDragOverId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [upsellsEnabled, setUpsellsEnabled] = useState(data.upsells.enabled);
-  const [upsellsHeading, setUpsellsHeading] = useState(data.upsells.heading);
-  const [showOnEmptyCart, setShowOnEmptyCart] = useState(data.upsells.show_on_empty_cart ?? false);
   const [upsellProducts, setUpsellProducts] = useState(data.upsells.products);
   const [newProductIds, setNewProductIds] = useState(null);
   const [ribbonEnabled, setRibbonEnabled] = useState(data.bottomRibbon.enabled);
@@ -459,8 +455,6 @@ export default function Settings() {
     allCompleteMessage: data.progressBar.all_complete_message,
     tierOrder: data.lineup.map((t) => t.id).join(","),
     upsellsEnabled: data.upsells.enabled,
-    upsellsHeading: data.upsells.heading,
-    showOnEmptyCart: data.upsells.show_on_empty_cart ?? false,
     upsellProducts: data.upsells.products.map((p) => p.product_id).join(","),
     ribbonEnabled: data.bottomRibbon.enabled,
     oosOverride: data.bottomRibbon.oos_message_override ?? "",
@@ -492,14 +486,12 @@ export default function Settings() {
       allCompleteMessage !== init.allCompleteMessage ||
       currentTierOrder !== init.tierOrder ||
       upsellsEnabled !== init.upsellsEnabled ||
-      upsellsHeading !== init.upsellsHeading ||
-      showOnEmptyCart !== init.showOnEmptyCart ||
       currentProducts !== init.upsellProducts ||
       ribbonEnabled !== init.ribbonEnabled ||
       oosOverride !== init.oosOverride ||
       crossPageBehavior !== init.crossPageBehavior
     );
-  }, [pbEnabled, allCompleteMessage, lineup, upsellsEnabled, upsellsHeading, showOnEmptyCart, upsellProducts, newProductIds, ribbonEnabled, oosOverride, crossPageBehavior, data]);
+  }, [pbEnabled, allCompleteMessage, lineup, upsellsEnabled, upsellProducts, newProductIds, ribbonEnabled, oosOverride, crossPageBehavior, data]);
 
   useEffect(() => {
     if (fetcher.data?.ok) shopify.toast.show("Settings saved");
@@ -510,8 +502,6 @@ export default function Settings() {
       progress_bar_enabled: pbEnabled,
       all_complete_message: allCompleteMessage,
       upsells_enabled: upsellsEnabled,
-      upsells_heading: upsellsHeading,
-      show_on_empty_cart: showOnEmptyCart,
       bottom_ribbon: { enabled: ribbonEnabled, oos_message_override: oosOverride || "" },
       cross_page_removal_behavior: crossPageBehavior,
       tier_order: lineup.map((t) => t.id),
@@ -526,8 +516,6 @@ export default function Settings() {
     setAllCompleteMessage(data.progressBar.all_complete_message);
     setLineup(data.lineup);
     setUpsellsEnabled(data.upsells.enabled);
-    setUpsellsHeading(data.upsells.heading);
-    setShowOnEmptyCart(data.upsells.show_on_empty_cart ?? false);
     setUpsellProducts(data.upsells.products);
     setNewProductIds(null);
     setRibbonEnabled(data.bottomRibbon.enabled);
@@ -704,23 +692,6 @@ export default function Settings() {
           >
             <VStack gap={400}>
               <SectionEnableHeader enabled={upsellsEnabled} onChange={setUpsellsEnabled} label="Upsells enabled" />
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                <s-text-field
-                  label="Section heading"
-                  value={upsellsHeading}
-                  onInput={(e) => setUpsellsHeading(e.target.value)}
-                  placeholder="You may also like"
-                />
-                <s-select
-                  label="When to show"
-                  value={showOnEmptyCart ? "always" : "filled"}
-                  onChange={(e) => setShowOnEmptyCart(e.target.value === "always")}
-                >
-                  <s-option value="filled">Only when cart has items</s-option>
-                  <s-option value="always">Always (including empty cart)</s-option>
-                </s-select>
-              </div>
 
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>

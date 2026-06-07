@@ -225,6 +225,8 @@ export const DrawerConfigSchema = z.object({
     upsells_card_layout: z.enum(['horizontal', 'vertical']).default('horizontal'),
     upsells_card_size: z.enum(['small', 'medium', 'large']).default('medium'),
     upsells_heading: z.string().default('YOU MAY ALSO LIKE'),
+    upsells_heading_position: z.enum(['left', 'center']).default('left'),
+    upsells_show_on_empty: z.enum(['filled', 'always']).default('filled'),
     upsells_btn_text: z.string().default('ADD TO CART'),
     upsells_show_compare_price: z.boolean().default(true),
   }).default({}),

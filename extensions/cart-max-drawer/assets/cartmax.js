@@ -1929,6 +1929,8 @@
         card_layout: l2.upsells_card_layout || "horizontal",
         card_size: l2.upsells_card_size || "medium",
         heading: l2.upsells_heading || "",
+        heading_position: l2.upsells_heading_position || "left",
+        show_on_empty: l2.upsells_show_on_empty || "filled",
         btn_text: l2.upsells_btn_text || "ADD TO CART",
         show_compare_price: l2.upsells_show_compare_price !== false
       };
@@ -3020,7 +3022,7 @@
       if (products.length === 0) return null;
       var cart = this.state.cart;
       var isEmpty = !cart || !cart.items || cart.items.length === 0;
-      if (isEmpty && upsells.show_on_empty_cart === false) return null;
+      if (isEmpty && this._upsells.show_on_empty !== "always") return null;
       var cartVariantIds = (cart && cart.items || []).map(function(i2) {
         return String(i2.variant_id);
       });
@@ -3035,10 +3037,10 @@
       var u2 = this._upsells;
       var layoutClass = "cartmax-upsells--" + (u2.card_layout || "horizontal");
       var sizeClass = "cartmax-upsell-card--" + (u2.card_size || "medium");
-      var headingText = u2.heading || upsells.heading || "YOU MAY ALSO LIKE";
+      var headingText = u2.heading || "YOU MAY ALSO LIKE";
       var btnText = u2.btn_text || "ADD TO CART";
       var imgPx = { small: 130, medium: 180, large: 230 }[u2.card_size] || 180;
-      return /* @__PURE__ */ k("div", { class: "cartmax-upsells " + layoutClass }, /* @__PURE__ */ k("div", { class: "cartmax-upsells-heading" }, headingText), this.state.upsellError ? /* @__PURE__ */ k("div", { class: "cartmax-upsell-error" }, this.state.upsellError) : null, /* @__PURE__ */ k("div", { class: "cartmax-upsells-scroll" }, filtered.map(function(p2) {
+      return /* @__PURE__ */ k("div", { class: "cartmax-upsells " + layoutClass }, /* @__PURE__ */ k("div", { class: "cartmax-upsells-heading", style: { justifyContent: u2.heading_position === "center" ? "center" : "flex-start" } }, headingText), this.state.upsellError ? /* @__PURE__ */ k("div", { class: "cartmax-upsell-error" }, this.state.upsellError) : null, /* @__PURE__ */ k("div", { class: "cartmax-upsells-scroll" }, filtered.map(function(p2) {
         var vid = String(p2.variant_id);
         if (vid.startsWith("gid://")) vid = vid.split("/").pop();
         var isAdding = self.state.updating["upsell_" + vid];
@@ -3136,8 +3138,9 @@
         this.renderAnnouncementBar(),
         /* @__PURE__ */ k("div", { class: "cartmax-header" }, /* @__PURE__ */ k("span", { class: "cartmax-title" }, this._text.cart_title, count > 0 ? /* @__PURE__ */ k("span", { class: "cartmax-header-count" }, count) : null), /* @__PURE__ */ k("button", { class: "cartmax-close", onClick: this.close, "aria-label": "Close cart" }, /* @__PURE__ */ k(IconClose, null))),
         this.state.unavailableGifts.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-gift-unavailable" }, "A gift product is currently unavailable") : null,
-        /* @__PURE__ */ k("div", { class: "cartmax-body" }, hasItems && sec.show_progress_bar ? this.renderProgressBar() : null, hasItems && sec.show_claim_gifts ? this.renderClaimGifts() : null, hasItems && sec.show_offer_cards ? this.renderOfferDisplays() : null, loading ? this.renderLoading() : isEmpty ? this.renderEmpty() : hasItems ? this._displayItems().map((item) => this.renderLineItem(item)) : null, hasItems && sec.show_coupons ? this.renderCoupons() : null, sec.show_upsells ? this.renderUpsells() : null),
+        /* @__PURE__ */ k("div", { class: "cartmax-body" }, hasItems && sec.show_progress_bar ? this.renderProgressBar() : null, hasItems && sec.show_claim_gifts ? this.renderClaimGifts() : null, hasItems && sec.show_offer_cards ? this.renderOfferDisplays() : null, loading ? this.renderLoading() : isEmpty ? this.renderEmpty() : hasItems ? this._displayItems().map((item) => this.renderLineItem(item)) : null, hasItems && sec.show_coupons ? this.renderCoupons() : null, hasItems && sec.show_upsells ? this.renderUpsells() : null),
         hasItems && sec.show_ribbon ? this.renderRibbon() : null,
+        isEmpty && sec.show_upsells ? this.renderUpsells() : null,
         hasItems ? this.renderFooter() : null
       )));
     }
