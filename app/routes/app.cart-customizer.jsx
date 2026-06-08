@@ -256,6 +256,163 @@ function TabNav({ value, onChange }) {
   );
 }
 
+// ── Coupon list editor ───────────────────────────────────────
+
+function CouponListEditor({ coupons, onUpdate }) {
+  const list = coupons || [];
+  const [expandedIdx, setExpandedIdx] = useState(null);
+
+  function addCoupon() {
+    const next = [...list, { code: "", accent: "", savings: "" }];
+    onUpdate(next);
+    setExpandedIdx(next.length - 1);
+  }
+
+  function removeCoupon(i) {
+    onUpdate(list.filter((_, idx) => idx !== i));
+    setExpandedIdx((prev) => (prev === i ? null : prev > i ? prev - 1 : prev));
+  }
+
+  function updateCoupon(i, field, val) {
+    onUpdate(list.map((c, idx) => (idx === i ? { ...c, [field]: val } : c)));
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {list.map((c, i) => {
+        const isOpen = expandedIdx === i;
+        const label = c.code || `Coupon ${i + 1}`;
+        const sublabel = c.accent ? ` · ${c.accent}` : "";
+        return (
+          <div
+            key={i}
+            style={{
+              border: "1px solid #e3e3e3",
+              borderRadius: 8,
+              background: "#fafafa",
+              overflow: "hidden",
+            }}
+          >
+            {/* Collapsed header row */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: "10px 12px",
+                gap: 8,
+              }}
+            >
+              <span
+                style={{
+                  flex: 1,
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: "#1a1a1a",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {label}
+                {sublabel && (
+                  <span style={{ fontWeight: 400, color: "#6d7175" }}>{sublabel}</span>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => setExpandedIdx(isOpen ? null : i)}
+                style={{
+                  padding: "4px 10px",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  border: "1px solid #d4d6d8",
+                  borderRadius: 6,
+                  background: "#fff",
+                  color: "#1a1a1a",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  flexShrink: 0,
+                }}
+              >
+                {isOpen ? "Done" : "Edit"}
+              </button>
+              <button
+                type="button"
+                onClick={() => removeCoupon(i)}
+                style={{
+                  padding: "4px 10px",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  border: "1px solid #fecaca",
+                  borderRadius: 6,
+                  background: "#fff",
+                  color: "#c0392b",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  flexShrink: 0,
+                }}
+              >
+                Remove
+              </button>
+            </div>
+
+            {/* Expanded form */}
+            {isOpen && (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
+                  padding: "0 12px 12px",
+                  borderTop: "1px solid #e3e3e3",
+                  paddingTop: 12,
+                }}
+              >
+                <s-text-field
+                  label="Discount code"
+                  details="The exact code shoppers will enter. e.g. SAVE100 — must match your Shopify discount exactly."
+                  value={c.code}
+                  onInput={(e) => updateCoupon(i, "code", e.target.value)}
+                />
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <s-text-field
+                    label="Accent label"
+                    details="Short label on the coloured strip. e.g. ₹100 OFF or 20% OFF"
+                    value={c.accent}
+                    onInput={(e) => updateCoupon(i, "accent", e.target.value)}
+                  />
+                  <s-text-field
+                    label="Savings text"
+                    details="Description shown below the code. e.g. Save ₹100 on this order"
+                    value={c.savings}
+                    onInput={(e) => updateCoupon(i, "savings", e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {list.length === 0 && (
+        <div
+          style={{
+            padding: "16px 12px",
+            border: "1.5px dashed #d4d6d8",
+            borderRadius: 8,
+            textAlign: "center",
+            fontSize: 13,
+            color: "#6d7175",
+          }}
+        >
+          No coupon cards yet. Add one below.
+        </div>
+      )}
+      <s-button onClick={addCoupon}>+ Add coupon card</s-button>
+    </div>
+  );
+}
+
 // ── Section visibility toggles ───────────────────────────────
 
 function SectionToggles({ sections, onToggle }) {
@@ -684,6 +841,16 @@ function ContentTab({ s, update }) {
             onInput={(e) => update("text.offer_cards_heading", e.target.value)}
           />
         </div>
+      </s-section>
+
+      <s-section
+        heading="Discount Coupons"
+        description="Coupon cards shown in the cart's discount block. Each card has a code, a short accent label on the coloured strip (e.g. 20% OFF), and a savings description. The code must exactly match a discount you've created in Shopify."
+      >
+        <CouponListEditor
+          coupons={s.coupons}
+          onUpdate={(val) => update("coupons", val)}
+        />
       </s-section>
 
       <s-section heading="Empty cart" description="Shown when the cart is empty.">

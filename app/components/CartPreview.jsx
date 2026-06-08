@@ -773,11 +773,7 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
 
           {/* Horizontal scrollable coupon cards */}
           <div style={{ display: "flex", flexDirection: "row", gap: 8, overflowX: "auto", overflowY: "hidden", scrollbarWidth: "none", msOverflowStyle: "none" }}>
-            {[
-              { code: 'SAVE100',     accentLabel: '₹100 OFF', savings: 'Save ₹100 on this order' },
-              { code: 'ENDYEARSALE', accentLabel: '20% OFF',  savings: 'Save 20% on this order'  },
-              { code: 'FLAT200',     accentLabel: '₹200 OFF', savings: 'Save ₹200 on this order' },
-            ].map((c, i) => (
+            {(settings.coupons || []).map((c, i) => (
               <div key={i} style={{
                 display: "flex",
                 flexDirection: "row",
@@ -810,7 +806,7 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
                     transform: "rotate(180deg)",
                     whiteSpace: "nowrap",
                   }}>
-                    {c.accentLabel}
+                    {c.accent}
                   </span>
                 </div>
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 3, padding: "0 16px", minWidth: 0 }}>
