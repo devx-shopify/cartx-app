@@ -388,6 +388,22 @@ function CouponListEditor({ coupons, onUpdate }) {
                     onInput={(e) => updateCoupon(i, "savings", e.target.value)}
                   />
                 </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <s-text-field
+                    label="Min. cart quantity"
+                    type="number"
+                    details="Only show this card when the cart has at least this many items. Leave empty to always show."
+                    value={c.trigger_qty ?? ""}
+                    onInput={(e) => updateCoupon(i, "trigger_qty", e.target.value)}
+                  />
+                  <s-text-field
+                    label="Min. cart total"
+                    type="number"
+                    details="Only show when the cart total is at least this amount (in your store's currency). Leave empty to always show."
+                    value={c.trigger_price ?? ""}
+                    onInput={(e) => updateCoupon(i, "trigger_price", e.target.value)}
+                  />
+                </div>
               </div>
             )}
           </div>

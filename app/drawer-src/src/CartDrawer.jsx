@@ -1760,7 +1760,16 @@ export default class CartDrawer extends Component {
     var isLoading = this.state.couponLoading;
     var appliedDiscounts = this.getAppliedDiscounts();
     var showPanel = this.state.couponPanelOpen;
-    var coupons = this._coupons;
+    var cart = this.state.cart;
+    var cartQty = cart ? (cart.item_count || 0) : 0;
+    var cartTotal = cart ? (cart.total_price || 0) / 100 : 0;
+    var coupons = this._coupons.filter(function (c) {
+      var minQty = Number(c.trigger_qty) || 0;
+      var minPrice = Number(c.trigger_price) || 0;
+      if (minQty > 0 && cartQty < minQty) return false;
+      if (minPrice > 0 && cartTotal < minPrice) return false;
+      return true;
+    });
 
     return (
       <div class="cartmax-coupons">

@@ -2891,7 +2891,16 @@
       var isLoading = this.state.couponLoading;
       var appliedDiscounts = this.getAppliedDiscounts();
       var showPanel = this.state.couponPanelOpen;
-      var coupons = this._coupons;
+      var cart = this.state.cart;
+      var cartQty = cart ? cart.item_count || 0 : 0;
+      var cartTotal = cart ? (cart.total_price || 0) / 100 : 0;
+      var coupons = this._coupons.filter(function(c2) {
+        var minQty = Number(c2.trigger_qty) || 0;
+        var minPrice = Number(c2.trigger_price) || 0;
+        if (minQty > 0 && cartQty < minQty) return false;
+        if (minPrice > 0 && cartTotal < minPrice) return false;
+        return true;
+      });
       return /* @__PURE__ */ k("div", { class: "cartmax-coupons" }, appliedDiscounts.map(function(d2) {
         return /* @__PURE__ */ k("div", { class: "cartmax-applied-coupon-banner", key: d2.code }, /* @__PURE__ */ k("div", { class: "cartmax-applied-coupon-card" }, /* @__PURE__ */ k("div", { class: "cartmax-applied-coupon-left" }, /* @__PURE__ */ k("span", { class: "cartmax-applied-label" }, "Applied Coupon"), /* @__PURE__ */ k("span", { class: "cartmax-applied-code" }, d2.code)), /* @__PURE__ */ k(
           "button",
