@@ -50,6 +50,9 @@ export function resolveAvailableCoupons(coupons, cart, page, customer) {
       type_label: coupon.type_label,
       is_automatic: coupon.is_automatic || false,
       display_message: coupon.display_message || null,
+      accent: coupon.accent || null,
+      trigger_qty: coupon.trigger_qty || null,
+      trigger_price: coupon.trigger_price || null,
       applied: isApplied,
     })
   }

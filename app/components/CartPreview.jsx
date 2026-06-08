@@ -73,7 +73,7 @@ function UpsellsPreviewBlock({ bg, border, text, upsellLayout, upsellHDim, upsel
   );
 }
 
-export default function CartPreview({ settings, showEmpty, minHeight }) {
+export default function CartPreview({ settings, promotionCoupons, showEmpty, minHeight }) {
   const c = settings.colors || {};
   const sh = settings.shape || {};
   const t = settings.typography || {};
@@ -773,7 +773,7 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
 
           {/* Horizontal scrollable coupon cards */}
           <div style={{ display: "flex", flexDirection: "row", gap: 8, overflowX: "auto", overflowY: "hidden", scrollbarWidth: "none", msOverflowStyle: "none" }}>
-            {(settings.coupons || []).map((c, i) => (
+            {(promotionCoupons || []).map((c, i) => (
               <div key={i} style={{
                 display: "flex",
                 flexDirection: "row",
@@ -814,7 +814,7 @@ export default function CartPreview({ settings, showEmpty, minHeight }) {
                     {c.code}
                   </span>
                   <span style={{ fontSize: 12, fontWeight: 400, lineHeight: "16px", color: textSec, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {c.savings}
+                    {c.display_message}
                   </span>
                 </div>
                 <div style={{

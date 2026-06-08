@@ -40,6 +40,9 @@ export default forwardRef(function CouponForm({ coupon, onSubmit, submitting }, 
   const [isAutomatic, setIsAutomatic] = useState(coupon?.is_automatic ?? false);
   const [enabled, setEnabled] = useState(coupon?.enabled ?? true);
   const [displayMessage, setDisplayMessage] = useState(coupon?.display_message ?? "");
+  const [accent, setAccent] = useState(coupon?.accent ?? "");
+  const [triggerQty, setTriggerQty] = useState(coupon?.trigger_qty ?? "");
+  const [triggerPrice, setTriggerPrice] = useState(coupon?.trigger_price ?? "");
   const [pageHandles, setPageHandles] = useState(coupon?.page_handles?.length ? coupon.page_handles : ["/"]);
   const [pageTargets, setPageTargets] = useState(coupon?.page_targets);
   const [customerTags, setCustomerTags] = useState(coupon?.customer_tags);
@@ -77,6 +80,9 @@ export default forwardRef(function CouponForm({ coupon, onSubmit, submitting }, 
     onSubmit({
       shopify_discount_id: shopifyDiscountId, code: code.trim(), type_label: typeLabel,
       title, is_automatic: isAutomatic, enabled, display_message: displayMessage || undefined,
+      accent: accent.trim() || undefined,
+      trigger_qty: triggerQty !== "" ? Number(triggerQty) : undefined,
+      trigger_price: triggerPrice !== "" ? Number(triggerPrice) : undefined,
       page_handles: pageHandles, page_targets: pageTargets,
       customer_tags: customerTags,
     });
@@ -203,9 +209,38 @@ export default forwardRef(function CouponForm({ coupon, onSubmit, submitting }, 
       </s-section>
 
       {/* Display Settings */}
-      <s-section heading="Display settings">
+      <s-section heading="Cart card display" description="Controls how this coupon appears as a card in the cart drawer's discount block.">
         <VStack gap={400}>
-          <s-text-field label="Custom message" value={displayMessage} onInput={(e) => setDisplayMessage(e.target.value)} placeholder="Use this code for 20% off your order!" details="Shown on the coupon card in the cart drawer" />
+          <s-text-field
+            label="Accent label"
+            value={accent}
+            onInput={(e) => setAccent(e.target.value)}
+            placeholder="e.g. ₹100 OFF or 20% OFF"
+            details="Short label on the coloured strip of the card. Keep it under 10 characters."
+          />
+          <s-text-field
+            label="Savings text"
+            value={displayMessage}
+            onInput={(e) => setDisplayMessage(e.target.value)}
+            placeholder="e.g. Save ₹100 on this order"
+            details="Description shown below the code on the card."
+          />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <s-text-field
+              label="Min. cart quantity"
+              type="number"
+              value={String(triggerQty)}
+              onInput={(e) => setTriggerQty(e.target.value)}
+              details="Only show this card when the cart has at least this many items. Leave empty to always show."
+            />
+            <s-text-field
+              label="Min. cart total"
+              type="number"
+              value={String(triggerPrice)}
+              onInput={(e) => setTriggerPrice(e.target.value)}
+              details="Only show when the cart total is at least this amount. Leave empty to always show."
+            />
+          </div>
         </VStack>
       </s-section>
 

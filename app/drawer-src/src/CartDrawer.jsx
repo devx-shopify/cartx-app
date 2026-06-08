@@ -575,7 +575,6 @@ export default class CartDrawer extends Component {
     };
     var sh = drawer.shape || {};
     this._shape = { button_style: sh.button_style || 'solid' };
-    this._coupons = Array.isArray(drawer.coupons) ? drawer.coupons : [];
     var sec = drawer.sections || {};
     this._sections = {
       show_progress_bar: sec.show_progress_bar !== false,
@@ -1763,7 +1762,9 @@ export default class CartDrawer extends Component {
     var cart = this.state.cart;
     var cartQty = cart ? (cart.item_count || 0) : 0;
     var cartTotal = cart ? (cart.total_price || 0) / 100 : 0;
-    var coupons = this._coupons.filter(function (c) {
+    var evalResult = this.state.evalResult;
+    var allCoupons = (evalResult && evalResult.available_coupons) ? evalResult.available_coupons : [];
+    var coupons = allCoupons.filter(function (c) {
       var minQty = Number(c.trigger_qty) || 0;
       var minPrice = Number(c.trigger_price) || 0;
       if (minQty > 0 && cartQty < minQty) return false;
@@ -1832,7 +1833,7 @@ export default class CartDrawer extends Component {
                   </div>
                   <div class="cartmax-discount-card-info">
                     <span class="cartmax-discount-card-code">{c.code}</span>
-                    <span class="cartmax-discount-card-savings">{c.savings}</span>
+                    <span class="cartmax-discount-card-savings">{c.display_message}</span>
                   </div>
                   <button
                     class={'cartmax-discount-card-btn' + (isApplied ? ' cartmax-discount-card-btn--applied' : '')}
@@ -1867,7 +1868,7 @@ export default class CartDrawer extends Component {
                     </div>
                     <div class="cartmax-offers-card-info">
                       <span class="cartmax-offers-card-code">{c.code}</span>
-                      <span class="cartmax-offers-card-savings">{c.savings}</span>
+                      <span class="cartmax-offers-card-savings">{c.display_message}</span>
                     </div>
                     <button
                       class={'cartmax-offers-card-btn' + (isApplied ? ' cartmax-offers-card-btn--applied' : '')}
