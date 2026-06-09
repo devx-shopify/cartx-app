@@ -100,6 +100,7 @@ export function buildVolumeDiscountConfig(offers) {
       offer_id: o.id,
       variant_ids: (o.source?.product_variant_ids || []).map(normalizeId),
       discount_mode: o.reward.discount_mode,
+      discount_priority: o.reward.discount_priority ?? 'lowest',
       tiers: (o.reward.tiers || []).slice().sort((a, b) => a.quantity - b.quantity),
       message: o.name || "Volume Deal",
     }));

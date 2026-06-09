@@ -83,6 +83,13 @@ export function cartLinesDiscountsGenerateRun(input) {
     const tierQty = activeTier.quantity;
     const message = offer.message || 'Volume Deal';
 
+    // Sort by price so the discount always lands on the same items regardless
+    // of the non-deterministic order Shopify returns cart.lines in.
+    const priority = offer.discount_priority ?? 'lowest';
+    qualifyingLines.sort((a, b) =>
+      priority === 'lowest' ? a.unitPrice - b.unitPrice : b.unitPrice - a.unitPrice,
+    );
+
     // Cap eligible quantity per line to tierQty total.
     // Only tierQty items get the discount; extras stay at original price.
     let remaining = tierQty;

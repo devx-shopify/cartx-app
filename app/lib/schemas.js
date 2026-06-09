@@ -75,6 +75,7 @@ export const OfferSchema = z.object({
     z.object({
       type: z.literal('volume_discount'),
       discount_mode: z.enum(['fixed_total', 'percentage']),
+      discount_priority: z.enum(['highest', 'lowest']).optional(),
       tiers: z.array(z.object({
         quantity: z.number().int().min(1),
         value: z.number().positive(),
