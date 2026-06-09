@@ -1216,6 +1216,11 @@ cart-notification-component [role="dialog"] {
   -webkit-overflow-scrolling: touch;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
+  scroll-padding-left: 20px;
+  margin-left: -20px;
+  margin-right: -20px;
+  padding-left: 20px;
+  padding-right: 20px;
 }
 
 .cartmax-claims-scroll::-webkit-scrollbar {
@@ -1814,8 +1819,12 @@ cart-notification-component [role="dialog"] {
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   scroll-snap-type: x mandatory;
-  scroll-padding-left: 4px;
+  scroll-padding-left: 20px;
   scrollbar-width: none;
+  margin-left: -20px;
+  margin-right: -20px;
+  padding-left: 20px;
+  padding-right: 20px;
 }
 
 .cartmax-upsells-scroll::-webkit-scrollbar {
