@@ -15,4 +15,9 @@ COPY . .
 
 RUN npm run build
 
+# Run as the built-in non-root "node" user instead of root.
+# chown so the runtime user can write Prisma artifacts during docker-start.
+RUN chown -R node:node /app
+USER node
+
 CMD ["npm", "run", "docker-start"]
