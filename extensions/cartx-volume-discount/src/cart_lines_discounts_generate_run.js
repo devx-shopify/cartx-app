@@ -76,6 +76,9 @@ export function cartLinesDiscountsGenerateRun(input) {
       totalPrice += lineTotal;
     }
 
+    // Quantity cap — if cart exceeds the cap, skip this offer entirely
+    if (offer.max_cart_quantity && totalQty > offer.max_cart_quantity) continue;
+
     // Find active tier (highest quantity that's met)
     const activeTier = tiers.find((t) => totalQty >= t.quantity);
     if (!activeTier) continue;
@@ -108,7 +111,8 @@ export function cartLinesDiscountsGenerateRun(input) {
     if (offer.discount_mode === 'percentage') {
       // Percentage — only discount tierQty items, convert to fixed amounts
       const pct = Math.min(activeTier.value, 100);
-      const totalDiscount = eligibleTotal * (pct / 100);
+      let totalDiscount = eligibleTotal * (pct / 100);
+      if (offer.max_discount_amount) totalDiscount = Math.min(totalDiscount, offer.max_discount_amount);
 
       for (const line of eligibleLines) {
         const lineShare = eligibleTotal > 0 ? (line.eligibleAmount / eligibleTotal) * totalDiscount : 0;
@@ -125,7 +129,8 @@ export function cartLinesDiscountsGenerateRun(input) {
       const targetTotal = activeTier.value;
       if (targetTotal >= eligibleTotal) continue;
 
-      const totalDiscount = eligibleTotal - targetTotal;
+      let totalDiscount = eligibleTotal - targetTotal;
+      if (offer.max_discount_amount) totalDiscount = Math.min(totalDiscount, offer.max_discount_amount);
 
       for (const line of eligibleLines) {
         const lineShare = eligibleTotal > 0 ? (line.eligibleAmount / eligibleTotal) * totalDiscount : 0;
