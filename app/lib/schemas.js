@@ -223,6 +223,7 @@ export const DrawerConfigSchema = z.object({
     image_size: z.enum(['small', 'medium', 'large']).default('medium'),
     density: z.enum(['compact', 'comfortable', 'spacious']).default('comfortable'),
     qty_style: z.enum(['bordered', 'minimal']).default('bordered'),
+    show_compare_price: z.boolean().default(true),
     show_vendor: z.boolean().default(false),
     show_variant_switcher: z.boolean().default(true),
     show_remove_btn: z.boolean().default(true),

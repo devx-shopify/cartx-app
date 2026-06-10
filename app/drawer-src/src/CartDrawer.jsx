@@ -215,8 +215,9 @@ export default class CartDrawer extends Component {
       offer_cards_heading: 'Pick your free gift',
       checkout_trust_message: 'Guaranteed safe & secure checkout',
     };
-    this._layout = { drawer_position: 'right', image_style: 'rounded', qty_style: 'bordered', show_vendor: false, show_variant_switcher: true, show_remove_btn: true, show_payment_icons: true };
+    this._layout = { drawer_position: 'right', image_style: 'rounded', qty_style: 'bordered', show_vendor: false, show_variant_switcher: true, show_remove_btn: true, show_payment_icons: true, show_compare_price: true };
     this._variantCache = {}; // product_id -> variants[]
+    this._compareAtCache = {}; // variant_id (string) -> compare_at_price (cents, per unit)
     this._upsells = { card_layout: 'horizontal', card_size: 'medium', heading: '', btn_text: 'ADD TO CART', show_compare_price: true };
     this._announcement = { text: '', type: 'static' };
     this._progressBar = { track_thickness: 'normal', milestone_icon_svg: '', completed_icon_svg: '' };
@@ -548,6 +549,7 @@ export default class CartDrawer extends Component {
       show_vendor: l.show_vendor === true,
       show_variant_switcher: l.show_variant_switcher !== false,
       show_remove_btn: l.show_remove_btn !== false,
+      show_compare_price: l.show_compare_price !== false,
       empty_icon_url: l.empty_icon_url || '',
       empty_icon_size: l.empty_icon_size || 'medium',
       empty_icon_color: l.empty_icon_color || '',
@@ -752,9 +754,36 @@ export default class CartDrawer extends Component {
       this._currency = cart.currency || this._currency;
       this.setState({ cart: cart, loading: false });
       updateCartCount(cart.item_count);
+      this._prefetchCompareAtPrices(cart.items || []);
     } catch (err) {
       this.setState({ loading: false });
     }
+  }
+
+  _prefetchCompareAtPrices(items) {
+    // Dedupe by handle; skip handles already cached via _variantCache
+    var seen = {};
+    items.forEach((item) => {
+      if (!item.handle || seen[item.handle]) return;
+      seen[item.handle] = true;
+      var cached = this._variantCache[String(item.product_id)];
+      if (cached && cached.length) {
+        cached.forEach((v) => {
+          if (v.compare_at_price) this._compareAtCache[String(v.id)] = v.compare_at_price;
+        });
+        return;
+      }
+      fetch('/products/' + item.handle + '.js')
+        .then((r) => r.json())
+        .then((p) => {
+          if (!p.variants) return;
+          p.variants.forEach((v) => {
+            if (v.compare_at_price) this._compareAtCache[String(v.id)] = v.compare_at_price;
+          });
+          this.setState({});
+        })
+        .catch(() => {});
+    });
   }
 
   // ── Open / Close ──────────────────────────────────────────
@@ -1082,9 +1111,12 @@ export default class CartDrawer extends Component {
       var res = await fetch('/products/' + handle + '.js');
       var data = await res.json();
       var variants = (data.variants || []).map(function (v) {
-        return { id: v.id, title: v.title, available: v.available };
+        return { id: v.id, title: v.title, available: v.available, compare_at_price: v.compare_at_price || 0 };
       });
       this._variantCache[productId] = variants;
+      variants.forEach((v) => {
+        if (v.compare_at_price) this._compareAtCache[String(v.id)] = v.compare_at_price;
+      });
       return variants;
     } catch (err) {
       console.error('[cartx] Failed to fetch variants:', err);
@@ -1203,18 +1235,30 @@ export default class CartDrawer extends Component {
           <div class="cartmax-line-price">
             {isFreebie && item.final_line_price === 0
               ? <span class="cartmax-gift-badge">FREE</span>
-              : [
-                  <span key="final">{formatMoney(item.final_line_price, curr)}</span>,
-                  item.original_line_price > item.final_line_price
-                    ? <span key="orig" class="cartmax-line-price-original">{formatMoney(item.original_line_price, curr)}</span>
-                    : null,
-                  !isClaimed && !isFreebie && item.original_line_price > item.final_line_price
-                    ? <span key="savings" class="cartmax-line-savings-badge">
-                        <IconDiscountBadge />
-                        {Math.round((item.original_line_price - item.final_line_price) / item.original_line_price * 100)}% off
-                      </span>
-                    : null,
-                ]
+              : (() => {
+                  var compareAtUnit = this._layout.show_compare_price
+                    ? this._compareAtCache[String(item.variant_id)]
+                    : null;
+                  var compareAtLine = compareAtUnit ? compareAtUnit * item.quantity : 0;
+                  var strikethrough = (compareAtLine > item.final_line_price)
+                    ? compareAtLine
+                    : (item.original_line_price > item.final_line_price ? item.original_line_price : 0);
+                  var savingsPct = strikethrough > 0
+                    ? Math.round((strikethrough - item.final_line_price) / strikethrough * 100)
+                    : 0;
+                  return [
+                    <span key="final">{formatMoney(item.final_line_price, curr)}</span>,
+                    strikethrough > 0
+                      ? <span key="orig" class="cartmax-line-price-original">{formatMoney(strikethrough, curr)}</span>
+                      : null,
+                    !isClaimed && savingsPct > 0
+                      ? <span key="savings" class="cartmax-line-savings-badge">
+                          <IconDiscountBadge />
+                          {savingsPct}% off
+                        </span>
+                      : null,
+                  ];
+                })()
             }
           </div>
           {!isClaimed && !isFreebie && item.line_level_discount_allocations && item.line_level_discount_allocations.length > 0

@@ -1116,6 +1116,11 @@ function LayoutTab({ s, update }) {
           <s-divider />
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <s-checkbox
+              label="Show compare at price"
+              checked={s.layout.show_compare_price !== false || undefined}
+              onChange={(e) => update("layout.show_compare_price", e.target.checked)}
+            />
+            <s-checkbox
               label="Variant switcher"
               checked={s.layout.show_variant_switcher || undefined}
               onChange={(e) => update("layout.show_variant_switcher", e.target.checked)}

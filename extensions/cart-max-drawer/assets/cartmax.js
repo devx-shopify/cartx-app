@@ -1646,8 +1646,9 @@
         offer_cards_heading: "Pick your free gift",
         checkout_trust_message: "Guaranteed safe & secure checkout"
       };
-      this._layout = { drawer_position: "right", image_style: "rounded", qty_style: "bordered", show_vendor: false, show_variant_switcher: true, show_remove_btn: true, show_payment_icons: true };
+      this._layout = { drawer_position: "right", image_style: "rounded", qty_style: "bordered", show_vendor: false, show_variant_switcher: true, show_remove_btn: true, show_payment_icons: true, show_compare_price: true };
       this._variantCache = {};
+      this._compareAtCache = {};
       this._upsells = { card_layout: "horizontal", card_size: "medium", heading: "", btn_text: "ADD TO CART", show_compare_price: true };
       this._announcement = { text: "", type: "static" };
       this._progressBar = { track_thickness: "normal", milestone_icon_svg: "", completed_icon_svg: "" };
@@ -1929,6 +1930,7 @@
         show_vendor: l2.show_vendor === true,
         show_variant_switcher: l2.show_variant_switcher !== false,
         show_remove_btn: l2.show_remove_btn !== false,
+        show_compare_price: l2.show_compare_price !== false,
         empty_icon_url: l2.empty_icon_url || "",
         empty_icon_size: l2.empty_icon_size || "medium",
         empty_icon_color: l2.empty_icon_color || "",
@@ -2106,9 +2108,32 @@
         this._currency = cart.currency || this._currency;
         this.setState({ cart, loading: false });
         updateCartCount(cart.item_count);
+        this._prefetchCompareAtPrices(cart.items || []);
       } catch (err) {
         this.setState({ loading: false });
       }
+    }
+    _prefetchCompareAtPrices(items) {
+      var seen = {};
+      items.forEach((item) => {
+        if (!item.handle || seen[item.handle]) return;
+        seen[item.handle] = true;
+        var cached = this._variantCache[String(item.product_id)];
+        if (cached && cached.length) {
+          cached.forEach((v2) => {
+            if (v2.compare_at_price) this._compareAtCache[String(v2.id)] = v2.compare_at_price;
+          });
+          return;
+        }
+        fetch("/products/" + item.handle + ".js").then((r2) => r2.json()).then((p2) => {
+          if (!p2.variants) return;
+          p2.variants.forEach((v2) => {
+            if (v2.compare_at_price) this._compareAtCache[String(v2.id)] = v2.compare_at_price;
+          });
+          this.setState({});
+        }).catch(() => {
+        });
+      });
     }
     // ── Open / Close ──────────────────────────────────────────
     openDrawer() {
@@ -2360,9 +2385,12 @@
         var res = await fetch("/products/" + handle + ".js");
         var data = await res.json();
         var variants = (data.variants || []).map(function(v2) {
-          return { id: v2.id, title: v2.title, available: v2.available };
+          return { id: v2.id, title: v2.title, available: v2.available, compare_at_price: v2.compare_at_price || 0 };
         });
         this._variantCache[productId] = variants;
+        variants.forEach((v2) => {
+          if (v2.compare_at_price) this._compareAtCache[String(v2.id)] = v2.compare_at_price;
+        });
         return variants;
       } catch (err) {
         console.error("[cartx] Failed to fetch variants:", err);
@@ -2448,11 +2476,17 @@
           "aria-label": "Remove " + item.product_title
         },
         /* @__PURE__ */ k(IconTrash, null)
-      ) : null), /* @__PURE__ */ k("div", { class: "cartmax-line-price" }, isFreebie && item.final_line_price === 0 ? /* @__PURE__ */ k("span", { class: "cartmax-gift-badge" }, "FREE") : [
-        /* @__PURE__ */ k("span", { key: "final" }, formatMoney(item.final_line_price, curr)),
-        item.original_line_price > item.final_line_price ? /* @__PURE__ */ k("span", { key: "orig", class: "cartmax-line-price-original" }, formatMoney(item.original_line_price, curr)) : null,
-        !isClaimed && !isFreebie && item.original_line_price > item.final_line_price ? /* @__PURE__ */ k("span", { key: "savings", class: "cartmax-line-savings-badge" }, /* @__PURE__ */ k(IconDiscountBadge, null), Math.round((item.original_line_price - item.final_line_price) / item.original_line_price * 100), "% off") : null
-      ]), !isClaimed && !isFreebie && item.line_level_discount_allocations && item.line_level_discount_allocations.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-line-discounts" }, item.line_level_discount_allocations.map((d2) => /* @__PURE__ */ k("span", { class: "cartmax-line-discount-tag", key: d2.discount_application.title }, d2.discount_application.title))) : null, !isFreebie ? /* @__PURE__ */ k("div", { class: "cartmax-line-actions" }, showVariantSwitcher ? /* @__PURE__ */ k("div", { class: "cartmax-variant-wrap" }, /* @__PURE__ */ k(
+      ) : null), /* @__PURE__ */ k("div", { class: "cartmax-line-price" }, isFreebie && item.final_line_price === 0 ? /* @__PURE__ */ k("span", { class: "cartmax-gift-badge" }, "FREE") : (() => {
+        var compareAtUnit = this._layout.show_compare_price ? this._compareAtCache[String(item.variant_id)] : null;
+        var compareAtLine = compareAtUnit ? compareAtUnit * item.quantity : 0;
+        var strikethrough = compareAtLine > item.final_line_price ? compareAtLine : item.original_line_price > item.final_line_price ? item.original_line_price : 0;
+        var savingsPct = strikethrough > 0 ? Math.round((strikethrough - item.final_line_price) / strikethrough * 100) : 0;
+        return [
+          /* @__PURE__ */ k("span", { key: "final" }, formatMoney(item.final_line_price, curr)),
+          strikethrough > 0 ? /* @__PURE__ */ k("span", { key: "orig", class: "cartmax-line-price-original" }, formatMoney(strikethrough, curr)) : null,
+          !isClaimed && savingsPct > 0 ? /* @__PURE__ */ k("span", { key: "savings", class: "cartmax-line-savings-badge" }, /* @__PURE__ */ k(IconDiscountBadge, null), savingsPct, "% off") : null
+        ];
+      })()), !isClaimed && !isFreebie && item.line_level_discount_allocations && item.line_level_discount_allocations.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-line-discounts" }, item.line_level_discount_allocations.map((d2) => /* @__PURE__ */ k("span", { class: "cartmax-line-discount-tag", key: d2.discount_application.title }, d2.discount_application.title))) : null, !isFreebie ? /* @__PURE__ */ k("div", { class: "cartmax-line-actions" }, showVariantSwitcher ? /* @__PURE__ */ k("div", { class: "cartmax-variant-wrap" }, /* @__PURE__ */ k(
         "button",
         {
           class: "cartmax-variant-pill" + (isVariantOpen ? " cartmax-variant-pill--open" : ""),
