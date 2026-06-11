@@ -1663,6 +1663,7 @@
           this._currency = cart.currency || this._currency;
           this.setState({ cart, loading: false });
           updateCartCount(cart.item_count);
+          this._prefetchCompareAtPrices(cart.items || []);
         } else {
           this.loadCart();
         }
