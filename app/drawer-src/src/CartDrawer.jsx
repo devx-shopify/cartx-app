@@ -1112,7 +1112,7 @@ export default class CartDrawer extends Component {
       var res = await fetch('/products/' + handle + '.js');
       var data = await res.json();
       var variants = (data.variants || []).map(function (v) {
-        return { id: v.id, title: v.title, available: v.available, compare_at_price: v.compare_at_price || 0 };
+        return { id: v.id, title: v.title, available: v.available, price: v.price || 0, compare_at_price: v.compare_at_price || 0, featured_image: v.featured_image || null };
       });
       this._variantCache[productId] = variants;
       variants.forEach((v) => {
@@ -1162,8 +1162,59 @@ export default class CartDrawer extends Component {
       return;
     }
 
-    var updating = Object.assign({}, this.state.updating, { [key]: true });
-    this.setState({ variantOpen: nextOpen, updating: updating });
+    var snapshot = this.state.cart;
+    var cachedVariants = this._variantCache[String(item.product_id)] || [];
+    var newVariant = cachedVariants.find((v) => String(v.id) === String(newVariantId));
+    // pending_ prefix lets _stabiliseOrder alias this to the real server key on reconcile
+    var pendingKey = 'pending_varswitch_' + key + '_' + newVariantId;
+
+    if (newVariant && snapshot) {
+      var unitPrice = newVariant.price || 0;
+      var optimisticItem = Object.assign({}, item, {
+        key: pendingKey,
+        variant_id: Number(newVariantId),
+        variant_title: newVariant.title || item.variant_title,
+        price: unitPrice,
+        original_price: unitPrice,
+        final_price: unitPrice,
+        line_price: unitPrice * qty,
+        final_line_price: unitPrice * qty,
+        original_line_price: unitPrice * qty,
+        image: (newVariant.featured_image && newVariant.featured_image.src) || item.image,
+        line_level_discount_allocations: [],
+      });
+      var optimisticItems = (snapshot.items || []).map((it) =>
+        it.key === key ? optimisticItem : it
+      );
+      var totalPrice = 0;
+      var itemCount = 0;
+      optimisticItems.forEach(function(it) {
+        totalPrice += (it.final_line_price || 0);
+        itemCount += (it.quantity || 0);
+      });
+      var optimisticCart = Object.assign({}, snapshot, {
+        items: optimisticItems,
+        total_price: totalPrice,
+        item_count: itemCount,
+        items_subtotal_price: totalPrice,
+      });
+      if (newVariant.compare_at_price) {
+        this._compareAtCache[String(newVariantId)] = newVariant.compare_at_price;
+      }
+      this.setState({
+        variantOpen: nextOpen,
+        updating: Object.assign({}, this.state.updating, { [pendingKey]: true }),
+        cart: optimisticCart,
+        pendingQty: {},
+      });
+      updateCartCount(optimisticCart.item_count);
+    } else {
+      this.setState({
+        variantOpen: nextOpen,
+        updating: Object.assign({}, this.state.updating, { [key]: true }),
+      });
+    }
+
     this._startProcessingTimeout();
 
     try {
@@ -1182,8 +1233,13 @@ export default class CartDrawer extends Component {
       window.dispatchEvent(new CustomEvent('cartmax:internal-reload', { detail: { cart: cart } }));
     } catch (err) {
       console.error('[cartx] Variant switch error:', err);
+      if (snapshot) {
+        this.setState({ cart: snapshot, pendingQty: {} });
+        updateCartCount(snapshot.item_count);
+      }
+      var usedKey = newVariant ? pendingKey : key;
       var newUpdating = Object.assign({}, this.state.updating);
-      delete newUpdating[key];
+      delete newUpdating[usedKey];
       this.setState({ updating: newUpdating });
       this.loadCart();
     }
