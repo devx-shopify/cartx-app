@@ -23,8 +23,12 @@ primary_region = "bom"  # Mumbai — close to India merchants
   size = "shared-cpu-1x"
   memory = "512mb"
 
-[deploy]
-  release_command = "npx prisma migrate deploy"
+# No [deploy] release_command on purpose.
+# Migrations run on every app machine at boot via `npm run docker-start`
+# (-> `npm run setup` -> `prisma migrate deploy`), so a separate ephemeral
+# release machine is redundant. Removing it also lets deploys succeed when
+# the bom region has no spare capacity to launch a new release VM — existing
+# machines are updated in place instead.
 
 # ─ Scheduled jobs (analytics) ──────────────────────────────────────────
 # Fly schedules are configured via `fly machine run`, not via fly.toml.
