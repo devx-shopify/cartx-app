@@ -584,6 +584,7 @@ export default class CartDrawer extends Component {
       show_claim_gifts: sec.show_claim_gifts !== false,
       show_offer_cards: sec.show_offer_cards !== false,
       show_coupons: sec.show_coupons !== false,
+      allow_multiple_coupons: sec.allow_multiple_coupons === true,
       show_upsells: sec.show_upsells !== false,
       show_ribbon: sec.show_ribbon !== false,
     };
@@ -1864,8 +1865,12 @@ export default class CartDrawer extends Component {
     var cartQty = cart ? (cart.item_count || 0) : 0;
     var cartTotal = cart ? (cart.total_price || 0) / 100 : 0;
     var evalResult = this.state.evalResult;
+    var allowMultiple = this._sections.allow_multiple_coupons;
+    var singleCouponApplied = !allowMultiple && appliedDiscounts.length > 0;
     var allCoupons = (evalResult && evalResult.available_coupons) ? evalResult.available_coupons : [];
+    var appliedCodes = appliedDiscounts.map(function (d) { return d.code; });
     var coupons = allCoupons.filter(function (c) {
+      if (appliedCodes.indexOf(c.code) !== -1) return false;
       var minQty = Number(c.trigger_qty) || 0;
       var minPrice = Number(c.trigger_price) || 0;
       if (minQty > 0 && cartQty < minQty) return false;
@@ -1896,56 +1901,59 @@ export default class CartDrawer extends Component {
           );
         })}
 
-        {/* Discount block — pink wrapper, input row + horizontal card scroll */}
-        <div class="cartmax-discount-block">
-          <div class="cartmax-discount-input-row">
-            <input
-              class="cartmax-discount-input"
-              type="text"
-              placeholder="Apply Coupon"
-              value={self.state.couponInput || ''}
-              onInput={function (e) { self.setState({ couponInput: e.target.value, couponError: null }); }}
-              onKeyDown={function (e) { if (e.key === 'Enter') self.handleCouponApply(self.state.couponInput); }}
-              disabled={isLoading}
-            />
-            <button
-              class="cartmax-discount-submit"
-              onClick={function () { self.handleCouponApply(self.state.couponInput); }}
-              disabled={isLoading || !(self.state.couponInput || '').trim()}
-              aria-label="Apply coupon"
-            ><IconChevronRight /></button>
-            <span class="cartmax-discount-divider" />
-            <button
-              class="cartmax-discount-viewall"
-              onClick={function () { self.setState({ couponPanelOpen: true }); }}
-            >View All</button>
+        {/* Discount block — hidden when single-coupon mode and a coupon is already applied */}
+        {!singleCouponApplied ? (
+          <div class="cartmax-discount-block">
+            <div class="cartmax-discount-input-row">
+              <input
+                class="cartmax-discount-input"
+                type="text"
+                placeholder="Apply Coupon"
+                value={self.state.couponInput || ''}
+                onInput={function (e) { self.setState({ couponInput: e.target.value, couponError: null }); }}
+                onKeyDown={function (e) { if (e.key === 'Enter') self.handleCouponApply(self.state.couponInput); }}
+                disabled={isLoading}
+              />
+              <button
+                class="cartmax-discount-submit"
+                onClick={function () { self.handleCouponApply(self.state.couponInput); }}
+                disabled={isLoading || !(self.state.couponInput || '').trim()}
+                aria-label="Apply coupon"
+              ><IconChevronRight /></button>
+              <span class="cartmax-discount-divider" />
+              <button
+                class="cartmax-discount-viewall"
+                onClick={function () { self.setState({ couponPanelOpen: true }); }}
+              >View All</button>
+            </div>
+            {self.state.couponError
+              ? <div class="cartmax-coupon-error">{self.state.couponError}</div>
+              : null
+            }
+            {coupons.length > 0 ? (
+              <div class="cartmax-discount-cards">
+                {coupons.map(function (c) {
+                  return (
+                    <div class="cartmax-discount-card" key={c.code}>
+                      <div class="cartmax-discount-card-accent">
+                        <span>{c.accent}</span>
+                      </div>
+                      <div class="cartmax-discount-card-info">
+                        <span class="cartmax-discount-card-code">{c.code}</span>
+                        <span class="cartmax-discount-card-savings">{c.display_message}</span>
+                      </div>
+                      <button
+                        class="cartmax-discount-card-btn"
+                        onClick={function () { self.handleCouponApply(c.code); }}
+                        disabled={isLoading}
+                      >Apply</button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
-          {self.state.couponError
-            ? <div class="cartmax-coupon-error">{self.state.couponError}</div>
-            : null
-          }
-          <div class="cartmax-discount-cards">
-            {coupons.map(function (c) {
-              var isApplied = appliedDiscounts.some(function (d) { return d.code === c.code; });
-              return (
-                <div class="cartmax-discount-card" key={c.code}>
-                  <div class="cartmax-discount-card-accent">
-                    <span>{c.accent}</span>
-                  </div>
-                  <div class="cartmax-discount-card-info">
-                    <span class="cartmax-discount-card-code">{c.code}</span>
-                    <span class="cartmax-discount-card-savings">{c.display_message}</span>
-                  </div>
-                  <button
-                    class={'cartmax-discount-card-btn' + (isApplied ? ' cartmax-discount-card-btn--applied' : '')}
-                    onClick={function () { self.handleCouponApply(c.code); }}
-                    disabled={isLoading}
-                  >{isApplied ? 'Applied' : 'Apply'}</button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        ) : null}
 
         {/* Offers & Coupons panel — slides in from right */}
         <div class={'cartmax-offers-panel' + (showPanel ? ' cartmax-offers-panel--open' : '')}>
@@ -1959,27 +1967,28 @@ export default class CartDrawer extends Component {
           </div>
           <div class="cartmax-offers-body">
             <span class="cartmax-offers-label">Available Coupons</span>
-            <div class="cartmax-offers-cards">
-              {coupons.map(function (c) {
-                var isApplied = appliedDiscounts.some(function (d) { return d.code === c.code; });
-                return (
-                  <div class="cartmax-offers-card" key={c.code}>
-                    <div class="cartmax-offers-card-accent">
-                      <span>{c.accent}</span>
+            {coupons.length > 0 ? (
+              <div class="cartmax-offers-cards">
+                {coupons.map(function (c) {
+                  return (
+                    <div class="cartmax-offers-card" key={c.code}>
+                      <div class="cartmax-offers-card-accent">
+                        <span>{c.accent}</span>
+                      </div>
+                      <div class="cartmax-offers-card-info">
+                        <span class="cartmax-offers-card-code">{c.code}</span>
+                        <span class="cartmax-offers-card-savings">{c.display_message}</span>
+                      </div>
+                      <button
+                        class="cartmax-offers-card-btn"
+                        onClick={function () { self.handleCouponApply(c.code); }}
+                        disabled={isLoading}
+                      >Apply</button>
                     </div>
-                    <div class="cartmax-offers-card-info">
-                      <span class="cartmax-offers-card-code">{c.code}</span>
-                      <span class="cartmax-offers-card-savings">{c.display_message}</span>
-                    </div>
-                    <button
-                      class={'cartmax-offers-card-btn' + (isApplied ? ' cartmax-offers-card-btn--applied' : '')}
-                      onClick={function () { self.handleCouponApply(c.code); }}
-                      disabled={isLoading}
-                    >{isApplied ? 'Applied' : 'Apply'}</button>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
         </div>
 

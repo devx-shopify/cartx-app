@@ -1965,6 +1965,7 @@
         show_claim_gifts: sec.show_claim_gifts !== false,
         show_offer_cards: sec.show_offer_cards !== false,
         show_coupons: sec.show_coupons !== false,
+        allow_multiple_coupons: sec.allow_multiple_coupons === true,
         show_upsells: sec.show_upsells !== false,
         show_ribbon: sec.show_ribbon !== false
       };
@@ -2982,8 +2983,14 @@
       var cartQty = cart ? cart.item_count || 0 : 0;
       var cartTotal = cart ? (cart.total_price || 0) / 100 : 0;
       var evalResult = this.state.evalResult;
+      var allowMultiple = this._sections.allow_multiple_coupons;
+      var singleCouponApplied = !allowMultiple && appliedDiscounts.length > 0;
       var allCoupons = evalResult && evalResult.available_coupons ? evalResult.available_coupons : [];
+      var appliedCodes = appliedDiscounts.map(function(d2) {
+        return d2.code;
+      });
       var coupons = allCoupons.filter(function(c2) {
+        if (appliedCodes.indexOf(c2.code) !== -1) return false;
         var minQty = Number(c2.trigger_qty) || 0;
         var minPrice = Number(c2.trigger_price) || 0;
         if (minQty > 0 && cartQty < minQty) return false;
@@ -3003,7 +3010,7 @@
           },
           "REMOVE"
         )));
-      }), /* @__PURE__ */ k("div", { class: "cartmax-discount-block" }, /* @__PURE__ */ k("div", { class: "cartmax-discount-input-row" }, /* @__PURE__ */ k(
+      }), !singleCouponApplied ? /* @__PURE__ */ k("div", { class: "cartmax-discount-block" }, /* @__PURE__ */ k("div", { class: "cartmax-discount-input-row" }, /* @__PURE__ */ k(
         "input",
         {
           class: "cartmax-discount-input",
@@ -3038,22 +3045,19 @@
           }
         },
         "View All"
-      )), self.state.couponError ? /* @__PURE__ */ k("div", { class: "cartmax-coupon-error" }, self.state.couponError) : null, /* @__PURE__ */ k("div", { class: "cartmax-discount-cards" }, coupons.map(function(c2) {
-        var isApplied = appliedDiscounts.some(function(d2) {
-          return d2.code === c2.code;
-        });
+      )), self.state.couponError ? /* @__PURE__ */ k("div", { class: "cartmax-coupon-error" }, self.state.couponError) : null, coupons.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-discount-cards" }, coupons.map(function(c2) {
         return /* @__PURE__ */ k("div", { class: "cartmax-discount-card", key: c2.code }, /* @__PURE__ */ k("div", { class: "cartmax-discount-card-accent" }, /* @__PURE__ */ k("span", null, c2.accent)), /* @__PURE__ */ k("div", { class: "cartmax-discount-card-info" }, /* @__PURE__ */ k("span", { class: "cartmax-discount-card-code" }, c2.code), /* @__PURE__ */ k("span", { class: "cartmax-discount-card-savings" }, c2.display_message)), /* @__PURE__ */ k(
           "button",
           {
-            class: "cartmax-discount-card-btn" + (isApplied ? " cartmax-discount-card-btn--applied" : ""),
+            class: "cartmax-discount-card-btn",
             onClick: function() {
               self.handleCouponApply(c2.code);
             },
             disabled: isLoading
           },
-          isApplied ? "Applied" : "Apply"
+          "Apply"
         ));
-      }))), /* @__PURE__ */ k("div", { class: "cartmax-offers-panel" + (showPanel ? " cartmax-offers-panel--open" : "") }, /* @__PURE__ */ k("div", { class: "cartmax-offers-panel-header" }, /* @__PURE__ */ k(
+      })) : null) : null, /* @__PURE__ */ k("div", { class: "cartmax-offers-panel" + (showPanel ? " cartmax-offers-panel--open" : "") }, /* @__PURE__ */ k("div", { class: "cartmax-offers-panel-header" }, /* @__PURE__ */ k(
         "button",
         {
           class: "cartmax-offers-back",
@@ -3063,22 +3067,19 @@
           "aria-label": "Back to cart"
         },
         /* @__PURE__ */ k(IconChevronLeft, null)
-      ), /* @__PURE__ */ k("span", { class: "cartmax-offers-title" }, "Offers & Coupons")), /* @__PURE__ */ k("div", { class: "cartmax-offers-body" }, /* @__PURE__ */ k("span", { class: "cartmax-offers-label" }, "Available Coupons"), /* @__PURE__ */ k("div", { class: "cartmax-offers-cards" }, coupons.map(function(c2) {
-        var isApplied = appliedDiscounts.some(function(d2) {
-          return d2.code === c2.code;
-        });
+      ), /* @__PURE__ */ k("span", { class: "cartmax-offers-title" }, "Offers & Coupons")), /* @__PURE__ */ k("div", { class: "cartmax-offers-body" }, /* @__PURE__ */ k("span", { class: "cartmax-offers-label" }, "Available Coupons"), coupons.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-offers-cards" }, coupons.map(function(c2) {
         return /* @__PURE__ */ k("div", { class: "cartmax-offers-card", key: c2.code }, /* @__PURE__ */ k("div", { class: "cartmax-offers-card-accent" }, /* @__PURE__ */ k("span", null, c2.accent)), /* @__PURE__ */ k("div", { class: "cartmax-offers-card-info" }, /* @__PURE__ */ k("span", { class: "cartmax-offers-card-code" }, c2.code), /* @__PURE__ */ k("span", { class: "cartmax-offers-card-savings" }, c2.display_message)), /* @__PURE__ */ k(
           "button",
           {
-            class: "cartmax-offers-card-btn" + (isApplied ? " cartmax-offers-card-btn--applied" : ""),
+            class: "cartmax-offers-card-btn",
             onClick: function() {
               self.handleCouponApply(c2.code);
             },
             disabled: isLoading
           },
-          isApplied ? "Applied" : "Apply"
+          "Apply"
         ));
-      })))));
+      })) : null)));
     }
     // ── Render: Upsells ────────────────────────────────────────
     _showUpsellError(message) {

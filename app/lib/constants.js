@@ -91,6 +91,7 @@ export const DEFAULT_CONFIG = {
     },
     sections: {
       show_coupons: true,
+      allow_multiple_coupons: false,
       show_upsells: true,
       show_progress_bar: true,
       show_ribbon: true,

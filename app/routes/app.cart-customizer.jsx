@@ -674,6 +674,18 @@ function ContentTab({ s, update }) {
             <s-text-field label="Checkout button" value={s.text.checkout_button} onInput={(e) => update("text.checkout_button", e.target.value)} />
             <s-text-field label="Coupon placeholder" value={s.text.coupon_placeholder} onInput={(e) => update("text.coupon_placeholder", e.target.value)} />
           </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 0" }}>
+            <div>
+              <s-text>Allow multiple coupons</s-text>
+              <div style={{ fontSize: 12, color: "#6d7175", marginTop: 2 }}>When off, the coupon input hides after one code is applied.</div>
+            </div>
+            <s-switch
+              label="Allow multiple coupons"
+              labelAccessibilityVisibility="hidden"
+              checked={s.sections.allow_multiple_coupons || undefined}
+              onChange={() => update("sections.allow_multiple_coupons", !s.sections.allow_multiple_coupons)}
+            />
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             <s-text-field label="Total label" value={s.text.total_label} onInput={(e) => update("text.total_label", e.target.value)} />
             <s-text-field label="Subtotal label" value={s.text.subtotal_label} onInput={(e) => update("text.subtotal_label", e.target.value)} />

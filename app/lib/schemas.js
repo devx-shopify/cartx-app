@@ -241,6 +241,7 @@ export const DrawerConfigSchema = z.object({
   }).default({}),
   sections: z.object({
     show_coupons: z.boolean().default(true),
+    allow_multiple_coupons: z.boolean().default(false),
     show_upsells: z.boolean().default(true),
     show_progress_bar: z.boolean().default(true),
     show_ribbon: z.boolean().default(true),
