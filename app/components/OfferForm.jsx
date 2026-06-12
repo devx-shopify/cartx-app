@@ -167,6 +167,15 @@ export default forwardRef(function OfferForm(
   const [discountMode, setDiscountMode] = useState(
     offer?.reward?.discount_mode ?? "fixed_total",
   );
+  const [discountPriority, setDiscountPriority] = useState(
+    offer?.reward?.discount_priority ?? "lowest",
+  );
+  const [maxCartQuantity, setMaxCartQuantity] = useState(
+    offer?.reward?.max_cart_quantity != null ? String(offer.reward.max_cart_quantity) : "",
+  );
+  const [maxDiscountAmount, setMaxDiscountAmount] = useState(
+    offer?.reward?.max_discount_amount != null ? String(offer.reward.max_discount_amount) : "",
+  );
   const [volumeTiers, setVolumeTiers] = useState(
     offer?.reward?.tiers ?? [{ quantity: 3, value: 999 }],
   );
@@ -349,6 +358,9 @@ export default forwardRef(function OfferForm(
             ? {
                 type: "volume_discount",
                 discount_mode: discountMode,
+                discount_priority: discountPriority,
+                max_cart_quantity: maxCartQuantity !== "" ? Number(maxCartQuantity) : undefined,
+                max_discount_amount: maxDiscountAmount !== "" ? Number(maxDiscountAmount) : undefined,
                 tiers: volumeTiers.map((t) => ({
                   quantity: Number(t.quantity),
                   value: Number(t.value),
@@ -512,6 +524,32 @@ export default forwardRef(function OfferForm(
                   Percentage off (Buy 3 get 10% off)
                 </s-option>
               </s-select>
+              <s-select
+                label="Apply discount to"
+                value={discountPriority}
+                onChange={(e) => setDiscountPriority(e.target.value)}
+              >
+                <s-option value="highest">Highest priced items first</s-option>
+                <s-option value="lowest">Lowest priced items first</s-option>
+              </s-select>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <s-number-field
+                  label="Max cart quantity (optional)"
+                  helpText="Discount not applied if cart quantity exceeds this"
+                  value={maxCartQuantity}
+                  onInput={(e) => setMaxCartQuantity(e.target.value)}
+                  min="1"
+                  placeholder="No limit"
+                />
+                <s-number-field
+                  label="Max discount amount (optional)"
+                  helpText="Caps the total discount at this amount"
+                  value={maxDiscountAmount}
+                  onInput={(e) => setMaxDiscountAmount(e.target.value)}
+                  min="0"
+                  placeholder="No limit"
+                />
+              </div>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
                   Volume tiers

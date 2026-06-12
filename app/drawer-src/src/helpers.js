@@ -200,11 +200,11 @@ export function getContext() {
 
 // ── Drawer settings → CSS custom properties ─────────────────
 
-var RADIUS_MAP = { none: '0', small: '4px', medium: '10px', large: '12px', pill: '999px' };
-var HEADING_SIZE_MAP = { small: '14px', medium: '16px', large: '18px' };
+var RADIUS_MAP = { none: '0', small: '6px', medium: '10px', large: '12px', pill: '999px' };
+var HEADING_SIZE_MAP = { small: '16px', medium: '18px', large: '20px' };
 var BODY_SIZE_MAP = { small: '12px', medium: '13px', large: '14px' };
-var IMG_SIZE_MAP = { small: '56px', medium: '72px', large: '96px' };
-var DENSITY_MAP = { compact: '8px', comfortable: '14px', spacious: '20px' };
+var IMG_SIZE_MAP = { small: '70px', medium: '90px', large: '110px' };
+var DENSITY_MAP = { compact: '8px', comfortable: '16px', spacious: '20px' };
 var ANIM_SPEED_MAP = { fast: '150ms', normal: '250ms', slow: '400ms' };
 
 export function applyDrawerSettings(settings) {
@@ -223,6 +223,7 @@ export function applyDrawerSettings(settings) {
     if (c.secondary_text) s.setProperty('--cartmax-text-secondary', c.secondary_text);
     if (c.border) s.setProperty('--cartmax-border', c.border);
     if (c.accent) s.setProperty('--cartmax-accent', c.accent);
+    if (c.secondary_accent) s.setProperty('--cartmax-secondary-accent', c.secondary_accent);
     if (c.overlay_opacity != null) s.setProperty('--cartmax-overlay-opacity', c.overlay_opacity);
     if (c.savings_bg) s.setProperty('--cartmax-savings-bg', c.savings_bg);
     if (c.savings_text) s.setProperty('--cartmax-savings-text', c.savings_text);
@@ -258,6 +259,7 @@ export function applyDrawerSettings(settings) {
     if (l.density && DENSITY_MAP[l.density]) {
       s.setProperty('--cartmax-density-padding', DENSITY_MAP[l.density]);
     }
+    if (l.empty_icon_color) s.setProperty('--cartmax-empty-icon-color', l.empty_icon_color);
   }
 
   // Animation speed
@@ -265,6 +267,18 @@ export function applyDrawerSettings(settings) {
   if (b && b.animation_speed && ANIM_SPEED_MAP[b.animation_speed]) {
     s.setProperty('--cartmax-anim-speed', ANIM_SPEED_MAP[b.animation_speed]);
   }
+
+  // Progress bar
+  var TRACK_H_MAP = { thin: '4px', normal: '6px', thick: '8px' };
+  var pb = settings.progress_bar;
+  if (pb) {
+    if (pb.track_thickness && TRACK_H_MAP[pb.track_thickness]) {
+      s.setProperty('--cartmax-track-h', TRACK_H_MAP[pb.track_thickness]);
+    }
+    if (pb.badge_bg_color) s.setProperty('--cartmax-badge-bg', pb.badge_bg_color);
+    if (pb.badge_text_color) s.setProperty('--cartmax-badge-text', pb.badge_text_color);
+  }
+
 }
 
 // ── Shared utilities ────────────────────────────────────────

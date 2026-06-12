@@ -31,7 +31,19 @@ export function resolveClaimGifts(
 
   if (matching.length === 0) return null
 
-  const rule = matching[0]
+  // Among matching rules, find those whose threshold is already met
+  const metRules = matching.filter((g) => {
+    const val = g.trigger.type === 'price' ? adjustedTotal : adjustedQty
+    return val >= g.trigger.threshold
+  })
+
+  // Option B: show the highest-threshold unlocked rule.
+  // If none are met yet, fall back to the lowest-threshold rule for progress display.
+  const rule =
+    metRules.length > 0
+      ? metRules.slice().sort((a, b) => b.trigger.threshold - a.trigger.threshold)[0]
+      : matching.slice().sort((a, b) => a.trigger.threshold - b.trigger.threshold)[0]
+
   const currentValue =
     rule.trigger.type === 'price' ? adjustedTotal : adjustedQty
 

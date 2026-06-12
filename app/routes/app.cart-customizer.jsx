@@ -16,7 +16,7 @@ export const loader = async ({ request }) => {
   const preferred = await getSelectedTheme(session.shop);
   const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
-  return { drawer: config.drawer };
+  return { drawer: config.drawer, promotionCoupons: config.coupons.filter((c) => c.enabled) };
 };
 
 export const action = async ({ request }) => {
@@ -56,6 +56,7 @@ function deepSet(obj, path, value) {
   const keys = path.split(".");
   let target = next;
   for (let i = 0; i < keys.length - 1; i++) {
+    if (target[keys[i]] == null) target[keys[i]] = {};
     target = target[keys[i]];
   }
   target[keys[keys.length - 1]] = value;
@@ -295,7 +296,7 @@ function SectionToggles({ sections, onToggle }) {
 // ── Main Component ──────────────────────────────────────────
 
 export default function CartCustomizer() {
-  const { drawer: initial } = useLoaderData();
+  const { drawer: initial, promotionCoupons } = useLoaderData();
   const [settings, setSettings] = useState(initial);
   const [dirty, setDirty] = useState(false);
   const [showEmpty, setShowEmpty] = useState(false);
@@ -562,6 +563,7 @@ export default function CartCustomizer() {
               >
                 <CartPreview
                   settings={settings}
+                  promotionCoupons={promotionCoupons}
                   showEmpty={showEmpty}
                   minHeight={showEmpty ? PREVIEW_EMPTY_MIN_HEIGHT : undefined}
                 />
@@ -589,19 +591,9 @@ function DesignTab({ s, update }) {
             <ColorField label="Secondary text" value={s.colors.secondary_text} onChange={(v) => update("colors.secondary_text", v)} />
             <ColorField label="Border" value={s.colors.border} onChange={(v) => update("colors.border", v)} />
             <ColorField label="Accent (gifts, discounts)" value={s.colors.accent} onChange={(v) => update("colors.accent", v)} />
+            <ColorField label="Secondary Accent (announcement, buttons)" value={s.colors.secondary_accent} onChange={(v) => update("colors.secondary_accent", v)} />
           </div>
 
-          <s-divider />
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <s-text fontWeight="medium">Savings ribbon</s-text>
-            <s-text color="subdued" variant="bodySm">Shown above the total when the cart has discounts.</s-text>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16 }}>
-            <ColorField label="Background" value={s.colors.savings_bg} onChange={(v) => update("colors.savings_bg", v)} />
-            <ColorField label="Text" value={s.colors.savings_text} onChange={(v) => update("colors.savings_text", v)} />
-            <ColorField label="Amount" value={s.colors.savings_amount} onChange={(v) => update("colors.savings_amount", v)} />
-          </div>
 
           <s-divider />
 
@@ -671,6 +663,8 @@ function DesignTab({ s, update }) {
 }
 
 function ContentTab({ s, update }) {
+  const ab = s.announcement_bar || {};
+  const pb = s.progress_bar || {};
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <s-section heading="Cart copy" description="Customize the headings, button labels, and helper text.">
@@ -680,16 +674,22 @@ function ContentTab({ s, update }) {
             <s-text-field label="Checkout button" value={s.text.checkout_button} onInput={(e) => update("text.checkout_button", e.target.value)} />
             <s-text-field label="Coupon placeholder" value={s.text.coupon_placeholder} onInput={(e) => update("text.coupon_placeholder", e.target.value)} />
           </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 0" }}>
+            <div>
+              <s-text>Allow multiple coupons</s-text>
+              <div style={{ fontSize: 12, color: "#6d7175", marginTop: 2 }}>When off, the coupon input hides after one code is applied.</div>
+            </div>
+            <s-switch
+              label="Allow multiple coupons"
+              labelAccessibilityVisibility="hidden"
+              checked={s.sections.allow_multiple_coupons || undefined}
+              onChange={() => update("sections.allow_multiple_coupons", !s.sections.allow_multiple_coupons)}
+            />
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             <s-text-field label="Total label" value={s.text.total_label} onInput={(e) => update("text.total_label", e.target.value)} />
             <s-text-field label="Subtotal label" value={s.text.subtotal_label} onInput={(e) => update("text.subtotal_label", e.target.value)} />
           </div>
-          <s-text-field
-            label="Savings ribbon text"
-            details="Use {amount} to show the saved value. Leave empty to hide."
-            value={s.text.savings_label}
-            onInput={(e) => update("text.savings_label", e.target.value)}
-          />
           <s-text-field
             label="Free gift offer card heading"
             details='Shown above gift cards for offers with reward mode "Show offer card only".'
@@ -701,22 +701,349 @@ function ContentTab({ s, update }) {
 
       <s-section heading="Empty cart" description="Shown when the cart is empty.">
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Icon upload */}
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: "#1a1a1a", marginBottom: 4 }}>Empty state icon</div>
+            <div style={{ fontSize: 12, color: "#6d7175", marginBottom: 10, lineHeight: 1.4 }}>
+              Upload an SVG file to replace the default bag icon. Leave empty to use the default.
+            </div>
+            {s.layout.empty_icon_url ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{
+                  width: 56, height: 56, borderRadius: 8, border: "1px solid #d4d6d8",
+                  background: "#f9f9f9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+                }}>
+                  <img src={s.layout.empty_icon_url} alt="" style={{ width: 40, height: 40, objectFit: "contain" }} />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <s-button size="slim" onClick={() => {
+                    const input = document.createElement("input");
+                    input.type = "file";
+                    input.accept = ".svg,image/svg+xml";
+                    input.onchange = (e) => {
+                      const file = e.target.files[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => update("layout.empty_icon_url", ev.target.result);
+                      reader.readAsDataURL(file);
+                    };
+                    input.click();
+                  }}>Replace</s-button>
+                  <s-button size="slim" tone="critical" onClick={() => update("layout.empty_icon_url", "")}>Remove</s-button>
+                </div>
+              </div>
+            ) : (
+              <div
+                onClick={() => {
+                  const input = document.createElement("input");
+                  input.type = "file";
+                  input.accept = ".svg,image/svg+xml";
+                  input.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => update("layout.empty_icon_url", ev.target.result);
+                    reader.readAsDataURL(file);
+                  };
+                  input.click();
+                }}
+                style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  gap: 6, padding: "20px 24px", border: "1.5px dashed #d4d6d8", borderRadius: 10,
+                  cursor: "pointer", background: "#fafafa",
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8c9196" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <span style={{ fontSize: 12, color: "#6d7175" }}>Click to upload SVG</span>
+              </div>
+            )}
+          </div>
+
+          {/* Icon color */}
+          <ColorField
+            label="Icon color"
+            value={s.layout.empty_icon_color || "#16a34a"}
+            onChange={(v) => update("layout.empty_icon_color", v)}
+          />
+          <div style={{ fontSize: 12, color: "#6d7175", marginTop: -8, lineHeight: 1.4 }}>
+            Applies to the default icon only. Your uploaded SVG uses its own colors.
+          </div>
+
+          {/* Icon size */}
+          <SegmentedControl
+            label="Icon size"
+            options={[
+              { value: "small", label: "Small" },
+              { value: "medium", label: "Medium" },
+              { value: "large", label: "Large" },
+            ]}
+            value={s.layout.empty_icon_size || "medium"}
+            onChange={(v) => update("layout.empty_icon_size", v)}
+          />
+
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             <s-text-field label="Empty state title" value={s.text.empty_title} onInput={(e) => update("text.empty_title", e.target.value)} />
-            <s-text-field label="Empty state button" value={s.text.empty_button} onInput={(e) => update("text.empty_button", e.target.value)} />
+            <s-text-field label="Empty state button" details="Leave empty to hide the button." value={s.text.empty_button} onInput={(e) => update("text.empty_button", e.target.value)} />
           </div>
           <s-text-field label="Empty state subtitle" value={s.text.empty_subtitle} onInput={(e) => update("text.empty_subtitle", e.target.value)} />
-        </div>
-      </s-section>
 
-      <s-section heading="Continue shopping" description="Optional link below the cart.">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          <s-text-field label="Link text" value={s.text.continue_shopping} onInput={(e) => update("text.continue_shopping", e.target.value)} />
           <s-text-field
-            label="Link URL"
+            label="Empty state button URL"
             value={s.text.continue_shopping_url}
             onInput={(e) => update("text.continue_shopping_url", e.target.value)}
             placeholder="Leave empty to close drawer"
+            details="Where the empty cart button takes the customer. Leave empty to close the drawer, or enter a URL to redirect."
+          />
+        </div>
+      </s-section>
+
+      <s-section heading="Announcement bar" description="A full-width strip shown above the cart header.">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <s-text-field
+            label="Text"
+            value={ab.text || ""}
+            onInput={(e) => update("announcement_bar.text", e.target.value)}
+            placeholder="Free shipping on orders over $50"
+            details="Leave empty to hide the announcement bar."
+          />
+          <SegmentedControl
+            label="Animation"
+            options={[
+              { value: "static", label: "Static" },
+              { value: "marquee", label: "Marquee" },
+            ]}
+            value={ab.type || "static"}
+            onChange={(v) => update("announcement_bar.type", v)}
+          />
+        </div>
+      </s-section>
+
+      <s-section heading="Checkout" description="Customize the checkout footer bar and savings ribbon.">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <s-text-field
+            label="Checkout message"
+            details="Shown between two lock icons below the checkout button. Leave empty to hide."
+            value={s.text.checkout_trust_message}
+            onInput={(e) => update("text.checkout_trust_message", e.target.value)}
+          />
+          <s-checkbox
+            label="Show payment icons"
+            details="Displays Google Pay, PhonePe and Paytm icons inside the checkout button."
+            checked={s.layout.show_payment_icons !== false || undefined}
+            onChange={(e) => update("layout.show_payment_icons", e.target.checked)}
+          />
+          <s-text-field
+            label="Savings ribbon text"
+            details="Use {amount} to show the saved value. Leave empty to hide."
+            value={s.text.savings_label}
+            onInput={(e) => update("text.savings_label", e.target.value)}
+          />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16 }}>
+            <ColorField label="Ribbon background" value={s.colors.savings_bg} onChange={(v) => update("colors.savings_bg", v)} />
+            <ColorField label="Ribbon text" value={s.colors.savings_text} onChange={(v) => update("colors.savings_text", v)} />
+            <ColorField label="Ribbon amount color" value={s.colors.savings_amount} onChange={(v) => update("colors.savings_amount", v)} />
+          </div>
+        </div>
+      </s-section>
+
+      <s-section heading="Progress bar" description="Customize the milestone progress bar appearance.">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <SegmentedControl
+            label="Track thickness"
+            options={[
+              { value: "thin", label: "Thin" },
+              { value: "normal", label: "Normal" },
+              { value: "thick", label: "Thick" },
+            ]}
+            value={pb.track_thickness || "normal"}
+            onChange={(v) => update("progress_bar.track_thickness", v)}
+          />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <ColorField
+              label="Top message background"
+              value={pb.badge_bg_color || "#e6f9ee"}
+              onChange={(v) => update("progress_bar.badge_bg_color", v)}
+            />
+            <ColorField
+              label="Top message text"
+              value={pb.badge_text_color || "#16a34a"}
+              onChange={(v) => update("progress_bar.badge_text_color", v)}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: "#1a1a1a", marginBottom: 4 }}>Milestone icon</div>
+            <div style={{ fontSize: 12, color: "#6d7175", marginBottom: 10, lineHeight: 1.4 }}>
+              Replaces the default empty circle on incomplete milestone nodes.
+            </div>
+            {pb.milestone_icon_svg ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{
+                  width: 56, height: 56, borderRadius: 8, border: "1px solid #d4d6d8",
+                  background: "#f9f9f9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+                }} dangerouslySetInnerHTML={{ __html: pb.milestone_icon_svg }} />
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <s-button size="slim" onClick={() => {
+                    const input = document.createElement("input");
+                    input.type = "file";
+                    input.accept = ".svg,image/svg+xml";
+                    input.onchange = (e) => {
+                      const file = e.target.files[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => update("progress_bar.milestone_icon_svg", ev.target.result);
+                      reader.readAsText(file);
+                    };
+                    input.click();
+                  }}>Replace</s-button>
+                  <s-button size="slim" tone="critical" onClick={() => update("progress_bar.milestone_icon_svg", "")}>Remove</s-button>
+                </div>
+              </div>
+            ) : (
+              <div
+                onClick={() => {
+                  const input = document.createElement("input");
+                  input.type = "file";
+                  input.accept = ".svg,image/svg+xml";
+                  input.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => update("progress_bar.milestone_icon_svg", ev.target.result);
+                    reader.readAsText(file);
+                  };
+                  input.click();
+                }}
+                style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  gap: 6, padding: "20px 24px", border: "1.5px dashed #d4d6d8", borderRadius: 10,
+                  cursor: "pointer", background: "#fafafa",
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8c9196" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <span style={{ fontSize: 12, color: "#6d7175" }}>Click to upload SVG</span>
+              </div>
+            )}
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: "#1a1a1a", marginBottom: 4 }}>Completed milestone icon</div>
+            <div style={{ fontSize: 12, color: "#6d7175", marginBottom: 10, lineHeight: 1.4 }}>
+              Shown on reached milestones. Falls back to the milestone icon, then the default circle with checkmark.
+            </div>
+            {pb.completed_icon_svg ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{
+                  width: 56, height: 56, borderRadius: 8, border: "1px solid #d4d6d8",
+                  background: "#f9f9f9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+                }} dangerouslySetInnerHTML={{ __html: pb.completed_icon_svg }} />
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <s-button size="slim" onClick={() => {
+                    const input = document.createElement("input");
+                    input.type = "file";
+                    input.accept = ".svg,image/svg+xml";
+                    input.onchange = (e) => {
+                      const file = e.target.files[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => update("progress_bar.completed_icon_svg", ev.target.result);
+                      reader.readAsText(file);
+                    };
+                    input.click();
+                  }}>Replace</s-button>
+                  <s-button size="slim" tone="critical" onClick={() => update("progress_bar.completed_icon_svg", "")}>Remove</s-button>
+                </div>
+              </div>
+            ) : (
+              <div
+                onClick={() => {
+                  const input = document.createElement("input");
+                  input.type = "file";
+                  input.accept = ".svg,image/svg+xml";
+                  input.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => update("progress_bar.completed_icon_svg", ev.target.result);
+                    reader.readAsText(file);
+                  };
+                  input.click();
+                }}
+                style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  gap: 6, padding: "20px 24px", border: "1.5px dashed #d4d6d8", borderRadius: 10,
+                  cursor: "pointer", background: "#fafafa",
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8c9196" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <span style={{ fontSize: 12, color: "#6d7175" }}>Click to upload SVG</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </s-section>
+
+      <s-section heading="Upsells" description="Customize how recommended products are displayed.">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <SegmentedControl
+            label="Card layout"
+            options={[
+              { value: "horizontal", label: "Horizontal" },
+              { value: "vertical", label: "Vertical" },
+            ]}
+            value={s.layout.upsells_card_layout || "horizontal"}
+            onChange={(v) => update("layout.upsells_card_layout", v)}
+          />
+          <SegmentedControl
+            label="Card size"
+            options={[
+              { value: "small", label: "Small" },
+              { value: "medium", label: "Medium" },
+              { value: "large", label: "Large" },
+            ]}
+            value={s.layout.upsells_card_size || "medium"}
+            onChange={(v) => update("layout.upsells_card_size", v)}
+          />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <s-text-field
+              label="Section heading"
+              value={s.layout.upsells_heading}
+              onInput={(e) => update("layout.upsells_heading", e.target.value)}
+              placeholder="YOU MAY ALSO LIKE"
+            />
+            <s-text-field
+              label="Add to cart button text"
+              value={s.layout.upsells_btn_text}
+              onInput={(e) => update("layout.upsells_btn_text", e.target.value)}
+              placeholder="ADD TO CART"
+            />
+          </div>
+          <SegmentedControl
+            label="Heading position"
+            options={[
+              { value: "left", label: "Left" },
+              { value: "center", label: "Center" },
+            ]}
+            value={s.layout.upsells_heading_position || "left"}
+            onChange={(v) => update("layout.upsells_heading_position", v)}
+          />
+          <SegmentedControl
+            label="When to show"
+            options={[
+              { value: "filled", label: "Only with items" },
+              { value: "always", label: "Always" },
+            ]}
+            value={s.layout.upsells_show_on_empty || "filled"}
+            onChange={(v) => update("layout.upsells_show_on_empty", v)}
+          />
+          <s-checkbox
+            label="Show compare-at (strikethrough) price"
+            checked={s.layout.upsells_show_compare_price !== false}
+            onChange={(e) => update("layout.upsells_show_compare_price", e.target.checked)}
           />
         </div>
       </s-section>
@@ -801,14 +1128,24 @@ function LayoutTab({ s, update }) {
           <s-divider />
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <s-checkbox
-              label="Show variant title"
-              checked={s.layout.show_variant_title || undefined}
-              onChange={(e) => update("layout.show_variant_title", e.target.checked)}
+              label="Show compare at price"
+              checked={s.layout.show_compare_price !== false || undefined}
+              onChange={(e) => update("layout.show_compare_price", e.target.checked)}
+            />
+            <s-checkbox
+              label="Variant switcher"
+              checked={s.layout.show_variant_switcher || undefined}
+              onChange={(e) => update("layout.show_variant_switcher", e.target.checked)}
             />
             <s-checkbox
               label="Show vendor name"
               checked={s.layout.show_vendor || undefined}
               onChange={(e) => update("layout.show_vendor", e.target.checked)}
+            />
+            <s-checkbox
+              label="Show remove button"
+              checked={s.layout.show_remove_btn || undefined}
+              onChange={(e) => update("layout.show_remove_btn", e.target.checked)}
             />
           </div>
         </div>
