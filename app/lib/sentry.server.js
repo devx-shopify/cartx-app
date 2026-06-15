@@ -46,6 +46,19 @@ export function captureException(error, context) {
   }
 }
 
+// Cron check-in passthrough for heartbeat monitoring. Returns the checkInId to
+// pass to the closing check-in, or undefined when Sentry isn't initialized.
+// Passing monitorConfig on the first ("in_progress") check-in upserts the
+// monitor in Sentry, so no manual UI setup is needed.
+export function captureCheckIn(payload, monitorConfig) {
+  try {
+    if (Sentry) return Sentry.captureCheckIn(payload, monitorConfig);
+  } catch {
+    // never throw from instrumentation
+  }
+  return undefined;
+}
+
 // Flush buffered events before a short-lived process (cron script) exits.
 export async function flushSentry(timeout = 2000) {
   try {

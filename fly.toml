@@ -19,6 +19,16 @@ primary_region = "bom"  # Mumbai — close to India merchants
   min_machines_running = 1
   processes = ["app"]
 
+  # Liveness/readiness check. Fly marks a machine unhealthy (and restarts it) if
+  # /health stops returning 200 — catches a hung process or lost DB connection
+  # that still holds the port open. grace_period covers boot + migrations.
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health"
+
 [[vm]]
   size = "shared-cpu-1x"
   memory = "512mb"
