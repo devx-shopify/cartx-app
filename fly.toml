@@ -42,18 +42,27 @@ primary_region = "bom"  # Mumbai — close to India merchants
 
 # ─ Scheduled jobs (analytics) ──────────────────────────────────────────
 # Fly schedules are configured via `fly machine run`, not via fly.toml.
-# Provision these once per environment:
+# Provision these once per environment, pointing at the CURRENT deployed image
+# (get it from `fly status` -> Image, prefixed with registry.fly.io/).
 #
-#   fly machine run . \
-#     --app cartx \
-#     --schedule hourly \
-#     --name analytics-rollup \
-#     --entrypoint "npm run rollup"
+# Notes learned the hard way:
+#  - Pass the command as plain positional args (`npm run rollup`). Do NOT use
+#    `sh -c "..."` — the `-c` collides with flyctl's own `-c/--config` flag and
+#    the command silently becomes a no-op `sh`.
+#  - The Prisma client is baked into the image (Dockerfile `npx prisma generate`),
+#    so the job script runs without a separate generate step.
+#  - bom frequently has no spare capacity; these batch jobs aren't latency
+#    sensitive, so we run them in sin (Singapore).
 #
-#   fly machine run . \
-#     --app cartx \
-#     --schedule daily \
-#     --name analytics-retention \
-#     --entrypoint "npm run retention"
+#   IMAGE="registry.fly.io/cartx:deployment-XXXXXXXX"
 #
-# These boot, run, and shut down. Failures are visible via `fly logs`.
+#   fly machine run "$IMAGE" --app cartx --schedule hourly \
+#     --name analytics-rollup --region sin -e NODE_ENV=production \
+#     npm run rollup
+#
+#   fly machine run "$IMAGE" --app cartx --schedule daily \
+#     --name analytics-retention --region sin -e NODE_ENV=production \
+#     npm run retention
+#
+# These boot, run, and shut down. Failures alert via Sentry cron heartbeats
+# (monitors: cartx-rollup, cartx-retention) and are visible via `fly logs`.
