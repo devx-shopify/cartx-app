@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import { useLoaderData, useNavigate, useRouteError, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
-import { getDashboardData } from "../lib/analytics.server.js";
+import { getDashboardData, presetRange } from "../lib/analytics.server.js";
+import { syncShopSettings } from "../lib/billing.server.js";
 
 const PRESETS = [
   { id: "7d",  label: "Last 7 days",  days: 7 },
@@ -10,22 +11,15 @@ const PRESETS = [
   { id: "90d", label: "Last 90 days", days: 90 },
 ];
 
-function rangeFromPreset(presetId) {
-  const days = (PRESETS.find((p) => p.id === presetId)?.days) ?? 30;
-  const to = new Date();
-  to.setUTCHours(23, 59, 59, 999);
-  const from = new Date(to);
-  from.setUTCDate(from.getUTCDate() - (days - 1));
-  from.setUTCHours(0, 0, 0, 0);
-  return { from, to };
-}
-
 export const loader = async ({ request }) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
   const preset = url.searchParams.get("preset") || "30d";
   const fromParam = url.searchParams.get("from");
   const toParam = url.searchParams.get("to");
+
+  const { ianaTimezone } = await syncShopSettings(admin, session.shop);
+  const tz = ianaTimezone || "UTC";
 
   let from, to;
   if (fromParam && toParam) {
@@ -33,18 +27,18 @@ export const loader = async ({ request }) => {
     to = new Date(toParam);
     to.setUTCHours(23, 59, 59, 999);
   } else {
-    ({ from, to } = rangeFromPreset(preset));
+    ({ from, to } = presetRange(preset, tz));
   }
 
   const data = await getDashboardData(session.shop, { from, to });
   return { data, preset, customRange: !!(fromParam && toParam) };
 };
 
-function formatMoneyCents(cents) {
+function formatMoneyCents(cents, currency = "USD") {
   if (!Number.isFinite(cents)) return "—";
   return new Intl.NumberFormat(undefined, {
     style: "currency",
-    currency: "USD",
+    currency,
     maximumFractionDigits: 0,
   }).format(cents / 100);
 }
@@ -220,7 +214,7 @@ function SortableHeader({ columnKey, currentKey, currentDir, onSort }) {
   );
 }
 
-function PromotionRow({ p, onClick }) {
+function PromotionRow({ p, onClick, currency }) {
   return (
     <tr
       onClick={onClick}
@@ -236,8 +230,8 @@ function PromotionRow({ p, onClick }) {
       <td style={{ padding: "12px 16px", textAlign: "right" }}>{p.claims.toLocaleString()}</td>
       <td style={{ padding: "12px 16px", textAlign: "right" }}>{formatPct(p.conversionRate)}</td>
       <td style={{ padding: "12px 16px", textAlign: "right" }}>{p.orders.toLocaleString()}</td>
-      <td style={{ padding: "12px 16px", textAlign: "right" }}>{formatMoneyCents(p.revenue)}</td>
-      <td style={{ padding: "12px 16px", textAlign: "right" }}>{formatMoneyCents(p.aov)}</td>
+      <td style={{ padding: "12px 16px", textAlign: "right" }}>{formatMoneyCents(p.revenue, currency)}</td>
+      <td style={{ padding: "12px 16px", textAlign: "right" }}>{formatMoneyCents(p.aov, currency)}</td>
     </tr>
   );
 }
@@ -272,6 +266,7 @@ export default function Analytics() {
   }
 
   const summary = data.summary;
+  const currency = data.currency || "USD";
   const isEmpty = data.promotions.length === 0 && summary.impressions === 0;
   const sortedPromotions = useMemo(
     () => sortPromotions(data.promotions, sortKey, sortDir),
@@ -328,8 +323,8 @@ export default function Analytics() {
               <SummaryCard label="Impressions" value={summary.impressions.toLocaleString()} />
               <SummaryCard label="Claims" value={summary.claims.toLocaleString()} sub={formatPct(summary.claimRate) + " of impressions"} />
               <SummaryCard label="Attributed orders" value={summary.orders.toLocaleString()} />
-              <SummaryCard label="Attributed revenue" value={formatMoneyCents(summary.revenue)} />
-              <SummaryCard label="AOV lift" value={formatLift(summary.aovLift)} sub={summary.aovWithPromo > 0 ? `${formatMoneyCents(summary.aovWithPromo)} vs ${formatMoneyCents(summary.aovWithoutPromo)}` : null} />
+              <SummaryCard label="Attributed revenue" value={formatMoneyCents(summary.revenue, currency)} />
+              <SummaryCard label="AOV lift" value={formatLift(summary.aovLift)} sub={summary.aovWithPromo > 0 ? `${formatMoneyCents(summary.aovWithPromo, currency)} vs ${formatMoneyCents(summary.aovWithoutPromo, currency)}` : null} />
             </s-grid>
           </s-section>
 
@@ -359,6 +354,7 @@ export default function Analytics() {
                   <PromotionRow
                     key={p.id}
                     p={p}
+                    currency={currency}
                     onClick={() => navigate(`/app/analytics/${encodeURIComponent(p.id)}?${searchParams.toString()}`)}
                   />
                 ))}

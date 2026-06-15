@@ -11,7 +11,7 @@ import {
   saveConfig,
   getShopAndTheme,
 } from "../lib/config.server.js";
-import { getActivePlan, ensureStoreRecord } from "../lib/billing.server.js";
+import { getActivePlan, ensureStoreRecord, syncShopSettings } from "../lib/billing.server.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -23,6 +23,13 @@ export const loader = async ({ request }) => {
 
   // Ensure store record exists in DB (for legacy/billing tracking)
   await ensureStoreRecord(shopId);
+  // Sync currency + timezone so analytics formats money correctly and the
+  // rollup cron buckets events into the merchant's local days. Best-effort.
+  try {
+    await syncShopSettings(admin, shopId);
+  } catch {
+    // Non-fatal — dashboard falls back to USD/UTC until the next load.
+  }
 
   let planData = { plan: "free", isLegacy: false, features: { discount_function: false, theme_switcher: false } };
   try {

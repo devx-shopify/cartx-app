@@ -13,9 +13,8 @@ import {
 } from "../lib/config.server.js";
 import {
   migrateLegacyDiscountRules,
-  syncFreebieDiscountFromConfig,
+  syncDiscounts,
 } from "../lib/discount.server.js";
-import { syncVolumeDiscountConfig } from "../lib/volume-discount.server.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -68,15 +67,10 @@ export const action = async ({ request }) => {
 
   await saveConfig(shopId, themeId, config);
 
-  // Sync the freebie discount function whenever offers or claim gifts change.
-  if (type === "offer" || type === "claim-gift") {
-    await syncFreebieDiscountFromConfig(admin, session.shop, config);
-  }
-  if (type === "offer") {
-    await syncVolumeDiscountConfig(admin, session.shop, config.offers);
-  }
+  // Discount syncs are secondary effects — never let one crash the action.
+  const warnings = await syncDiscounts(admin, session.shop, config, type);
 
-  return { ok: true };
+  return { ok: true, warnings };
 };
 
 const TYPE_LABELS = { offer: "Offer", coupon: "Coupon", "claim-gift": "Claim Gift" };

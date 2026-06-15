@@ -78,6 +78,48 @@ export async function ensureStoreRecord(shopDomain) {
   });
 }
 
+// ── Sync Shop Currency + Timezone ────────────────────────
+//
+// Persists the merchant's currency code and IANA timezone onto the Store row so
+// the analytics dashboard can format money correctly and the rollup cron (which
+// has no admin context) can bucket events into the merchant's local days.
+//
+// Cheap by design: once both values are stored we skip the Shopify call. A
+// merchant changing currency/timezone is rare and would be picked up on the
+// next install/auth refresh.
+export async function syncShopSettings(admin, shopDomain) {
+  const existing = await db.store.findUnique({
+    where: { storeDomain: shopDomain },
+    select: { currencyCode: true, ianaTimezone: true },
+  });
+  if (existing?.currencyCode && existing?.ianaTimezone) {
+    return existing;
+  }
+
+  let currencyCode = existing?.currencyCode ?? null;
+  let ianaTimezone = existing?.ianaTimezone ?? null;
+  try {
+    const res = await admin.graphql(
+      `#graphql
+      query ShopSettings {
+        shop { currencyCode ianaTimezone }
+      }`,
+    );
+    const json = await res.json();
+    currencyCode = json?.data?.shop?.currencyCode ?? currencyCode;
+    ianaTimezone = json?.data?.shop?.ianaTimezone ?? ianaTimezone;
+  } catch (err) {
+    console.error("[cartx][billing] syncShopSettings failed:", err);
+  }
+
+  await db.store.upsert({
+    where: { storeDomain: shopDomain },
+    create: { storeDomain: shopDomain, currencyCode, ianaTimezone },
+    update: { currencyCode, ianaTimezone },
+  });
+  return { currencyCode, ianaTimezone };
+}
+
 // Drop Enterprise status — used when a merchant self-downgrades to a
 // standard plan. They become a normal store and must be re-negotiated to
 // get Enterprise pricing back.

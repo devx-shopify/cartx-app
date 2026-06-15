@@ -9,6 +9,17 @@ import {
 // query stays cheap.
 const DEFAULT_WINDOW_HOURS = 26
 
+// Read the shop's IANA timezone (synced onto Store from Shopify shop settings).
+// Falls back to UTC when not yet populated — the merchant just hasn't opened the
+// admin app since the field was added.
+async function getShopTimezone(shopId) {
+  const store = await db.store.findUnique({
+    where: { storeDomain: shopId },
+    select: { ianaTimezone: true },
+  })
+  return store?.ianaTimezone || 'UTC'
+}
+
 /**
  * Roll up AnalyticsEvent rows into DailyStats for one shop.
  *
@@ -24,12 +35,14 @@ export async function rollupShop(shopId, opts = {}) {
   const started = Date.now()
   const until = opts.until ?? new Date()
   const since = opts.since ?? new Date(until.getTime() - DEFAULT_WINDOW_HOURS * 3600 * 1000)
+  const tz = opts.tz ?? (await getShopTimezone(shopId))
 
   // Single GROUP BY query: (date, promotionId, event) -> count + revenue.
-  // We use UTC days here; shop timezone normalization can layer on later.
+  // Days are bucketed in the shop's local timezone: interpret the naive
+  // timestamp as UTC, convert to the shop tz, then truncate to the day.
   const rows = await db.$queryRaw`
     SELECT
-      to_char(date_trunc('day', "occurredAt"), 'YYYY-MM-DD') AS date,
+      to_char(date_trunc('day', ("occurredAt" AT TIME ZONE 'UTC') AT TIME ZONE ${tz}), 'YYYY-MM-DD') AS date,
       COALESCE("promotionId", ${SHOP_WIDE_PROMOTION_ID}) AS "promotionId",
       "event",
       COUNT(*)::int AS count,

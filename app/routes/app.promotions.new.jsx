@@ -11,9 +11,8 @@ import { generateId } from "../lib/helpers.server.js";
 import { fetchVariantData, enrichVariantData } from "../lib/graphql.server.js";
 import {
   migrateLegacyDiscountRules,
-  syncFreebieDiscountFromConfig,
+  syncDiscounts,
 } from "../lib/discount.server.js";
-import { syncVolumeDiscountConfig } from "../lib/volume-discount.server.js";
 import { markStep } from "../lib/onboarding.server.js";
 import { usePromotionForm } from "../hooks/usePromotionForm.js";
 import OfferForm from "../components/OfferForm.jsx";
@@ -54,21 +53,14 @@ export const action = async ({ request }) => {
 
   await saveConfig(shopId, themeId, config);
 
-  // Keep the freebie Shopify Function in sync with the latest config.
-  // Auto-activates on the first save that needs it.
-  if (type === "offer" || type === "claim-gift") {
-    await syncFreebieDiscountFromConfig(admin, session.shop, config);
-  }
-
-  // Sync volume discount config if an offer was created
-  if (type === "offer") {
-    await syncVolumeDiscountConfig(admin, session.shop, config.offers);
-  }
+  // Discount syncs are secondary effects — the promotion is already saved. A
+  // Shopify API hiccup here must not crash the save; surface it as a warning.
+  const warnings = await syncDiscounts(admin, session.shop, config, type);
 
   // Mark onboarding step
   await markStep(session.shop, "offer_created");
 
-  return { ok: true };
+  return { ok: true, warnings };
 };
 
 const TYPE_LABELS = {

@@ -10,9 +10,8 @@ import {
 import { fetchVariantData, enrichVariantData } from "../lib/graphql.server.js";
 import {
   migrateLegacyDiscountRules,
-  syncFreebieDiscountFromConfig,
+  syncDiscounts,
 } from "../lib/discount.server.js";
-import { syncVolumeDiscountConfig } from "../lib/volume-discount.server.js";
 import { usePromotionForm } from "../hooks/usePromotionForm.js";
 import OfferForm from "../components/OfferForm.jsx";
 import CouponForm from "../components/CouponForm.jsx";
@@ -80,17 +79,10 @@ export const action = async ({ request, params }) => {
 
   await saveConfig(shopId, themeId, config);
 
-  // Keep the freebie Shopify Function in sync (auto-installs on first need).
-  if (type === "offer" || type === "claim-gift") {
-    await syncFreebieDiscountFromConfig(admin, session.shop, config);
-  }
+  // Discount syncs are secondary effects — never let one crash the save.
+  const warnings = await syncDiscounts(admin, session.shop, config, type);
 
-  // Sync volume discount config if an offer was updated
-  if (type === "offer") {
-    await syncVolumeDiscountConfig(admin, session.shop, config.offers);
-  }
-
-  return { ok: true };
+  return { ok: true, warnings };
 };
 
 const TYPE_HEADINGS = {

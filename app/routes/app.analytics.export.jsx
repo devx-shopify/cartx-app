@@ -1,21 +1,6 @@
 import { authenticate } from '../shopify.server'
-import { getDashboardData } from '../lib/analytics.server.js'
-
-const PRESETS = {
-  '7d':  7,
-  '30d': 30,
-  '90d': 90,
-}
-
-function rangeFromPreset(preset) {
-  const days = PRESETS[preset] ?? 30
-  const to = new Date()
-  to.setUTCHours(23, 59, 59, 999)
-  const from = new Date(to)
-  from.setUTCDate(from.getUTCDate() - (days - 1))
-  from.setUTCHours(0, 0, 0, 0)
-  return { from, to }
-}
+import { getDashboardData, presetRange } from '../lib/analytics.server.js'
+import { syncShopSettings } from '../lib/billing.server.js'
 
 const TYPE_LABELS = {
   offer: 'Offer',
@@ -45,22 +30,27 @@ function formatCents(cents) {
 }
 
 export const loader = async ({ request }) => {
-  const { session } = await authenticate.admin(request)
+  const { admin, session } = await authenticate.admin(request)
   const url = new URL(request.url)
 
   const preset = url.searchParams.get('preset') || '30d'
   const fromParam = url.searchParams.get('from')
   const toParam = url.searchParams.get('to')
+
+  const { ianaTimezone } = await syncShopSettings(admin, session.shop)
+  const tz = ianaTimezone || 'UTC'
+
   let from, to
   if (fromParam && toParam) {
     from = new Date(fromParam)
     to = new Date(toParam)
     to.setUTCHours(23, 59, 59, 999)
   } else {
-    ({ from, to } = rangeFromPreset(preset))
+    ({ from, to } = presetRange(preset, tz))
   }
 
   const data = await getDashboardData(session.shop, { from, to })
+  const currency = data.currency || 'USD'
 
   let body = csvRow([
     'Promotion',
@@ -69,8 +59,8 @@ export const loader = async ({ request }) => {
     'Claims',
     'Conversion rate',
     'Orders',
-    'Revenue',
-    'AOV',
+    `Revenue (${currency})`,
+    `AOV (${currency})`,
   ])
   for (const p of data.promotions) {
     body += csvRow([

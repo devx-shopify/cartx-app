@@ -1,30 +1,17 @@
 import { useLoaderData, useNavigate, useRouteError, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
-import { getDashboardData, queryEvents } from "../lib/analytics.server.js";
-
-const PRESETS = [
-  { id: "7d",  label: "Last 7 days",  days: 7 },
-  { id: "30d", label: "Last 30 days", days: 30 },
-  { id: "90d", label: "Last 90 days", days: 90 },
-];
-
-function rangeFromPreset(presetId) {
-  const days = (PRESETS.find((p) => p.id === presetId)?.days) ?? 30;
-  const to = new Date();
-  to.setUTCHours(23, 59, 59, 999);
-  const from = new Date(to);
-  from.setUTCDate(from.getUTCDate() - (days - 1));
-  from.setUTCHours(0, 0, 0, 0);
-  return { from, to };
-}
+import { getDashboardData, queryEvents, presetRange } from "../lib/analytics.server.js";
+import { syncShopSettings } from "../lib/billing.server.js";
 
 export const loader = async ({ request, params }) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const promotionId = params.promotionId;
   const url = new URL(request.url);
   const preset = url.searchParams.get("preset") || "30d";
-  const { from, to } = rangeFromPreset(preset);
+
+  const { ianaTimezone } = await syncShopSettings(admin, session.shop);
+  const { from, to } = presetRange(preset, ianaTimezone || "UTC");
 
   const [dashboard, recentEvents] = await Promise.all([
     getDashboardData(session.shop, { from, to }),
@@ -32,14 +19,14 @@ export const loader = async ({ request, params }) => {
   ]);
 
   const promo = dashboard.promotions.find((p) => p.id === promotionId) ?? null;
-  return { promo, promotionId, preset, recentEvents };
+  return { promo, promotionId, preset, recentEvents, currency: dashboard.currency || "USD" };
 };
 
-function formatMoneyCents(cents) {
+function formatMoneyCents(cents, currency = "USD") {
   if (!Number.isFinite(cents)) return "—";
   return new Intl.NumberFormat(undefined, {
     style: "currency",
-    currency: "USD",
+    currency,
     maximumFractionDigits: 0,
   }).format(cents / 100);
 }
@@ -75,7 +62,7 @@ function SummaryCard({ label, value, sub }) {
 }
 
 export default function PromotionAnalytics() {
-  const { promo, promotionId, recentEvents } = useLoaderData();
+  const { promo, promotionId, recentEvents, currency } = useLoaderData();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -95,7 +82,7 @@ export default function PromotionAnalytics() {
             <SummaryCard label="Impressions" value={promo.impressions.toLocaleString()} />
             <SummaryCard label="Claims" value={promo.claims.toLocaleString()} sub={formatPct(promo.conversionRate)} />
             <SummaryCard label="Orders" value={promo.orders.toLocaleString()} />
-            <SummaryCard label="Revenue" value={formatMoneyCents(promo.revenue)} sub={"AOV " + formatMoneyCents(promo.aov)} />
+            <SummaryCard label="Revenue" value={formatMoneyCents(promo.revenue, currency)} sub={"AOV " + formatMoneyCents(promo.aov, currency)} />
           </s-grid>
         </s-section>
       )}
@@ -125,10 +112,10 @@ export default function PromotionAnalytics() {
                     <s-text fontWeight="semibold">{EVENT_LABELS[e.event] ?? e.event}</s-text>
                   </td>
                   <td style={{ padding: "10px 16px", textAlign: "right" }}>
-                    {e.cartTotal != null ? formatMoneyCents(e.cartTotal) : "—"}
+                    {e.cartTotal != null ? formatMoneyCents(e.cartTotal, currency) : "—"}
                   </td>
                   <td style={{ padding: "10px 16px", textAlign: "right" }}>
-                    {e.revenue != null ? formatMoneyCents(e.revenue) : "—"}
+                    {e.revenue != null ? formatMoneyCents(e.revenue, currency) : "—"}
                   </td>
                 </tr>
               ))}

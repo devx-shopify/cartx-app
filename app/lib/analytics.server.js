@@ -195,15 +195,76 @@ function parseDateBound(raw, fallback) {
   return Number.isNaN(d.getTime()) ? fallback : d
 }
 
-function eachDay(from, to) {
+// ── Timezone-aware day helpers ───────────────────────────
+// Day bucketing uses the shop's IANA timezone so "today" and per-day rows line
+// up with the merchant's local calendar instead of UTC. (A 11pm IST order would
+// otherwise land on the previous UTC day.)
+
+// 'YYYY-MM-DD' civil date of an instant in `tz`. en-CA formats as ISO date.
+function civilDate(date, tz = 'UTC') {
+  const d = date instanceof Date ? date : new Date(date)
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(d)
+  } catch {
+    return d.toISOString().slice(0, 10)
+  }
+}
+
+// Offset in minutes (+ east of UTC) of `tz` at the given instant.
+function tzOffsetMinutes(date, tz) {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
+  const p = Object.fromEntries(dtf.formatToParts(date).map((x) => [x.type, x.value]))
+  const hour = p.hour === '24' ? '00' : p.hour
+  const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +hour, +p.minute, +p.second)
+  return Math.round((asUTC - date.getTime()) / 60000)
+}
+
+// Instant of local midnight (start of day) for civil date key 'YYYY-MM-DD' in `tz`.
+function startOfLocalDay(key, tz = 'UTC') {
+  const [y, m, d] = key.split('-').map(Number)
+  const guess = new Date(Date.UTC(y, m - 1, d, 0, 0, 0))
+  const offset = tzOffsetMinutes(guess, tz)
+  return new Date(guess.getTime() - offset * 60000)
+}
+
+// Add `n` days to a 'YYYY-MM-DD' key (pure calendar math, tz-independent).
+function addDaysToKey(key, n) {
+  const [y, m, d] = key.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  dt.setUTCDate(dt.getUTCDate() + n)
+  return dt.toISOString().slice(0, 10)
+}
+
+const PRESET_DAYS = { '7d': 7, '30d': 30, '90d': 90 }
+
+// Build a {from, to} instant window covering the last N *local* days in `tz`,
+// aligned to local midnight boundaries. Shared by every analytics route so the
+// dashboard, drill-down, and CSV export agree on what "last 30 days" means.
+export function presetRange(preset, tz = 'UTC') {
+  const days = PRESET_DAYS[preset] ?? RANGE_DEFAULT_DAYS
+  const todayKey = civilDate(new Date(), tz)
+  const fromKey = addDaysToKey(todayKey, -(days - 1))
+  const from = startOfLocalDay(fromKey, tz)
+  // End of today (local) = start of tomorrow minus 1ms.
+  const to = new Date(startOfLocalDay(addDaysToKey(todayKey, 1), tz).getTime() - 1)
+  return { from, to }
+}
+
+// Enumerate the local day keys ('YYYY-MM-DD' in `tz`) spanned by [from, to].
+function eachDay(from, to, tz = 'UTC') {
   const days = []
-  const cursor = new Date(from)
-  cursor.setUTCHours(0, 0, 0, 0)
-  const endStamp = new Date(to)
-  endStamp.setUTCHours(0, 0, 0, 0)
-  while (cursor.getTime() <= endStamp.getTime()) {
-    days.push(cursor.toISOString().slice(0, 10))
-    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  let key = civilDate(from, tz)
+  const endKey = civilDate(to, tz)
+  let guard = 0
+  while (key <= endKey && guard++ < 1000) {
+    days.push(key)
+    key = addDaysToKey(key, 1)
   }
   return days
 }
@@ -234,6 +295,16 @@ const DAILYSTATS_COVERAGE_THRESHOLD = 0.8
  */
 export async function getDashboardData(shopId, { from, to } = {}) {
   if (!shopId) return emptyDashboard()
+
+  // Currency + timezone for formatting and day bucketing. Synced onto the Store
+  // row from Shopify shop settings; fall back to USD/UTC if not yet populated.
+  const store = await db.store.findUnique({
+    where: { storeDomain: shopId },
+    select: { currencyCode: true, ianaTimezone: true },
+  })
+  const currency = store?.currencyCode || 'USD'
+  const tz = store?.ianaTimezone || 'UTC'
+
   const range = (() => {
     const def = defaultRange()
     return {
@@ -242,23 +313,23 @@ export async function getDashboardData(shopId, { from, to } = {}) {
     }
   })()
 
-  // Try the rollup short-circuit first.
-  const fromDate = toIsoDate(range.from)
-  const toDate = toIsoDate(range.to)
+  // Try the rollup short-circuit first. DailyStats keys are local (tz) days.
+  const fromDate = civilDate(range.from, tz)
+  const toDate = civilDate(range.to, tz)
   const dailyStatsRows = await db.dailyStats.findMany({
     where: { shopId, date: { gte: fromDate, lte: toDate } },
     orderBy: [{ date: 'asc' }, { promotionId: 'asc' }],
   })
   if (dailyStatsRows.length > 0) {
-    const todayStr = toIsoDate(new Date())
-    const completedDays = eachDay(range.from, range.to).filter((d) => d < todayStr)
+    const todayStr = civilDate(new Date(), tz)
+    const completedDays = eachDay(range.from, range.to, tz).filter((d) => d < todayStr)
     if (completedDays.length === 0) {
       // Range is just today — DailyStats can't possibly cover it. Skip.
     } else {
       const covered = new Set(dailyStatsRows.filter((r) => r.date < todayStr).map((r) => r.date))
       const coverage = covered.size / completedDays.length
       if (coverage >= DAILYSTATS_COVERAGE_THRESHOLD) {
-        return await buildFromDailyStats(shopId, range, dailyStatsRows)
+        return await buildFromDailyStats(shopId, range, dailyStatsRows, { currency, tz })
       }
     }
   }
@@ -278,10 +349,11 @@ export async function getDashboardData(shopId, { from, to } = {}) {
     GROUP BY "promotionId", "promotionType", "event"
   `
 
-  // 2. Per-day rollup.
+  // 2. Per-day rollup. Bucket into the shop's local (tz) calendar day:
+  // interpret the naive timestamp as UTC, convert to the shop tz, then truncate.
   const perDay = await db.$queryRaw`
     SELECT
-      to_char(date_trunc('day', "occurredAt"), 'YYYY-MM-DD') AS date,
+      to_char(date_trunc('day', ("occurredAt" AT TIME ZONE 'UTC') AT TIME ZONE ${tz}), 'YYYY-MM-DD') AS date,
       "event",
       COUNT(*)::int AS count,
       COALESCE(SUM("revenue"), 0)::bigint AS revenue
@@ -295,7 +367,7 @@ export async function getDashboardData(shopId, { from, to } = {}) {
 
   // Daily trend — zero-fill so the chart doesn't have gaps.
   const dailyMap = new Map()
-  for (const day of eachDay(range.from, range.to)) {
+  for (const day of eachDay(range.from, range.to, tz)) {
     dailyMap.set(day, { date: day, impressions: 0, claims: 0, revenue: 0 })
   }
   for (const row of perDay) {
@@ -403,6 +475,7 @@ export async function getDashboardData(shopId, { from, to } = {}) {
 
   return {
     range: { from: range.from.toISOString(), to: range.to.toISOString() },
+    currency,
     summary: {
       impressions: totalImpressions,
       claims: totalClaims,
@@ -419,7 +492,7 @@ export async function getDashboardData(shopId, { from, to } = {}) {
   }
 }
 
-async function buildFromDailyStats(shopId, range, rows) {
+async function buildFromDailyStats(shopId, range, rows, { currency = 'USD', tz = 'UTC' } = {}) {
   // Promotion-level rollup.
   const promoMap = new Map()
   let shopOrders = 0
@@ -452,7 +525,7 @@ async function buildFromDailyStats(shopId, range, rows) {
 
   // Daily series — zero-fill any missing days.
   const dailyMap = new Map()
-  for (const day of eachDay(range.from, range.to)) {
+  for (const day of eachDay(range.from, range.to, tz)) {
     dailyMap.set(day, { date: day, impressions: 0, claims: 0, revenue: 0 })
   }
   for (const row of rows) {
@@ -503,6 +576,7 @@ async function buildFromDailyStats(shopId, range, rows) {
 
   return {
     range: { from: range.from.toISOString(), to: range.to.toISOString() },
+    currency,
     summary: {
       impressions: totalImpressions,
       claims: totalClaims,
@@ -522,6 +596,7 @@ async function buildFromDailyStats(shopId, range, rows) {
 function emptyDashboard() {
   return {
     range: { from: null, to: null },
+    currency: 'USD',
     summary: {
       impressions: 0, claims: 0, claimRate: 0, revenue: 0,
       orders: 0, aovWithPromo: 0, aovWithoutPromo: 0, aovLift: 0,

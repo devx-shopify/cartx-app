@@ -4,8 +4,23 @@ import { ServerRouter } from "react-router";
 import { createReadableStreamFromReadable } from "@react-router/node";
 import { isbot } from "isbot";
 import { addDocumentResponseHeaders } from "./shopify.server";
+import { initSentry, captureException } from "./lib/sentry.server.js";
+
+// Initialize error reporting as early as possible (no-op without SENTRY_DSN).
+initSentry();
 
 export const streamTimeout = 5000;
+
+// React Router calls this for every uncaught loader/action/render error. We
+// report server-side failures to Sentry and keep the default console logging.
+export function handleError(error, { request }) {
+  // Skip client-aborted requests (user navigated away) — not real errors.
+  if (request.signal.aborted) return;
+  // Skip thrown Responses (404s, redirects) — these are control flow, not bugs.
+  if (error instanceof Response) return;
+  captureException(error, { extra: { url: request.url, method: request.method } });
+  console.error(error);
+}
 
 export default async function handleRequest(
   request,

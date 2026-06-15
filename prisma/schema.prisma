@@ -40,6 +40,8 @@ model Store {
   billingMethod String   @default("shopify") // shopify, invoice, none
   isLegacy      Boolean  @default(false)
   legacyPrice   Int? // cents, for internal records
+  currencyCode  String? // ISO 4217, e.g. "INR" / "USD" — synced from Shopify shop settings
+  ianaTimezone  String? // e.g. "Asia/Kolkata" — synced from Shopify, used for day bucketing
   notes         String?
   onboarding    String   @default("{\"completed\":false,\"steps\":{\"offer_created\":false,\"settings_configured\":false,\"previewed\":false}}")
   createdAt     DateTime @default(now())
