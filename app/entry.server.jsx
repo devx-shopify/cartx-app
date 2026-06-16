@@ -1,6 +1,6 @@
 import { PassThrough } from "stream";
 import { renderToPipeableStream } from "react-dom/server";
-import { ServerRouter } from "react-router";
+import { ServerRouter, isRouteErrorResponse } from "react-router";
 import { createReadableStreamFromReadable } from "@react-router/node";
 import { isbot } from "isbot";
 import { addDocumentResponseHeaders } from "./shopify.server";
@@ -16,8 +16,11 @@ export const streamTimeout = 5000;
 export function handleError(error, { request }) {
   // Skip client-aborted requests (user navigated away) — not real errors.
   if (request.signal.aborted) return;
-  // Skip thrown Responses (404s, redirects) — these are control flow, not bugs.
+  // Skip thrown Responses (redirects, etc.) — control flow, not bugs.
   if (error instanceof Response) return;
+  // Skip 4xx route errors (e.g. 404 "No route matches" from bots hitting
+  // /robots.txt) — noise, not server bugs. Still report 5xx route errors.
+  if (isRouteErrorResponse(error) && error.status < 500) return;
   captureException(error, { extra: { url: request.url, method: request.method } });
   console.error(error);
 }

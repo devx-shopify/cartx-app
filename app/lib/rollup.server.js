@@ -9,6 +9,32 @@ import {
 // query stays cheap.
 const DEFAULT_WINDOW_HOURS = 26
 
+// Retry a DB operation on transient connection errors. Fly Postgres can briefly
+// drop connections (deploys, failover, restart under load); a short retry keeps
+// one blip from failing an entire shop's rollup and falsely tripping the alert.
+function isTransientDbError(err) {
+  const code = err?.code
+  if (code === 'P1001' || code === 'P1017' || code === 'P1008') return true
+  if ((err?.name || '') === 'PrismaClientInitializationError') return true
+  return /closed the connection|reach database server|connection reset|terminating connection/i.test(
+    String(err?.message || ''),
+  )
+}
+
+async function withRetry(fn, { attempts = 3, baseDelayMs = 500 } = {}) {
+  let lastErr
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastErr = err
+      if (i === attempts - 1 || !isTransientDbError(err)) throw err
+      await new Promise((r) => setTimeout(r, baseDelayMs * (i + 1)))
+    }
+  }
+  throw lastErr
+}
+
 // Read the shop's IANA timezone (synced onto Store from Shopify shop settings).
 // Falls back to UTC when not yet populated — the merchant just hasn't opened the
 // admin app since the field was added.
@@ -124,17 +150,19 @@ export async function rollupShop(shopId, opts = {}) {
  */
 export async function rollupAllShops({ windowHours = DEFAULT_WINDOW_HOURS } = {}) {
   const since = new Date(Date.now() - windowHours * 3600 * 1000)
-  const distinct = await db.analyticsEvent.findMany({
-    where: { createdAt: { gte: since } },
-    select: { shopId: true },
-    distinct: ['shopId'],
-  })
+  const distinct = await withRetry(() =>
+    db.analyticsEvent.findMany({
+      where: { createdAt: { gte: since } },
+      select: { shopId: true },
+      distinct: ['shopId'],
+    }),
+  )
 
   let totalBuckets = 0
   let totalFailed = 0
   for (const { shopId } of distinct) {
     try {
-      const result = await rollupShop(shopId, { since })
+      const result = await withRetry(() => rollupShop(shopId, { since }))
       totalBuckets += result.buckets
       console.log(`[cartx][rollup] ${shopId}: ${result.buckets} buckets in ${result.ms}ms`)
     } catch (err) {
