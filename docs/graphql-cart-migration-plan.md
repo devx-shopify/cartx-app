@@ -4,6 +4,52 @@
 > **local optimistic cart** rendered on top of a **canonical Storefront
 > GraphQL cart**, owning the storefront add-to-cart (ATC) path and checkout.
 
+## 0. High-level plan & phase map
+
+> The layer above the detail. Sections 1–10 are the deep reference; this is the
+> roadmap we execute against and split into per-phase deep-dives.
+
+**North star.** Make the Storefront GraphQL Cart the canonical cart. The Preact
+drawer renders a local optimistic layer on top of it. cartx owns add-to-cart
+and checkout. Ship as a strangler migration — every phase is flag-gated and
+reversible; the AJAX path stays the fallback until cutover.
+
+**Guardrails (non-negotiable):**
+- AJAX path remains the default until a phase proves out behind the flag.
+- Shopify Functions (volume-discount, freebie) must keep firing on the GraphQL
+  cart — the make-or-break assumption.
+- No shopper loses their cart — seed the GraphQL cart from the existing AJAX cart.
+- Analytics + order attribution stay accurate throughout.
+
+**Phases (sequential, each independently shippable & reversible):**
+
+| Phase | Goal | Exit criteria |
+|---|---|---|
+| **P0 — Spike / de-risk** | Prove `cartCreate → cartLinesAdd → cart(id:)` on a dev store; confirm both Functions fire on the GraphQL cart; settle token delivery | Hard go/no-go. No P1+ build until green |
+| **P1 — Cart service** | `cart.graphql.js`: create/read/add/update/remove, discount codes, buyer identity, note/attributes + single-flight mutation queue, behind a flag | Service callable in isolation; AJAX still default |
+| **P2 — Read switch + seeding** | Drawer reads from `cart(id:)`; seed GraphQL cart from `/cart.js` on first load | Drawer renders the GraphQL cart accurately; returning carts preserved |
+| **P3 — Optimistic layer** | Local cart store + queue; UI derives `optimisticCart`; qty/add/remove/coupon writes go through the queue | Instant UI; reconciles to the server cart |
+| **P4 — ATC + checkout takeover** | Theme add-to-cart routes into `cartLinesAdd`; Checkout button uses `cart.checkoutUrl` | The cutover point — GraphQL cart is canonical |
+| **P5 — Decommission legacy** | Remove fetch/XHR interceptor + AJAX reconciliation (keep theme cart-count sync) | Dead code gone; single code path |
+| **P6 — Advanced (gated)** | userErrors/warnings surfacing, selling plans/subscriptions, markets/contextual pricing | Each behind its own setting/flag |
+
+**Cross-cutting workstreams (run alongside the phases):**
+- **Auth & cart identity** — storefront token delivery (client-side vs proxy),
+  cart-id persistence, buyer identity for logged-in shoppers.
+- **Functions compatibility** — verify volume + freebie functions against the
+  Storefront cart (line properties, `_offer_id`).
+- **Analytics parity** — keep drawer / web-pixel / attribution events firing;
+  confirm order attribution still works (no Storefront cart webhooks exist).
+- **Testing & QA** — unit (cart service, queue, optimistic merge) → E2E (full
+  shopper journey) → QA green flag.
+- **Rollout & flagging** — flag granularity, per-store enablement, rollback.
+
+**Top risks to retire early:**
+1. A Function not firing on the Storefront cart (retire in P0).
+2. Concurrent-mutation `CONFLICT` / HTTP 409 (mutation queue in P1).
+3. ATC takeover fragility across themes (hardest part — P4, design deferred to §7).
+4. Buyer identity / customer access token for logged-in pricing.
+
 ## 1. Why we're doing this
 
 Today the drawer runs entirely on the **AJAX Cart API** (`/cart.js`,
@@ -179,3 +225,123 @@ move to `checkoutUrl` at the same time.
 - [ ] ATC strategy (a) vs (b) vs hybrid.
 - [ ] Do we support markets/contextual pricing in v1 or defer?
 - [ ] Storefront API version to pin.
+
+## 11. Phase deep-dives
+
+### P0 — Spike / de-risk
+
+**Objective.** Prove the headless cart is viable *before* committing to P1+.
+Throwaway code on a dev store; the one output is a **go / no-go** decision.
+
+**Make-or-break assumption (grounded in code).** Both Functions key off cart
+line **attributes**, not anything AJAX-specific:
+- `cart-max-freebie-discount` reads `attribute(key:"_freebie")` +
+  `attribute(key:"_offer_id")`; config from metafield `$app:cart-max-freebie-discount`.
+- `cartx-volume-discount` reads `attribute(key:"_freebie")`; config from
+  `$app:cartx-volume-discount`; uses `cart_lines_discounts_generate_run` (discountClasses).
+
+In AJAX these come from line-item **properties**; in the Storefront Cart API
+they must come from `cartLinesAdd(lines:[{ attributes:[{key,value}] }])`. If
+Storefront line attributes populate the Function input's `attribute(key:)`
+identically, the migration is green. If not, stop and rethink. (Experiment #1.)
+
+**Experiments (pass bar):**
+1. **Functions fire on a Storefront cart** *(the gate)* — `cartCreate` →
+   `cartLinesAdd` with `_freebie`/`_offer_id` attributes + matching automatic
+   discount active → freebie + volume allocations appear on the line.
+2. **Core lifecycle** — create → add → read → update → remove; each mutation
+   returns a full, render-able cart (no `/cart.js` refetch needed).
+3. **Discount codes** — `cartDiscountCodesUpdate` reports `applicable` correctly
+   for valid + invalid codes.
+4. **Token delivery** — public token via Admin `storefrontAccessTokenCreate`,
+   client-side call succeeds (no CORS/auth wall).
+5. **Checkout handoff** — `cart.checkoutUrl` lands in checkout with discounts intact.
+6. **Concurrency probe** — overlapping `cartLinesUpdate` → observe `CONFLICT`/409
+   (confirms P1 mutation-queue need).
+7. **Seed-from-AJAX** — replay `/cart.js` lines (properties→attributes) into
+   `cartLinesAdd`; result matches the AJAX cart.
+
+**Decisions to settle:** Storefront API version to pin; token delivery
+(client-side vs proxy, exp #4); buyer-identity path (confirm only, impl in P6).
+
+**Go/No-go:** GO only if #1, #2, #5 fully pass. #3/#6/#7 inform design.
+Any failure in #1 → stop. Time-box 2–3 focused days.
+
+**Result log (spike run on `devx-dev.myshopify.com`, Storefront API `2026-01`):**
+
+Verdict: **GO.** Central assumption holds — Storefront cart line `attributes`
+populate the Function input's `attribute(key:)` identically to AJAX line
+properties, and our Function fires on a Storefront-created cart.
+
+- **#4 Token — PASS.** Public Unauthenticated Storefront token works via
+  `X-Shopify-Storefront-Access-Token`. API version `2026-01` validated.
+- **#1 Functions fire (THE GATE) — PASS.** `cartCreate` → `cartLinesAdd` of the
+  freebie (Ice Cream) with `_freebie=true` + `_offer_id` → `cart-max-freebie-discount`
+  applied `CartAutomaticDiscountAllocation "Free Gift"`, line `totalAmount` → 0.
+  Scales with quantity (qty 2 → ₹24 discount, total 0). Non-freebie line untouched.
+- **#2 Lifecycle — PASS.** create / read / `cartLinesUpdate` / `cartLinesRemove`
+  each return the full render-able cart (cost + per-line + allocations); no
+  `/cart.js` refetch needed.
+- **#3 Discount codes — PASS.** Invalid code → `discountCodes[].applicable=false`,
+  no userError.
+- **#5 Checkout — PARTIAL.** `checkoutUrl` returned and cart-level totals already
+  net the automatic discount. *Still TODO: open `checkoutUrl` in a browser and
+  confirm the freebie/volume discounts carry into the order.*
+- **#6 Concurrency — CONFIRMS QUEUE NEED.** Two overlapping `cartLinesUpdate`
+  returned HTTP 200 with **no `CONFLICT`/409**, but produced a **silent
+  lost-update** (last-writer-wins): the read-back showed one write clobbered the
+  other with no error surfaced. → P1 single-flight mutation queue is mandatory
+  (guards against silent loss, not just 409s).
+
+**Still open / not yet run:**
+- **Volume Function** (`cartx-volume-discount`) not exercised — need a volume
+  variant + tier config to repeat #1 for it (mechanism is identical: reads
+  `_freebie` attribute + automatic discount).
+- **#7 seed-from-AJAX** not run (needs a live `/cart.js`); mechanism is just
+  replaying lines into `cartLinesAdd` with attributes.
+- **Buyer identity** for logged-in shoppers (customer access token) — deferred to P6.
+
+**Decisions settled:** token delivery = public client-side token (Option A) works.
+API version `2026-01` validated (confirm final pin). Concurrency model =
+serialize per cart.
+
+### P1 — Cart service (`cart.graphql.js` + single-flight queue)
+
+**Goal.** A self-contained Storefront-cart service, callable in isolation,
+behind a feature flag. **AJAX stays the default** — P1 does not change the live
+drawer's behavior. Exit: service works + unit-tested; flag off in prod.
+
+**Where it lives.** New module `app/drawer-src/src/storefront-cart.js`, bundled
+into `extensions/cart-max-drawer/assets/cartmax.js` by `app/drawer-src/build.js`
+(esbuild, IIFE/Preact). Consumed later by `evaluate.js`/`CartDrawer.jsx` in P2+.
+
+**Token delivery (corrected).** No Liquid filter exposes a Storefront token.
+Mint it at install via Admin `storefrontAccessTokenCreate`, persist on the
+`Store` row, and deliver it (plus API version) to the drawer in the existing
+`/apps/cartmax/evaluate-cart` proxy `_config` payload — *not* via `app-embed.liquid`.
+
+**Build tasks (split):**
+
+| Task | What | Files | Done when |
+|---|---|---|---|
+| **T1 — Token plumbing** | Mint storefront token at install/first load; persist on `Store`; return `storefront_token` + `storefront_api_version` in proxy `_config` | `app/shopify.server.js` (afterAuth), `prisma/schema.prisma` (Store), `app/routes/proxy.evaluate-cart.jsx`, `app/lib/config.server.js` | Drawer can read token+version from cached `_config` |
+| **T2 — GraphQL client + ops** | `POST /api/{version}/graphql.json` with token header; ops: `cartCreate`, `getCart(id)`, `cartLinesAdd/Update/Remove`, `cartDiscountCodesUpdate`, `cartNoteUpdate`, `cartAttributesUpdate`, `cartBuyerIdentityUpdate` | new `storefront-cart.js` | Each op callable, returns parsed cart + userErrors |
+| **T3 — Enriched query + mapper** | One reusable cart fragment (cost, per-line cost + `compareAtAmountPerQuantity`, `discountAllocations`, merchandise, sellingPlan); map GraphQL `Cart` → the drawer's existing `/cart.js` shape (incl. line `id`→`key`, attributes→`properties`, amounts→cents) | `storefront-cart.js` | `mapCart(gqlCart)` returns an object the current UI renders unchanged |
+| **T4 — Single-flight queue** | Serialize one mutation per cart; queue the rest; coalesce rapid qty changes (reuse existing debounce). Driven by the P0 finding: concurrent writes silently lose, no 409 | `storefront-cart.js` | Overlapping calls run sequentially; final state deterministic |
+| **T5 — Cart identity** | Persist cart `id` in `localStorage` `cartx:cartId:<shop>`; on load `getCart(id)`, if null/expired → `cartCreate`; expose `getOrCreateCart()` | `storefront-cart.js`, `helpers.js` (`getContext` add token/version) | Returning sessions reuse the cart; invalid id self-heals |
+| **T6 — Feature flag** | `graphql_cart_enabled` (default false) in `DEFAULT_CONFIG`; passthrough in proxy `_config`; client reads it; service is a no-op path until flipped | `app/lib/constants.js`, `proxy.evaluate-cart.jsx`, `evaluate.js` | Flag visible client-side; off = zero behavior change |
+| **T7 — Errors/warnings** | Surface `cart*` `userErrors` + cart `warnings` (qty adjusted, unavailable) in a normalized shape for the UI to consume in P3 | `storefront-cart.js` | Errors/warnings returned, never thrown into the render path |
+| **T8 — Tests + dev harness** | Unit tests: queue serialization/coalescing, `mapCart` fidelity, error handling. A throwaway dev page to exercise the service against a dev store | `app/drawer-src/__tests__/` (or existing test setup) | Tests green; service demoably works end-to-end |
+
+**Order:** T1+T6 (plumbing) → T2 → T3 → T4/T5 → T7 → T8.
+
+**Key design calls to lock in P1:**
+- **Line identity:** drawer keys lines by `key`; Storefront uses line `id`
+  (with `?cart=` suffix). The mapper owns this translation.
+- **No multi-type batching:** one queued action = one mutation returning the full
+  cart (simpler than the old single `/cart/update.js` batch; the queue covers ordering).
+- **Token is public** but still scope it to least privilege; rotate via Admin if needed.
+
+**Out of scope for P1 (later phases):** drawer reading from the service (P2),
+optimistic overlay (P3), ATC/checkout takeover (P4), interceptor removal (P5),
+markets/subscriptions surfacing (P6).
