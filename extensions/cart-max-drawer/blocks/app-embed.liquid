@@ -14,6 +14,7 @@
   data-money-format="{{ shop.money_format | escape }}"
   data-proxy-base="/apps/cartmax"
   data-analytics-enabled="true"
+  data-initial-item-count="{{ cart.item_count }}"
 ></div>
 <script>
   // theme.id may not render in app embed blocks — set it from window.Shopify.theme
@@ -101,7 +102,7 @@
 
     XMLHttpRequest.prototype.send = function() {
       var xhr = this;
-      if (xhr._cartmaxUrl && isCartEndpoint(xhr._cartmaxUrl)) {
+      if (xhr._cartmaxUrl && isCartEndpoint(xhr._cartmaxUrl) && !window.__cartmaxInternal) {
         console.log('[CartMax] Intercepted XHR:', xhr._cartmaxUrl);
         xhr.addEventListener('load', function() {
           // Fetch fresh cart state
