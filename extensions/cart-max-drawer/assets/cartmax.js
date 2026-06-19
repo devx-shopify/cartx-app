@@ -1657,6 +1657,8 @@
       this._behavior = { auto_open_on_add: true, animation_style: "slide", close_on_overlay_click: true, close_on_esc: true };
     }
     componentDidMount() {
+      var rootEl = document.getElementById("cartmax-root");
+      this._lastKnownItemCount = rootEl ? parseInt(rootEl.dataset.initialItemCount || "0", 10) : 0;
       this._onCartChanged = (e2) => {
         if (e2.detail && e2.detail.cart) {
           var cart = this._stabiliseOrder(e2.detail.cart);
@@ -1664,10 +1666,14 @@
           this.setState({ cart, loading: false });
           updateCartCount(cart.item_count);
           this._prefetchCompareAtPrices(cart.items || []);
+          if (this._behavior.auto_open_on_add && cart.item_count > this._lastKnownItemCount) {
+            this.openDrawer();
+          }
+          this._lastKnownItemCount = cart.item_count;
         } else {
           this.loadCart();
+          if (this._behavior.auto_open_on_add) this.openDrawer();
         }
-        if (this._behavior.auto_open_on_add) this.openDrawer();
       };
       this._onEvalResult = (e2) => {
         if (e2.detail) {
@@ -1736,8 +1742,12 @@
       window.addEventListener("cartmax:gift-unavailable", this._onGiftUnavailable);
       window.__cartmaxReady = true;
       if (window.__cartmaxQueue && window.__cartmaxQueue.length > 0) {
+        var lastQueued = window.__cartmaxQueue[window.__cartmaxQueue.length - 1];
+        var queuedCount = lastQueued.detail && lastQueued.detail.cart ? lastQueued.detail.cart.item_count : null;
         this.loadCart();
-        this.openDrawer();
+        if (queuedCount === null || queuedCount > this._lastKnownItemCount) {
+          this.openDrawer();
+        }
         window.__cartmaxQueue = [];
       }
       var rootEl = document.getElementById("cartmax-root");
