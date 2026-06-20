@@ -51,8 +51,29 @@ export const action = async ({ request }) => {
   const config = await loadConfig(shopId, themeId);
   await migrateLegacyDiscountRules(config, session.shop);
   const body = await request.json();
-  const { intent, id, type } = body;
 
+  // Bulk path: { intent: "bulk-toggle"|"bulk-delete", items: [{ id, type }], enabled?: boolean }
+  if (body.items) {
+    const { intent, items, enabled } = body;
+    for (const { id, type } of items) {
+      if (intent === "bulk-delete") {
+        if (type === "offer") config.offers = config.offers.filter((o) => o.id !== id);
+        else if (type === "coupon") config.coupons = config.coupons.filter((c) => c.id !== id);
+        else if (type === "claim-gift") config.claim_gifts = config.claim_gifts.filter((g) => g.id !== id);
+      } else if (intent === "bulk-toggle") {
+        if (type === "offer") { const o = config.offers.find((o) => o.id === id); if (o) o.enabled = enabled; }
+        else if (type === "coupon") { const c = config.coupons.find((c) => c.id === id); if (c) c.enabled = enabled; }
+        else if (type === "claim-gift") { const g = config.claim_gifts.find((g) => g.id === id); if (g) g.enabled = enabled; }
+      }
+    }
+    await saveConfig(shopId, themeId, config);
+    const affectedTypes = [...new Set(items.map((i) => i.type))];
+    const warnings = (await Promise.all(affectedTypes.map((t) => syncDiscounts(admin, session.shop, config, t)))).flat();
+    return { ok: true, warnings };
+  }
+
+  // Single-item path
+  const { intent, id, type } = body;
   if (type === "offer") {
     if (intent === "delete") config.offers = config.offers.filter((o) => o.id !== id);
     else if (intent === "toggle") { const offer = config.offers.find((o) => o.id === id); if (offer) offer.enabled = !offer.enabled; }
@@ -174,29 +195,32 @@ export default function PromotionsIndex() {
     else setSelected(paged.map((p) => p.id));
   }
 
-  async function bulkActivate() {
-    for (const id of selected) {
-      const promo = filtered.find((p) => p.id === id);
-      if (promo && !promo.enabled) submitAction("toggle", id, promo.type);
-    }
+  function bulkActivate() {
+    const items = selected
+      .map((id) => filtered.find((p) => p.id === id))
+      .filter((p) => p && !p.enabled)
+      .map(({ id, type }) => ({ id, type }));
+    if (items.length > 0) fetcher.submit(JSON.stringify({ intent: "bulk-toggle", enabled: true, items }), { method: "POST", encType: "application/json" });
     setSelected([]);
   }
 
-  async function bulkDeactivate() {
-    for (const id of selected) {
-      const promo = filtered.find((p) => p.id === id);
-      if (promo && promo.enabled) submitAction("toggle", id, promo.type);
-    }
+  function bulkDeactivate() {
+    const items = selected
+      .map((id) => filtered.find((p) => p.id === id))
+      .filter((p) => p && p.enabled)
+      .map(({ id, type }) => ({ id, type }));
+    if (items.length > 0) fetcher.submit(JSON.stringify({ intent: "bulk-toggle", enabled: false, items }), { method: "POST", encType: "application/json" });
     setSelected([]);
   }
 
   async function bulkDelete() {
     const yes = await confirmFn({ title: "Delete selected", message: `Are you sure you want to delete ${selected.length} promotion(s)? This action cannot be undone.`, confirmLabel: "Delete", destructive: true });
     if (!yes) return;
-    for (const id of selected) {
-      const promo = filtered.find((p) => p.id === id);
-      if (promo) submitAction("delete", id, promo.type);
-    }
+    const items = selected
+      .map((id) => filtered.find((p) => p.id === id))
+      .filter(Boolean)
+      .map(({ id, type }) => ({ id, type }));
+    if (items.length > 0) fetcher.submit(JSON.stringify({ intent: "bulk-delete", items }), { method: "POST", encType: "application/json" });
     setSelected([]);
   }
 

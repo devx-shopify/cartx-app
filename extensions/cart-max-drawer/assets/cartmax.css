@@ -49,7 +49,7 @@ cart-notification-component [role="dialog"] {
 .cartmax-overlay {
   position: fixed;
   inset: 0;
-  z-index: 999999;
+  z-index: 2147483647;
   background: rgba(0, 0, 0, 0);
   transition: background 0.25s ease;
   will-change: background;
@@ -112,7 +112,7 @@ cart-notification-component [role="dialog"] {
   bottom: 0;
   width: var(--cartmax-width, 420px);
   max-width: 100%;
-  z-index: 1000000;
+  z-index: 2147483647;
   display: flex;
   flex-direction: column;
   background: var(--cartmax-bg, #ffffff);
