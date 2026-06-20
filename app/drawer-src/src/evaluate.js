@@ -61,6 +61,37 @@ async function callEvaluate(cart) {
   return result;
 }
 
+// ── cartx active marker ───────────────────────────────────
+// The volume-discount Shopify Function only applies when the cart carries the
+// `_cartx` attribute. We set it here — when cartx is actually live on the
+// storefront and the merchant has an enabled volume offer — so the discount can
+// NEVER apply store-wide on a store/cart where cartx isn't engaging. Idempotent:
+// set at most once per session, and skipped if the cart already has it.
+
+var _cartxAttrEnsured = false;
+
+function configHasVolumeOffer(cfg) {
+  if (!cfg || !cfg.offers) return false;
+  for (var i = 0; i < cfg.offers.length; i++) {
+    var o = cfg.offers[i];
+    if (o.reward && o.reward.type === 'volume_discount') return true;
+  }
+  return false;
+}
+
+async function ensureCartxAttribute(cart) {
+  if (_cartxAttrEnsured) return;
+  if (!configHasVolumeOffer(_cachedConfig)) return;
+  var attrs = (cart && cart.attributes) || {};
+  if (attrs._cartx === 'on') { _cartxAttrEnsured = true; return; }
+  try {
+    await cartUpdateAll({ attributes: { _cartx: 'on' } });
+    _cartxAttrEnsured = true;
+  } catch (e) {
+    console.error('[cartx] failed to set _cartx cart attribute:', e);
+  }
+}
+
 // ── Helpers ───────────────────────────────────────────────
 
 function simulateCart(cart, actions) {
@@ -463,6 +494,9 @@ async function runEvaluate(cart, action) {
           detail: Object.assign({}, result, { _server: true }),
         }));
       }
+      // Mark the cart as cartx-active so the volume-discount Function may apply.
+      // Sequenced after applyResult to avoid concurrent /cart/update.js writes.
+      await ensureCartxAttribute(updatedCart || cart);
     }
   } catch (err) {
     console.error('[cartx] Evaluate error:', err);
@@ -518,6 +552,7 @@ async function runEvaluateBatch(cart, actions) {
           detail: Object.assign({}, result, { _server: true }),
         }));
       }
+      await ensureCartxAttribute(updatedCart || cart);
     }
   } catch (err) {
     console.error('[cartx] Evaluate error:', err);

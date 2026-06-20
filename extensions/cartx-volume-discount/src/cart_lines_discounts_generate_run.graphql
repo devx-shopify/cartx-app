@@ -1,5 +1,8 @@
 query CartInput {
   cart {
+    cartxActive: attribute(key: "_cartx") {
+      value
+    }
     lines {
       id
       quantity

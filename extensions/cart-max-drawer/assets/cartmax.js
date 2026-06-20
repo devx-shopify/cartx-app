@@ -1,5 +1,5 @@
 (() => {
-  // node_modules/preact/dist/preact.module.js
+  // app/drawer-src/node_modules/preact/dist/preact.module.js
   var n;
   var l;
   var u;
@@ -256,7 +256,7 @@
     return n2.__v.__b - l2.__v.__b;
   }, H.__r = 0, f = Math.random().toString(8), c = "__d" + f, s = "__a" + f, a = /(PointerCapture)$|Capture$/i, h = 0, p = V(false), v = V(true), y = 0;
 
-  // src/helpers.js
+  // app/drawer-src/src/helpers.js
   var _internalFetchDepth = 0;
   function internalFetch(url, opts) {
     _internalFetchDepth++;
@@ -525,7 +525,7 @@
     };
   }
 
-  // src/confetti.js
+  // app/drawer-src/src/confetti.js
   var PARTICLE_COUNT = 80;
   var DURATION = 2500;
   var GRAVITY = 0.12;
@@ -675,7 +675,7 @@
     }
   }
 
-  // src/rules.js
+  // app/drawer-src/src/rules.js
   function isDiscountedItem(item) {
     return item.properties && item.properties["_freebie"] === "true" || item.properties && item.properties["_cartmax_claim"] === "true";
   }
@@ -868,7 +868,7 @@
     };
   }
 
-  // src/evaluate.js
+  // app/drawer-src/src/evaluate.js
   var PROXY_URL = "/apps/cartmax/evaluate-cart";
   var _cachedConfig = null;
   var _configCacheTime = 0;
@@ -910,6 +910,30 @@
       _configCacheTime = Date.now();
     }
     return result;
+  }
+  var _cartxAttrEnsured = false;
+  function configHasVolumeOffer(cfg) {
+    if (!cfg || !cfg.offers) return false;
+    for (var i2 = 0; i2 < cfg.offers.length; i2++) {
+      var o2 = cfg.offers[i2];
+      if (o2.reward && o2.reward.type === "volume_discount") return true;
+    }
+    return false;
+  }
+  async function ensureCartxAttribute(cart) {
+    if (_cartxAttrEnsured) return;
+    if (!configHasVolumeOffer(_cachedConfig)) return;
+    var attrs = cart && cart.attributes || {};
+    if (attrs._cartx === "on") {
+      _cartxAttrEnsured = true;
+      return;
+    }
+    try {
+      await cartUpdateAll({ attributes: { _cartx: "on" } });
+      _cartxAttrEnsured = true;
+    } catch (e2) {
+      console.error("[cartx] failed to set _cartx cart attribute:", e2);
+    }
   }
   function simulateCart(cart, actions) {
     if (!actions || actions.length === 0 || !cart || !cart.items) return cart;
@@ -1226,6 +1250,7 @@
             detail: Object.assign({}, result, { _server: true })
           }));
         }
+        await ensureCartxAttribute(updatedCart || cart);
       }
     } catch (err) {
       console.error("[cartx] Evaluate error:", err);
@@ -1273,6 +1298,7 @@
             detail: Object.assign({}, result, { _server: true })
           }));
         }
+        await ensureCartxAttribute(updatedCart || cart);
       }
     } catch (err) {
       console.error("[cartx] Evaluate error:", err);
@@ -1306,7 +1332,7 @@
   }).catch(function() {
   });
 
-  // src/analytics-events.js
+  // app/drawer-src/src/analytics-events.js
   var ANALYTICS_EVENTS = {
     DRAWER_OPENED: "drawer_opened",
     DRAWER_CLOSED: "drawer_closed",
@@ -1324,7 +1350,7 @@
     MAX_ITEM_COUNT: 1e3
   };
 
-  // src/tracker.js
+  // app/drawer-src/src/tracker.js
   var SESSION_KEY = "cartx_session_id";
   var DEFAULT_PROXY_BASE = "/apps/cartmax";
   var ENDPOINT_PATH = "/analytics";
@@ -1546,7 +1572,7 @@
     }
   };
 
-  // src/CartDrawer.jsx
+  // app/drawer-src/src/CartDrawer.jsx
   var CLOSE_DELAY = 250;
   var DEBOUNCE_DELAY = 300;
   var TOMBSTONE_HOLD_MS = 280;
@@ -3303,7 +3329,7 @@
     }
   };
 
-  // src/index.jsx
+  // app/drawer-src/src/index.jsx
   function mount() {
     var root = document.getElementById("cartmax-root");
     if (root) R(k(CartDrawer), root);

@@ -30,6 +30,15 @@ export function cartLinesDiscountsGenerateRun(input) {
     return { operations: [] };
   }
 
+  // SAFETY GATE: only apply when cartx is active on this cart. The cartx drawer
+  // sets the cart-level `_cartx` attribute when a volume offer is live on the
+  // storefront. Without it (e.g. the app installed/tested but the storefront
+  // drawer isn't engaging this cart), the discount must NOT apply — this is what
+  // prevents the discount from going live store-wide for every customer.
+  if (input.cart.cartxActive?.value !== 'on') {
+    return { operations: [] };
+  }
+
   if (!input.discount.discountClasses.includes(DiscountClass.Product)) {
     return { operations: [] };
   }
