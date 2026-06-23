@@ -43,7 +43,7 @@
   data-analytics-enabled="true"
   data-initial-item-count="{{ cart.item_count }}"
   data-initial-cart="{{ cart | json | escape }}"
-  data-drawer-config="{{ shop.metafields.cartx.drawer_config.value | json | escape }}"
+  data-drawer-config="{{ shop.metafields['$app'].drawer_config.value | json | escape }}"
 ></div>
 <script>
   // theme.id may not render in app embed blocks — set it from window.Shopify.theme
