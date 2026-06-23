@@ -233,13 +233,15 @@ cart-notification-component [role="dialog"] {
   background: var(--cartmax-bg, #ffffff);
   content-visibility: auto;
   contain-intrinsic-size: auto 100px;
-  transition: opacity 0.18s ease, max-height 0.26s ease,
-    padding-top 0.26s ease, padding-bottom 0.26s ease, border-bottom-width 0.26s ease;
 }
 
 /* Removal collapses smoothly (height + fade) instead of vanishing, so deleting
-   a line never blanks the list. Duration is kept in sync with TOMBSTONE_HOLD_MS
-   in CartDrawer.jsx (the line unmounts once this finishes). */
+   a line never blanks the list. The transition lives ONLY on this rule (not on
+   the base .cartmax-line-item) so it fires exclusively when a line is being
+   removed — normal re-renders (quantity changes, reconciles) repaint instantly
+   with no animation, which is what kept making products look like they slid
+   away and back. Duration is kept in sync with TOMBSTONE_HOLD_MS in
+   CartDrawer.jsx (the line unmounts once this finishes). */
 .cartmax-line-removing {
   opacity: 0;
   max-height: 0 !important;
@@ -249,6 +251,8 @@ cart-notification-component [role="dialog"] {
   overflow: hidden;
   pointer-events: none;
   content-visibility: visible;
+  transition: opacity 0.18s ease, max-height 0.26s ease,
+    padding-top 0.26s ease, padding-bottom 0.26s ease, border-bottom-width 0.26s ease;
 }
 
 .cartmax-line-image {
