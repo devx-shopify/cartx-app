@@ -173,7 +173,6 @@ export default class CartDrawer extends Component {
     this.state = {
       visible: false,
       open: false,
-      styled: false,     // true once merchant styling (CSS vars) is applied — gates reveal to avoid a default→custom flash
       cart: null,
       loading: true,
       updating: {},
@@ -256,18 +255,20 @@ export default class CartDrawer extends Component {
     }
 
     // Apply the merchant's drawer styling (CSS vars, text, custom CSS) from the
-    // last-cached config BEFORE the drawer can open, so the first frame already
-    // looks right. Without this the drawer shows CSS fallback defaults until the
-    // /apps/cartmax/evaluate-cart round-trip returns the config — the visible
-    // "default UI then custom UI" flash. On a fresh browser (no cache) the
-    // `styled` gate below keeps the drawer hidden until the server config lands.
-    this._applyCachedDrawerCfg();
-
-    // Safety net: if styling never resolves (no cache + server slow/unreachable),
-    // reveal anyway so the drawer is never stuck invisible.
-    this._styleFallbackTimer = setTimeout(() => {
-      if (!this.state.styled) this.setState({ styled: true });
-    }, 700);
+    // config inlined into the page by app-embed.liquid (data-drawer-config, fed
+    // by the app-data metafield) — synchronously, BEFORE the drawer can open.
+    // The styling is on the element before first paint, so there's no
+    // "default UI then custom UI" flash and no network round-trip. The later
+    // server eval-result carries the same config and is skipped via the
+    // _appliedDrawerHash dedup in _maybeApplyDrawer.
+    if (rootEl && rootEl.dataset.drawerConfig) {
+      try {
+        var inlineDrawer = JSON.parse(rootEl.dataset.drawerConfig);
+        if (inlineDrawer && Object.keys(inlineDrawer).length) {
+          this._maybeApplyDrawer(inlineDrawer);
+        }
+      } catch (_) { /* malformed/empty — server eval-result will style it */ }
+    }
 
     this._onCartChanged = (e) => {
       if (e.detail && e.detail.cart) {
@@ -309,10 +310,7 @@ export default class CartDrawer extends Component {
         // while another edit is still buffered — a corrective reconcile is
         // already on its way. Without this, an in-flight reconcile that lands
         // with 0 items flips `hasItems` false and the whole body flashes empty.
-        if (this._isTransientEmpty(newCart)) {
-          console.warn('[cartx] skipped transient empty cart on reconcile (edits still pending)');
-          return;
-        }
+        if (this._isTransientEmpty(newCart)) return;
 
         var newEval = e.detail.evalResult || this.state.evalResult;
         this._currency = newCart.currency || this._currency;
@@ -365,10 +363,7 @@ export default class CartDrawer extends Component {
     this._onOptimisticUpdate = (e) => {
       if (e.detail && e.detail.cart) {
         var optimisticCart = this._stabiliseOrder(e.detail.cart);
-        if (this._isTransientEmpty(optimisticCart)) {
-          console.warn('[cartx] skipped transient empty optimistic cart (edits still pending)');
-          return;
-        }
+        if (this._isTransientEmpty(optimisticCart)) return;
         this._currency = optimisticCart.currency || this._currency;
         // Keep any qty still buffered (debounce not yet flushed) so a fast
         // follow-up click isn't reverted by this reconcile snapshot.
@@ -587,7 +582,6 @@ export default class CartDrawer extends Component {
     if (this._promoObserver) this._promoObserver.disconnect();
     Object.values(this._debounceTimers).forEach(clearTimeout);
     if (this._actionFlushTimer) clearTimeout(this._actionFlushTimer);
-    if (this._styleFallbackTimer) clearTimeout(this._styleFallbackTimer);
     Object.values(this._tombstoneTimers || {}).forEach(clearTimeout);
     Object.values(this._errorTimers || {}).forEach(clearTimeout);
     if (this._upsellErrorTimer) clearTimeout(this._upsellErrorTimer);
@@ -615,31 +609,8 @@ export default class CartDrawer extends Component {
     this._appliedDrawerHash = hash;
     applyDrawerSettings(drawer);
     this._applyDrawerConfig(drawer);
-    this._cacheDrawerCfg(drawer);
-    if (!this.state.styled) this.setState({ styled: true });
     var beh = drawer.behavior;
     if (beh && beh.confetti_lottie_url) setConfettiLottieUrl(beh.confetti_lottie_url);
-  }
-
-  // Persist the drawer config so the next page load can style the drawer before
-  // it opens (see _applyCachedDrawerCfg). Keyed per shop.
-  _drawerCfgKey() {
-    var root = document.getElementById('cartmax-root');
-    var shop = (root && root.dataset.shopId)
-      || (window.Shopify && window.Shopify.shop)
-      || 'default';
-    return 'cartx:drawerCfg:' + shop;
-  }
-
-  _cacheDrawerCfg(drawer) {
-    try { localStorage.setItem(this._drawerCfgKey(), JSON.stringify(drawer)); } catch (_) {}
-  }
-
-  _applyCachedDrawerCfg() {
-    try {
-      var raw = localStorage.getItem(this._drawerCfgKey());
-      if (raw) this._maybeApplyDrawer(JSON.parse(raw));
-    } catch (_) { /* no/!valid cache — server config will style on first eval */ }
   }
 
   _applyDrawerConfig(drawer) {
@@ -2430,7 +2401,7 @@ export default class CartDrawer extends Component {
 
     // ── Main render ───────────────────────────────────────────
 
-  render(props, { visible, open, cart, loading, styled }) {
+  render(props, { visible, open, cart, loading }) {
     var liveRegion = (
       <div
         id="cartmax-live-region"
@@ -2468,11 +2439,7 @@ export default class CartDrawer extends Component {
     return (
       <div class="cartmax-wrapper">
         {liveRegion}
-        <div
-          class={overlayClass}
-          onClick={this.handleOverlayClick}
-          style={styled ? undefined : { visibility: 'hidden' }}
-        >
+        <div class={overlayClass} onClick={this.handleOverlayClick}>
           <div
             class="cartmax-drawer"
             ref={(el) => { this._drawerRef = el; }}

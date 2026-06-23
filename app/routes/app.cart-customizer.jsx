@@ -9,6 +9,7 @@ import {
   getShopAndTheme,
   getSelectedTheme,
 } from "../lib/config.server.js";
+import { syncDrawerMetafield } from "../lib/drawer-metafield.server.js";
 import CartPreview from "../components/CartPreview.jsx";
 
 export const loader = async ({ request }) => {
@@ -16,6 +17,9 @@ export const loader = async ({ request }) => {
   const preferred = await getSelectedTheme(session.shop);
   const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
+  // Backfill the storefront styling metafield for installs that configured the
+  // drawer before this metafield existed (best-effort; never blocks the page).
+  await syncDrawerMetafield(admin, config.drawer);
   return { drawer: config.drawer, promotionCoupons: config.coupons.filter((c) => c.enabled) };
 };
 
@@ -29,6 +33,9 @@ export const action = async ({ request }) => {
   if (body._action === "save_drawer") {
     config.drawer = body.drawer;
     await saveConfig(shopId, themeId, config);
+    // Mirror styling to the app-data metafield so the storefront drawer can
+    // apply it on first paint (see app-embed.liquid data-drawer-config).
+    await syncDrawerMetafield(admin, config.drawer);
     return { ok: true };
   }
 
@@ -36,6 +43,7 @@ export const action = async ({ request }) => {
     config.drawer = {};
     await saveConfig(shopId, themeId, config);
     const fresh = await loadConfig(shopId, themeId);
+    await syncDrawerMetafield(admin, fresh.drawer);
     return { ok: true, drawer: fresh.drawer };
   }
 
