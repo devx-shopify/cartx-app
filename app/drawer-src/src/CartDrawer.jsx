@@ -232,13 +232,33 @@ export default class CartDrawer extends Component {
       ? parseInt(rootEl.dataset.initialItemCount || '0', 10)
       : 0;
 
+    // Hydrate from the server-rendered cart inlined by app-embed.liquid
+    // (data-initial-cart). This lets the drawer paint its items instantly on
+    // first open — no /cart.js round-trip on the critical path. The shape of
+    // Liquid's `cart | json` matches /cart.js closely enough for first render;
+    // loadCart() refreshes/reconciles in the background. Compare-at prefetch is
+    // intentionally deferred (see _deferPrefetchCompareAt) to keep first paint cheap.
+    if (rootEl && rootEl.dataset.initialCart) {
+      try {
+        var initialCart = JSON.parse(rootEl.dataset.initialCart);
+        if (initialCart && typeof initialCart.item_count === 'number') {
+          initialCart = this._stabiliseOrder(initialCart);
+          this._currency = initialCart.currency || this._currency;
+          this.state.cart = initialCart;   // pre-mount: avoid an extra render
+          this.state.loading = false;
+          this._lastKnownItemCount = initialCart.item_count;
+          this._deferPrefetchCompareAt(initialCart.items || []);
+        }
+      } catch (_) { /* malformed JSON — fall back to loadCart() */ }
+    }
+
     this._onCartChanged = (e) => {
       if (e.detail && e.detail.cart) {
         var cart = this._stabiliseOrder(e.detail.cart);
         this._currency = cart.currency || this._currency;
         this.setState({ cart: cart, loading: false });
         updateCartCount(cart.item_count);
-        this._prefetchCompareAtPrices(cart.items || []);
+        this._deferPrefetchCompareAt(cart.items || []);
         if (this._behavior.auto_open_on_add && cart.item_count > this._lastKnownItemCount) {
           this.openDrawer();
         }
@@ -346,6 +366,18 @@ export default class CartDrawer extends Component {
         this.openDrawer();
       }
       window.__cartmaxQueue = [];
+    } else if (window.__cartmaxOpenIntent) {
+      // User clicked the cart icon before this bundle mounted. The inline
+      // handler recorded the intent; honor it now. We already have cart state
+      // (hydrated above) so this opens with items visible immediately.
+      window.__cartmaxOpenIntent = false;
+      if (window.__cartmaxTrigger) this._triggerElement = window.__cartmaxTrigger;
+      this.loadCart();
+      this.openDrawer();
+    } else if (this.state.cart) {
+      // Hydrated from inline cart but not opening — reconcile against the live
+      // cart in the background so a stale server-rendered snapshot self-heals.
+      this.loadCart();
     }
 
     // ── Analytics tracker ────────────────────────────────────
@@ -378,7 +410,13 @@ export default class CartDrawer extends Component {
     // ── Public API for third-party apps ──────────────────
     var self = this;
     window.cartx = {
-      open: function () { self.loadCart(); self.openDrawer(); },
+      open: function () {
+        // Adopt the trigger captured by the inline click handler so focus
+        // returns to the cart icon on close.
+        if (window.__cartmaxTrigger) self._triggerElement = window.__cartmaxTrigger;
+        self.loadCart();
+        self.openDrawer();
+      },
       close: function () { self.close(); },
       toggle: function () { self.state.open ? self.close() : (self.loadCart(), self.openDrawer()); },
       refresh: function () { self.loadCart(); window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: {} })); },
@@ -408,23 +446,13 @@ export default class CartDrawer extends Component {
       'cart-drawer-component > button',
     ].join(', ');
 
-    // Cart icon click — open drawer. Capture phase + stopImmediatePropagation
-    // so a host theme's own listener (e.g. Horizon's cart-drawer-component)
-    // never gets a chance to fire.
-    this._onDocClick = (e) => {
-      var link = e.target.closest(CART_ICON_SELECTORS);
-      if (link) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (typeof e.stopImmediatePropagation === 'function') {
-          e.stopImmediatePropagation();
-        }
-        this._triggerElement = link;
-        this.loadCart();
-        this.openDrawer();
-      }
-    };
-    document.addEventListener('click', this._onDocClick, true);
+    // Cart icon click is intercepted by the inline capture-phase handler in
+    // app-embed.liquid (runs before this bundle loads, so it beats the host
+    // theme). That handler calls window.cartx.open() once we're mounted, or
+    // sets window.__cartmaxOpenIntent for us to honor on mount (below). We
+    // deliberately do NOT register a second document click listener here —
+    // the inline one already stopImmediatePropagation()s, and a duplicate
+    // would double-fire loadCart().
 
     // Cart icon hover — prefetch cart data so open is instant
     this._onDocMouseover = (e) => {
@@ -515,7 +543,6 @@ export default class CartDrawer extends Component {
     window.removeEventListener('cartmax:internal-reload', this._onInternalReload);
     window.removeEventListener('cartmax:optimistic-update', this._onOptimisticUpdate);
     window.removeEventListener('cartmax:gift-unavailable', this._onGiftUnavailable);
-    document.removeEventListener('click', this._onDocClick, true);
     document.removeEventListener('mouseover', this._onDocMouseover);
     document.removeEventListener('keydown', this._onDocKeydown);
     if (this._horizonObserver) this._horizonObserver.disconnect();
@@ -771,9 +798,23 @@ export default class CartDrawer extends Component {
       this._currency = cart.currency || this._currency;
       this.setState({ cart: cart, loading: false });
       updateCartCount(cart.item_count);
-      this._prefetchCompareAtPrices(cart.items || []);
+      this._deferPrefetchCompareAt(cart.items || []);
     } catch (err) {
       this.setState({ loading: false });
+    }
+  }
+
+  // Run compare-at prefetch off the first-paint path. These /products/{handle}.js
+  // requests only feed strike-through prices, which are not needed for the
+  // initial render, so we wait for the browser to be idle (or a short timeout)
+  // before firing them. Keeps the cart-open critical path free of extra fetches.
+  _deferPrefetchCompareAt(items) {
+    if (!items || !items.length) return;
+    var run = () => this._prefetchCompareAtPrices(items);
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(run, { timeout: 2000 });
+    } else {
+      setTimeout(run, 300);
     }
   }
 

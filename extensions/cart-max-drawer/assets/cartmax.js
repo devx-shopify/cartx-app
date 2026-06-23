@@ -1685,13 +1685,27 @@
     componentDidMount() {
       var rootEl = document.getElementById("cartmax-root");
       this._lastKnownItemCount = rootEl ? parseInt(rootEl.dataset.initialItemCount || "0", 10) : 0;
+      if (rootEl && rootEl.dataset.initialCart) {
+        try {
+          var initialCart = JSON.parse(rootEl.dataset.initialCart);
+          if (initialCart && typeof initialCart.item_count === "number") {
+            initialCart = this._stabiliseOrder(initialCart);
+            this._currency = initialCart.currency || this._currency;
+            this.state.cart = initialCart;
+            this.state.loading = false;
+            this._lastKnownItemCount = initialCart.item_count;
+            this._deferPrefetchCompareAt(initialCart.items || []);
+          }
+        } catch (_2) {
+        }
+      }
       this._onCartChanged = (e2) => {
         if (e2.detail && e2.detail.cart) {
           var cart = this._stabiliseOrder(e2.detail.cart);
           this._currency = cart.currency || this._currency;
           this.setState({ cart, loading: false });
           updateCartCount(cart.item_count);
-          this._prefetchCompareAtPrices(cart.items || []);
+          this._deferPrefetchCompareAt(cart.items || []);
           if (this._behavior.auto_open_on_add && cart.item_count > this._lastKnownItemCount) {
             this.openDrawer();
           }
@@ -1775,6 +1789,13 @@
           this.openDrawer();
         }
         window.__cartmaxQueue = [];
+      } else if (window.__cartmaxOpenIntent) {
+        window.__cartmaxOpenIntent = false;
+        if (window.__cartmaxTrigger) this._triggerElement = window.__cartmaxTrigger;
+        this.loadCart();
+        this.openDrawer();
+      } else if (this.state.cart) {
+        this.loadCart();
       }
       var rootEl = document.getElementById("cartmax-root");
       if (rootEl) {
@@ -1799,6 +1820,7 @@
       var self = this;
       window.cartx = {
         open: function() {
+          if (window.__cartmaxTrigger) self._triggerElement = window.__cartmaxTrigger;
           self.loadCart();
           self.openDrawer();
         },
@@ -1835,20 +1857,6 @@
         // the icon trigger button, never anything inside the drawer body.
         "cart-drawer-component > button"
       ].join(", ");
-      this._onDocClick = (e2) => {
-        var link = e2.target.closest(CART_ICON_SELECTORS);
-        if (link) {
-          e2.preventDefault();
-          e2.stopPropagation();
-          if (typeof e2.stopImmediatePropagation === "function") {
-            e2.stopImmediatePropagation();
-          }
-          this._triggerElement = link;
-          this.loadCart();
-          this.openDrawer();
-        }
-      };
-      document.addEventListener("click", this._onDocClick, true);
       this._onDocMouseover = (e2) => {
         var link = e2.target.closest(CART_ICON_SELECTORS);
         if (link && !this._hoverPrefetched) {
@@ -1917,7 +1925,6 @@
       window.removeEventListener("cartmax:internal-reload", this._onInternalReload);
       window.removeEventListener("cartmax:optimistic-update", this._onOptimisticUpdate);
       window.removeEventListener("cartmax:gift-unavailable", this._onGiftUnavailable);
-      document.removeEventListener("click", this._onDocClick, true);
       document.removeEventListener("mouseover", this._onDocMouseover);
       document.removeEventListener("keydown", this._onDocKeydown);
       if (this._horizonObserver) this._horizonObserver.disconnect();
@@ -2146,9 +2153,22 @@
         this._currency = cart.currency || this._currency;
         this.setState({ cart, loading: false });
         updateCartCount(cart.item_count);
-        this._prefetchCompareAtPrices(cart.items || []);
+        this._deferPrefetchCompareAt(cart.items || []);
       } catch (err) {
         this.setState({ loading: false });
+      }
+    }
+    // Run compare-at prefetch off the first-paint path. These /products/{handle}.js
+    // requests only feed strike-through prices, which are not needed for the
+    // initial render, so we wait for the browser to be idle (or a short timeout)
+    // before firing them. Keeps the cart-open critical path free of extra fetches.
+    _deferPrefetchCompareAt(items) {
+      if (!items || !items.length) return;
+      var run = () => this._prefetchCompareAtPrices(items);
+      if (typeof requestIdleCallback === "function") {
+        requestIdleCallback(run, { timeout: 2e3 });
+      } else {
+        setTimeout(run, 300);
       }
     }
     _prefetchCompareAtPrices(items) {

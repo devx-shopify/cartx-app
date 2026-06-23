@@ -4,6 +4,33 @@
   Mounts the Preact cart drawer and installs fetch interception.
 {% endcomment %}
 
+{% comment %}
+  Critical CSS — inline so native cart drawers are hidden at FIRST PAINT,
+  before the async cartmax.css <link> applies. Without this the host theme's
+  drawer flashes on click until the stylesheet loads. Keep these selectors in
+  sync with the matching block in assets/cartmax.css.
+{% endcomment %}
+<style>
+  #cartmax-root { display: block !important; }
+  cart-drawer,
+  .cart-drawer:not(cart-drawer-component),
+  #cart-drawer:not(cart-drawer-component),
+  cart-notification,
+  .cart-notification,
+  dialog[is="cart-drawer"],
+  dialog#cart-drawer,
+  .cart-drawer-container,
+  cart-drawer-component > dialog,
+  cart-drawer-component aside,
+  cart-drawer-component [role="dialog"],
+  cart-drawer-component .cart-drawer__dialog,
+  cart-drawer-component .cart-drawer__overlay,
+  cart-notification-component > dialog,
+  cart-notification-component [role="dialog"] {
+    display: none !important;
+  }
+</style>
+
 <div
   id="cartmax-root"
   data-cartmax-enabled="true"
@@ -15,6 +42,7 @@
   data-proxy-base="/apps/cartmax"
   data-analytics-enabled="true"
   data-initial-item-count="{{ cart.item_count }}"
+  data-initial-cart="{{ cart | json | escape }}"
 ></div>
 <script>
   // theme.id may not render in app embed blocks — set it from window.Shopify.theme
@@ -126,7 +154,52 @@
       }
     });
 
-    console.log('[CartMax] Fetch interception installed');
+    // ── Early cart-icon click interception ────────────────────
+    // This runs inline at page parse — BEFORE the deferred cartmax.js bundle
+    // and before the host theme registers its own click handlers. Capturing
+    // here is what prevents the native drawer from ever opening (the cause of
+    // the "black old drawer flashes then cartx opens" layout shift). If the
+    // bundle is already mounted we open immediately; otherwise we record the
+    // intent and Preact opens on mount. Keep this selector list in sync with
+    // CART_ICON_SELECTORS in CartDrawer.jsx.
+    var CART_ICON_SELECTORS = [
+      'a[href="/cart"]',
+      'a[href="/cart/"]',
+      'a[href^="/cart?"]',
+      '[data-cart-icon]',
+      '[data-cart-trigger]',
+      '[data-cart-link]',
+      '#cart-icon-bubble',
+      '#cart-bubble',
+      '#CartBubble',
+      'cart-icon-bubble',
+      '[aria-controls*="cart-drawer"]',
+      '[aria-controls*="CartDrawer"]',
+      '[aria-controls*="Cart-drawer"]',
+      'cart-drawer-component > button'
+    ].join(', ');
+
+    window.__cartmaxOpenIntent = false;
+    window.__cartmaxTrigger = null;
+
+    document.addEventListener('click', function(e) {
+      var link = e.target.closest && e.target.closest(CART_ICON_SELECTORS);
+      if (!link) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') {
+        e.stopImmediatePropagation();
+      }
+      window.__cartmaxTrigger = link;
+      if (window.__cartmaxReady && window.cartx && typeof window.cartx.open === 'function') {
+        window.cartx.open();
+      } else {
+        // Bundle not mounted yet — Preact will honor this on mount.
+        window.__cartmaxOpenIntent = true;
+      }
+    }, true);
+
+    console.log('[CartMax] Fetch + click interception installed');
   })();
 </script>
 
