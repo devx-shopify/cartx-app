@@ -1621,6 +1621,8 @@
       this.state = {
         visible: false,
         open: false,
+        styled: false,
+        // true once merchant styling is applied — gates reveal so the drawer never paints with default styling first
         cart: null,
         loading: true,
         updating: {},
@@ -1711,6 +1713,10 @@
         } catch (_2) {
         }
       }
+      this._applyCachedDrawerCfg();
+      this._styleFallbackTimer = setTimeout(() => {
+        if (!this.state.styled) this.setState({ styled: true });
+      }, 5e3);
       this._onCartChanged = (e2) => {
         if (e2.detail && e2.detail.cart) {
           var cart = this._stabiliseOrder(e2.detail.cart);
@@ -1950,6 +1956,7 @@
       if (this._promoObserver) this._promoObserver.disconnect();
       Object.values(this._debounceTimers).forEach(clearTimeout);
       if (this._actionFlushTimer) clearTimeout(this._actionFlushTimer);
+      if (this._styleFallbackTimer) clearTimeout(this._styleFallbackTimer);
       Object.values(this._tombstoneTimers || {}).forEach(clearTimeout);
       Object.values(this._errorTimers || {}).forEach(clearTimeout);
       if (this._upsellErrorTimer) clearTimeout(this._upsellErrorTimer);
@@ -1978,8 +1985,31 @@
       this._appliedDrawerHash = hash;
       applyDrawerSettings(drawer);
       this._applyDrawerConfig(drawer);
+      this._cacheDrawerCfg(drawer);
+      if (!this.state.styled) this.setState({ styled: true });
       var beh = drawer.behavior;
       if (beh && beh.confetti_lottie_url) setConfettiLottieUrl(beh.confetti_lottie_url);
+    }
+    // Cache the drawer config per shop so the next page load can style the drawer
+    // on mount (before it opens), making repeat views flash-free without waiting
+    // on the server round-trip.
+    _drawerCfgKey() {
+      var root = document.getElementById("cartmax-root");
+      var shop = root && root.dataset.shopId || window.Shopify && window.Shopify.shop || "default";
+      return "cartx:drawerCfg:" + shop;
+    }
+    _cacheDrawerCfg(drawer) {
+      try {
+        localStorage.setItem(this._drawerCfgKey(), JSON.stringify(drawer));
+      } catch (_2) {
+      }
+    }
+    _applyCachedDrawerCfg() {
+      try {
+        var raw = localStorage.getItem(this._drawerCfgKey());
+        if (raw) this._maybeApplyDrawer(JSON.parse(raw));
+      } catch (_2) {
+      }
     }
     _applyDrawerConfig(drawer) {
       if (!drawer) return;
@@ -3377,7 +3407,7 @@
       )), /* @__PURE__ */ k("div", { class: "cartmax-pb-divider" }), /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-rows" }, /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, "Total"), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount" }, formatMoney(totalMRP, curr))), discountTotal > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, "Coupon Discount"), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount cartmax-pb-discount" }, "-", formatMoney(discountTotal, curr))) : null, /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, "Delivery Fee"), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount" }, formatMoney(0, curr)))), /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-total" }, /* @__PURE__ */ k("span", null, "Total Amount"), /* @__PURE__ */ k("span", null, formatMoney(cart.total_price, curr)))));
     }
     // ── Main render ───────────────────────────────────────────
-    render(props, { visible, open, cart, loading }) {
+    render(props, { visible, open, cart, loading, styled }) {
       var liveRegion = /* @__PURE__ */ k(
         "div",
         {
@@ -3404,27 +3434,35 @@
       if (this._behavior.animation_style === "fade") overlayClass += " cartmax-anim-fade";
       else if (this._behavior.animation_style === "none") overlayClass += " cartmax-anim-none";
       var sec = this._sections;
-      return /* @__PURE__ */ k("div", { class: "cartmax-wrapper" }, liveRegion, /* @__PURE__ */ k("div", { class: overlayClass, onClick: this.handleOverlayClick }, /* @__PURE__ */ k(
+      return /* @__PURE__ */ k("div", { class: "cartmax-wrapper" }, liveRegion, /* @__PURE__ */ k(
         "div",
         {
-          class: "cartmax-drawer",
-          ref: (el) => {
-            this._drawerRef = el;
-          },
-          onClick: (e2) => e2.stopPropagation(),
-          role: "dialog",
-          "aria-modal": "true",
-          "aria-label": "Shopping cart"
+          class: overlayClass,
+          onClick: this.handleOverlayClick,
+          style: styled ? void 0 : { visibility: "hidden" }
         },
-        this.renderAnnouncementBar(),
-        /* @__PURE__ */ k("div", { class: "cartmax-header" }, /* @__PURE__ */ k("span", { class: "cartmax-title" }, this._text.cart_title, count > 0 ? /* @__PURE__ */ k("span", { class: "cartmax-header-count" }, count) : null), /* @__PURE__ */ k("button", { class: "cartmax-close", onClick: this.close, "aria-label": "Close cart" }, /* @__PURE__ */ k(IconClose, null))),
-        this.state.unavailableGifts.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-gift-unavailable" }, "A gift product is currently unavailable") : null,
-        /* @__PURE__ */ k("div", { class: "cartmax-body" }, hasItems && sec.show_progress_bar ? this.renderProgressBar() : null, hasItems && sec.show_claim_gifts ? this.renderClaimGifts() : null, hasItems && sec.show_offer_cards ? this.renderOfferDisplays() : null, loading ? this.renderLoading() : isEmpty ? this.renderEmpty() : hasItems ? displayItems.map((item) => this.renderLineItem(item)) : null, hasItems && sec.show_coupons ? this.renderCoupons() : null, hasItems && sec.show_upsells ? this.renderUpsells() : null),
-        hasItems && sec.show_ribbon ? this.renderRibbon() : null,
-        isEmpty && sec.show_upsells ? this.renderUpsells() : null,
-        hasItems ? this.renderFooter() : null,
-        this.state.priceBreakupOpen ? this.renderPriceBreakup() : null
-      )));
+        /* @__PURE__ */ k(
+          "div",
+          {
+            class: "cartmax-drawer",
+            ref: (el) => {
+              this._drawerRef = el;
+            },
+            onClick: (e2) => e2.stopPropagation(),
+            role: "dialog",
+            "aria-modal": "true",
+            "aria-label": "Shopping cart"
+          },
+          this.renderAnnouncementBar(),
+          /* @__PURE__ */ k("div", { class: "cartmax-header" }, /* @__PURE__ */ k("span", { class: "cartmax-title" }, this._text.cart_title, count > 0 ? /* @__PURE__ */ k("span", { class: "cartmax-header-count" }, count) : null), /* @__PURE__ */ k("button", { class: "cartmax-close", onClick: this.close, "aria-label": "Close cart" }, /* @__PURE__ */ k(IconClose, null))),
+          this.state.unavailableGifts.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-gift-unavailable" }, "A gift product is currently unavailable") : null,
+          /* @__PURE__ */ k("div", { class: "cartmax-body" }, hasItems && sec.show_progress_bar ? this.renderProgressBar() : null, hasItems && sec.show_claim_gifts ? this.renderClaimGifts() : null, hasItems && sec.show_offer_cards ? this.renderOfferDisplays() : null, loading ? this.renderLoading() : isEmpty ? this.renderEmpty() : hasItems ? displayItems.map((item) => this.renderLineItem(item)) : null, hasItems && sec.show_coupons ? this.renderCoupons() : null, hasItems && sec.show_upsells ? this.renderUpsells() : null),
+          hasItems && sec.show_ribbon ? this.renderRibbon() : null,
+          isEmpty && sec.show_upsells ? this.renderUpsells() : null,
+          hasItems ? this.renderFooter() : null,
+          this.state.priceBreakupOpen ? this.renderPriceBreakup() : null
+        )
+      ));
     }
   };
 

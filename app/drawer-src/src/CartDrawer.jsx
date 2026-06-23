@@ -173,6 +173,7 @@ export default class CartDrawer extends Component {
     this.state = {
       visible: false,
       open: false,
+      styled: false,     // true once merchant styling is applied — gates reveal so the drawer never paints with default styling first
       cart: null,
       loading: true,
       updating: {},
@@ -254,21 +255,30 @@ export default class CartDrawer extends Component {
       } catch (_) { /* malformed JSON — fall back to loadCart() */ }
     }
 
-    // Apply the merchant's drawer styling (CSS vars, text, custom CSS) from the
-    // config inlined into the page by app-embed.liquid (data-drawer-config, fed
-    // by the app-data metafield) — synchronously, BEFORE the drawer can open.
-    // The styling is on the element before first paint, so there's no
-    // "default UI then custom UI" flash and no network round-trip. The later
-    // server eval-result carries the same config and is skipped via the
-    // _appliedDrawerHash dedup in _maybeApplyDrawer.
+    // ── Apply merchant styling as early as possible (avoid the flash) ──
+    // Source 1 (best): config inlined server-side by app-embed.liquid
+    // (data-drawer-config). When present this styles the element before first
+    // paint — zero flash, no network.
     if (rootEl && rootEl.dataset.drawerConfig) {
       try {
         var inlineDrawer = JSON.parse(rootEl.dataset.drawerConfig);
         if (inlineDrawer && Object.keys(inlineDrawer).length) {
           this._maybeApplyDrawer(inlineDrawer);
         }
-      } catch (_) { /* malformed/empty — server eval-result will style it */ }
+      } catch (_) { /* malformed/empty — fall through to cache / server */ }
     }
+    // Source 2 (fallback): last-known config cached in localStorage. Styles the
+    // element on mount for repeat visitors, so the drawer opens already-styled
+    // even if the inlined config isn't available.
+    this._applyCachedDrawerCfg();
+
+    // If neither source styled us yet (true first visit), the `styled` gate
+    // below keeps the drawer hidden until the server eval-result applies real
+    // styling — so it never paints with default styling first. Long fallback is
+    // a last-resort reveal in case styling never arrives (e.g. network failure).
+    this._styleFallbackTimer = setTimeout(() => {
+      if (!this.state.styled) this.setState({ styled: true });
+    }, 5000);
 
     this._onCartChanged = (e) => {
       if (e.detail && e.detail.cart) {
@@ -582,6 +592,7 @@ export default class CartDrawer extends Component {
     if (this._promoObserver) this._promoObserver.disconnect();
     Object.values(this._debounceTimers).forEach(clearTimeout);
     if (this._actionFlushTimer) clearTimeout(this._actionFlushTimer);
+    if (this._styleFallbackTimer) clearTimeout(this._styleFallbackTimer);
     Object.values(this._tombstoneTimers || {}).forEach(clearTimeout);
     Object.values(this._errorTimers || {}).forEach(clearTimeout);
     if (this._upsellErrorTimer) clearTimeout(this._upsellErrorTimer);
@@ -609,8 +620,32 @@ export default class CartDrawer extends Component {
     this._appliedDrawerHash = hash;
     applyDrawerSettings(drawer);
     this._applyDrawerConfig(drawer);
+    this._cacheDrawerCfg(drawer);
+    if (!this.state.styled) this.setState({ styled: true });
     var beh = drawer.behavior;
     if (beh && beh.confetti_lottie_url) setConfettiLottieUrl(beh.confetti_lottie_url);
+  }
+
+  // Cache the drawer config per shop so the next page load can style the drawer
+  // on mount (before it opens), making repeat views flash-free without waiting
+  // on the server round-trip.
+  _drawerCfgKey() {
+    var root = document.getElementById('cartmax-root');
+    var shop = (root && root.dataset.shopId)
+      || (window.Shopify && window.Shopify.shop)
+      || 'default';
+    return 'cartx:drawerCfg:' + shop;
+  }
+
+  _cacheDrawerCfg(drawer) {
+    try { localStorage.setItem(this._drawerCfgKey(), JSON.stringify(drawer)); } catch (_) {}
+  }
+
+  _applyCachedDrawerCfg() {
+    try {
+      var raw = localStorage.getItem(this._drawerCfgKey());
+      if (raw) this._maybeApplyDrawer(JSON.parse(raw));
+    } catch (_) { /* no/!valid cache — server eval-result will style it */ }
   }
 
   _applyDrawerConfig(drawer) {
@@ -2401,7 +2436,7 @@ export default class CartDrawer extends Component {
 
     // ── Main render ───────────────────────────────────────────
 
-  render(props, { visible, open, cart, loading }) {
+  render(props, { visible, open, cart, loading, styled }) {
     var liveRegion = (
       <div
         id="cartmax-live-region"
@@ -2439,7 +2474,11 @@ export default class CartDrawer extends Component {
     return (
       <div class="cartmax-wrapper">
         {liveRegion}
-        <div class={overlayClass} onClick={this.handleOverlayClick}>
+        <div
+          class={overlayClass}
+          onClick={this.handleOverlayClick}
+          style={styled ? undefined : { visibility: 'hidden' }}
+        >
           <div
             class="cartmax-drawer"
             ref={(el) => { this._drawerRef = el; }}
