@@ -1,12 +1,13 @@
 import { captureException } from "./sentry.server.js";
 
-// App-data metafield holding the drawer styling config. Stored on the app
-// installation (not a shared resource), so it's isolated to this app and
-// readable in the theme app extension via the Liquid `app` object:
-//   {{ app.metafields.cartx.drawer_config.value }}
-// App-data metafields need no definition and no storefront-access grant — the
-// AppInstallation owner provides isolation (see Shopify "App-data metafields").
-const METAFIELD_NAMESPACE = "cartx";
+// App-owned metafield (reserved `$app:` namespace) on the SHOP resource holding
+// the drawer styling config. The app's own theme app extension can read its own
+// app-owned metafields via the reserved-prefix syntax in app-embed.liquid:
+//   {{ shop.metafields["$app:cartx"].drawer_config.value }}
+// (Shopify "Reserved prefixes for metafields in theme app extensions".) No
+// definition / storefront-access grant is required for the owning app's
+// extension to read it.
+const METAFIELD_NAMESPACE = "$app:cartx";
 const METAFIELD_KEY = "drawer_config";
 
 /**
@@ -18,14 +19,14 @@ const METAFIELD_KEY = "drawer_config";
  */
 export async function syncDrawerMetafield(admin, drawer) {
   try {
-    const installRes = await admin.graphql(
+    const shopRes = await admin.graphql(
       `#graphql
-      query cartxAppInstallationId {
-        currentAppInstallation { id }
+      query cartxShopId {
+        shop { id }
       }`
     );
-    const installJson = await installRes.json();
-    const ownerId = installJson.data?.currentAppInstallation?.id;
+    const shopJson = await shopRes.json();
+    const ownerId = shopJson.data?.shop?.id;
     if (!ownerId) return false;
 
     const res = await admin.graphql(
