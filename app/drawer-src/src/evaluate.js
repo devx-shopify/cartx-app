@@ -439,14 +439,17 @@ function _flushEvaluateResolvers() {
 async function runEvaluate(cart, action) {
   if (!cart) return;
 
+  // `action` may be a single {key,qty} or an array of them (a coalesced burst
+  // of rapid qty/remove clicks dispatched as one cart-action).
+  var incoming = Array.isArray(action) ? action.slice() : (action ? [action] : []);
+
   if (_evaluating) {
     _pendingCart = cart;
-    if (action) _pendingActions.push(action);
+    for (var qi = 0; qi < incoming.length; qi++) _pendingActions.push(incoming[qi]);
     return;
   }
 
-  // Wrap single action into array for unified handling
-  var actions = action ? [action] : [];
+  var actions = incoming;
 
   var ctx = getContext();
   if (!ctx.shopId || !ctx.themeId) return;
@@ -581,7 +584,7 @@ window.addEventListener('cartmax:drawer-opened', function () {
 
 window.addEventListener('cartmax:cart-action', function (e) {
   var detail = e.detail || {};
-  runEvaluate(detail.cart, detail.action);
+  runEvaluate(detail.cart, detail.actions || detail.action);
 });
 
 window.addEventListener('cartmax:cart-changed', function (e) {

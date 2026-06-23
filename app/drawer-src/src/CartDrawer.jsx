@@ -195,6 +195,8 @@ export default class CartDrawer extends Component {
     this._triggerElement = null;
     this._drawerRef = null;
     this._debounceTimers = {};
+    this._actionBuffer = {};              // key -> qty; coalesces rapid qty/remove clicks into one reconcile
+    this._actionFlushTimer = null;        // shared debounce timer for the buffer above
     this._processingTimeout = null;
     this._removingTombstones = {};       // key -> snapshotted item, kept in DOM during fade
     this._tombstoneTimers = {};          // key -> setTimeout handle
@@ -287,6 +289,16 @@ export default class CartDrawer extends Component {
     this._onInternalReload = (e) => {
       if (e.detail && e.detail.cart) {
         var newCart = this._stabiliseOrder(e.detail.cart);
+
+        // Guard: never blank the drawer with a transient empty/partial cart
+        // while another edit is still buffered — a corrective reconcile is
+        // already on its way. Without this, an in-flight reconcile that lands
+        // with 0 items flips `hasItems` false and the whole body flashes empty.
+        if (this._isTransientEmpty(newCart)) {
+          console.warn('[cartx] skipped transient empty cart on reconcile (edits still pending)');
+          return;
+        }
+
         var newEval = e.detail.evalResult || this.state.evalResult;
         this._currency = newCart.currency || this._currency;
         if (e.detail.evalResult) {
@@ -338,8 +350,18 @@ export default class CartDrawer extends Component {
     this._onOptimisticUpdate = (e) => {
       if (e.detail && e.detail.cart) {
         var optimisticCart = this._stabiliseOrder(e.detail.cart);
+        if (this._isTransientEmpty(optimisticCart)) {
+          console.warn('[cartx] skipped transient empty optimistic cart (edits still pending)');
+          return;
+        }
         this._currency = optimisticCart.currency || this._currency;
-        this.setState({ cart: optimisticCart, pendingQty: {} });
+        // Keep any qty still buffered (debounce not yet flushed) so a fast
+        // follow-up click isn't reverted by this reconcile snapshot.
+        var keepPending = {};
+        Object.keys(this._actionBuffer).forEach((k) => {
+          if (this.state.pendingQty.hasOwnProperty(k)) keepPending[k] = this.state.pendingQty[k];
+        });
+        this.setState({ cart: optimisticCart, pendingQty: keepPending });
         updateCartCount(optimisticCart.item_count);
       }
     };
@@ -549,6 +571,7 @@ export default class CartDrawer extends Component {
     if (this._scrollLockObserver) this._scrollLockObserver.disconnect();
     if (this._promoObserver) this._promoObserver.disconnect();
     Object.values(this._debounceTimers).forEach(clearTimeout);
+    if (this._actionFlushTimer) clearTimeout(this._actionFlushTimer);
     Object.values(this._tombstoneTimers || {}).forEach(clearTimeout);
     Object.values(this._errorTimers || {}).forEach(clearTimeout);
     if (this._upsellErrorTimer) clearTimeout(this._upsellErrorTimer);
@@ -930,26 +953,44 @@ export default class CartDrawer extends Component {
     }
   }
 
-  // ── Quantity changes (debounced) ──────────────────────────
+  // ── Quantity + remove mutations (debounced & coalesced) ───
+  // Every line mutation (qty change or remove) funnels through one short
+  // debounce buffer. A burst of clicks — several +'s, or deleting multiple
+  // lines in a row — collapses into a SINGLE server reconcile / re-render
+  // instead of one heavyweight round-trip per click (the cause of the qty
+  // "freeze" and the delete "blink"). The UI reflects each click instantly
+  // (pendingQty / tombstone fade), so the buffering is invisible to the
+  // shopper; it only coalesces the expensive part.
 
   queueQuantityChange(key, qty) {
     var pendingQty = Object.assign({}, this.state.pendingQty);
     pendingQty[key] = qty;
     this.setState({ pendingQty: pendingQty });
-    if (this._debounceTimers[key]) clearTimeout(this._debounceTimers[key]);
-    this._debounceTimers[key] = setTimeout(() => {
-      delete this._debounceTimers[key];
-      this.flushQuantityChange(key, qty);
-    }, DEBOUNCE_DELAY);
+    this._bufferAction(key, qty);
   }
 
-  flushQuantityChange(key, qty) {
+  // Stage one line mutation and (re)arm the shared flush timer. Last write
+  // per key wins (e.g. +,+,+ → final qty; a later remove → qty 0).
+  _bufferAction(key, qty) {
+    this._actionBuffer[key] = qty;
+    if (this._actionFlushTimer) clearTimeout(this._actionFlushTimer);
+    this._actionFlushTimer = setTimeout(() => this._flushActions(), DEBOUNCE_DELAY);
+  }
+
+  // Dispatch all buffered mutations as ONE cart-action → one server reconcile.
+  _flushActions() {
+    this._actionFlushTimer = null;
+    var buffer = this._actionBuffer;
+    this._actionBuffer = {};
+    var keys = Object.keys(buffer);
+    if (!keys.length) return;
+    var actions = keys.map(function (k) { return { key: k, qty: buffer[k] }; });
     var updating = Object.assign({}, this.state.updating);
-    updating[key] = true;
+    keys.forEach(function (k) { updating[k] = true; });
     this.setState({ updating: updating });
     this._startProcessingTimeout();
     window.dispatchEvent(new CustomEvent('cartmax:cart-action', {
-      detail: { cart: this.state.cart, action: { key: key, qty: qty } },
+      detail: { cart: this.state.cart, actions: actions },
     }));
     this.announce('Updating cart...');
   }
@@ -962,13 +1003,10 @@ export default class CartDrawer extends Component {
   //    the server reconcile confirms the removal.
 
   handleRemove(key) {
-    if (this._debounceTimers[key]) {
-      clearTimeout(this._debounceTimers[key]);
-      delete this._debounceTimers[key];
-    }
-
     var cart = this.state.cart;
-    var line = cart && cart.items && cart.items.find(function (i) { return i.key === key; });
+    if (!cart || !cart.items) return;
+
+    var line = cart.items.find(function (i) { return i.key === key; });
 
     // Defer GIFT_REMOVED analytics until reconcile confirms (see _onInternalReload).
     if (line && line.properties && line.properties._freebie === 'true') {
@@ -979,26 +1017,73 @@ export default class CartDrawer extends Component {
       };
     }
 
-    // Stash the line as a tombstone so the fade can play while the
-    // optimistic update strips the line from state.cart.
+    // Snapshot the line as a tombstone so it stays mounted (and visible) while
+    // its collapse animation plays, then strip it from the cart IMMEDIATELY so
+    // the rest of the list stays put. The server removal is coalesced through
+    // the shared buffer, but the visual is instant and per-line, so deleting
+    // several items in a row collapses each row smoothly instead of blanking
+    // the whole cart while a batched reconcile is in flight.
     if (line) this._removingTombstones[key] = line;
 
     var removing = Object.assign({}, this.state.removing);
     removing[key] = true;
-    var updating = Object.assign({}, this.state.updating);
-    updating[key] = true;
-    this.setState({ removing: removing, updating: updating });
-    this._startProcessingTimeout();
+    var stripped = this._stripLine(cart, key);
+    this.setState({ removing: removing, cart: stripped });
+    updateCartCount(stripped.item_count);
 
-    window.dispatchEvent(new CustomEvent('cartmax:cart-action', {
-      detail: { cart: this.state.cart, action: { key: key, qty: 0 } },
-    }));
+    this._scheduleTombstoneDrop(key);
+    this._bufferAction(key, 0);
     this.announce('Removing item...');
+  }
 
-    // Drop the tombstone after the fade. The line may already be gone from
-    // state.cart by now (optimistic update fired); the tombstone is the
-    // only thing keeping it visible.
-    if (this._tombstoneTimers[key]) clearTimeout(this._tombstoneTimers[key]);
+  // Optimistic local removal: drop one line and recompute cart totals so the
+  // footer stays right until the server reconcile lands. Mirrors the totals
+  // math in evaluate.js simulateCart().
+  _stripLine(cart, key) {
+    var items = [];
+    var total = 0, orig = 0, count = 0;
+    for (var i = 0; i < cart.items.length; i++) {
+      var it = cart.items[i];
+      if (it.key === key) continue;
+      items.push(it);
+      total += (it.final_line_price || 0);
+      orig += (it.original_line_price || it.line_price || 0);
+      count += (it.quantity || 0);
+    }
+    return Object.assign({}, cart, {
+      items: items,
+      total_price: total,
+      original_total_price: orig,
+      total_discount: Math.max(0, orig - total),
+      item_count: count,
+      items_subtotal_price: total,
+    });
+  }
+
+  // True while the shopper has edits that haven't reconciled yet: a debounce
+  // window armed, actions buffered, or optimistic quantities on screen. Used to
+  // suppress the empty-state and transient-empty carts mid-edit.
+  _hasPendingEdits() {
+    return this._actionFlushTimer != null
+      || Object.keys(this._actionBuffer).length > 0
+      || Object.keys(this.state.pendingQty).length > 0;
+  }
+
+  // An incoming reconcile/optimistic cart that has 0 items while we still hold
+  // a non-empty cart AND more edits are queued is a mid-flight artifact, not a
+  // real emptying — applying it would flash the whole body blank.
+  _isTransientEmpty(incoming) {
+    var incomingEmpty = !incoming || !incoming.items || incoming.items.length === 0;
+    if (!incomingEmpty) return false;
+    var cur = this.state.cart;
+    var haveItems = cur && cur.items && cur.items.length > 0;
+    var moreComing = this._actionFlushTimer != null || Object.keys(this._actionBuffer).length > 0;
+    return haveItems && moreComing;
+  }
+
+  // Hold a tombstoned line in the DOM for its collapse animation, then drop it.
+  _scheduleTombstoneDrop(key) {
+    if (this._tombstoneTimers[key]) return;   // already scheduled
     this._tombstoneTimers[key] = setTimeout(() => {
       delete this._tombstoneTimers[key];
       delete this._removingTombstones[key];
@@ -1340,7 +1425,7 @@ export default class CartDrawer extends Component {
               ? <button
                   class="cartmax-line-remove"
                   onClick={() => this.handleRemove(item.key)}
-                  disabled={isUpdating || isRemoving}
+                  disabled={isRemoving}
                   aria-label={'Remove ' + item.product_title}
                 ><IconTrash /></button>
               : null
@@ -1431,7 +1516,7 @@ export default class CartDrawer extends Component {
                   <button
                     class="cartmax-qty-btn"
                     onClick={() => displayQty <= 1 ? this.handleRemove(item.key) : this.queueQuantityChange(item.key, displayQty - 1)}
-                    disabled={isUpdating || isRemoving}
+                    disabled={isRemoving}
                     aria-label={displayQty <= 1 ? ('Remove ' + item.product_title) : 'Decrease quantity'}
                   >{displayQty <= 1 ? <IconTrash /> : <IconMinus />}</button>
                   <span class={'cartmax-qty-value' + (isPending ? ' cartmax-qty-pending' : '')}>
@@ -1440,7 +1525,7 @@ export default class CartDrawer extends Component {
                   <button
                     class="cartmax-qty-btn"
                     onClick={() => this.queueQuantityChange(item.key, displayQty + 1)}
-                    disabled={isUpdating}
+                    disabled={isRemoving}
                     aria-label="Increase quantity"
                   ><IconPlus /></button>
                 </div>
@@ -2320,8 +2405,12 @@ export default class CartDrawer extends Component {
       return <div class="cartmax-wrapper">{liveRegion}</div>;
     }
 
-    var isEmpty = !loading && cart && cart.items && cart.items.length === 0;
-    var hasItems = !loading && cart && cart.items && cart.items.length > 0;
+    // Base the empty/has-items gates on the *display* list (cart items + any
+    // tombstones mid-collapse) and never show the empty state while an edit is
+    // still pending — so the body can't flash empty during a reconcile.
+    var displayItems = this._displayItems();
+    var hasItems = !loading && displayItems.length > 0;
+    var isEmpty = !loading && displayItems.length === 0 && !this._hasPendingEdits();
     var count = cart ? cart.item_count : 0;
 
     // Build overlay classes from settings
@@ -2385,7 +2474,7 @@ export default class CartDrawer extends Component {
                 : isEmpty
                   ? this.renderEmpty()
                   : hasItems
-                    ? this._displayItems().map((item) => this.renderLineItem(item))
+                    ? displayItems.map((item) => this.renderLineItem(item))
                     : null
               }
               {hasItems && sec.show_coupons ? this.renderCoupons() : null}

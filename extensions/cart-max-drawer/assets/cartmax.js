@@ -1212,12 +1212,13 @@
   }
   async function runEvaluate(cart, action) {
     if (!cart) return;
+    var incoming = Array.isArray(action) ? action.slice() : action ? [action] : [];
     if (_evaluating) {
       _pendingCart = cart;
-      if (action) _pendingActions.push(action);
+      for (var qi = 0; qi < incoming.length; qi++) _pendingActions.push(incoming[qi]);
       return;
     }
-    var actions = action ? [action] : [];
+    var actions = incoming;
     var ctx = getContext();
     if (!ctx.shopId || !ctx.themeId) return;
     var evalCart = actions.length > 0 ? simulateCart(cart, actions) : cart;
@@ -1322,7 +1323,7 @@
   });
   window.addEventListener("cartmax:cart-action", function(e2) {
     var detail = e2.detail || {};
-    runEvaluate(detail.cart, detail.action);
+    runEvaluate(detail.cart, detail.actions || detail.action);
   });
   window.addEventListener("cartmax:cart-changed", function(e2) {
     runEvaluate(e2.detail && e2.detail.cart);
@@ -1647,6 +1648,8 @@
       this._triggerElement = null;
       this._drawerRef = null;
       this._debounceTimers = {};
+      this._actionBuffer = {};
+      this._actionFlushTimer = null;
       this._processingTimeout = null;
       this._removingTombstones = {};
       this._tombstoneTimers = {};
@@ -1729,6 +1732,10 @@
       this._onInternalReload = (e2) => {
         if (e2.detail && e2.detail.cart) {
           var newCart = this._stabiliseOrder(e2.detail.cart);
+          if (this._isTransientEmpty(newCart)) {
+            console.warn("[cartx] skipped transient empty cart on reconcile (edits still pending)");
+            return;
+          }
           var newEval = e2.detail.evalResult || this.state.evalResult;
           this._currency = newCart.currency || this._currency;
           if (e2.detail.evalResult) {
@@ -1766,8 +1773,16 @@
       this._onOptimisticUpdate = (e2) => {
         if (e2.detail && e2.detail.cart) {
           var optimisticCart = this._stabiliseOrder(e2.detail.cart);
+          if (this._isTransientEmpty(optimisticCart)) {
+            console.warn("[cartx] skipped transient empty optimistic cart (edits still pending)");
+            return;
+          }
           this._currency = optimisticCart.currency || this._currency;
-          this.setState({ cart: optimisticCart, pendingQty: {} });
+          var keepPending = {};
+          Object.keys(this._actionBuffer).forEach((k2) => {
+            if (this.state.pendingQty.hasOwnProperty(k2)) keepPending[k2] = this.state.pendingQty[k2];
+          });
+          this.setState({ cart: optimisticCart, pendingQty: keepPending });
           updateCartCount(optimisticCart.item_count);
         }
       };
@@ -1931,6 +1946,7 @@
       if (this._scrollLockObserver) this._scrollLockObserver.disconnect();
       if (this._promoObserver) this._promoObserver.disconnect();
       Object.values(this._debounceTimers).forEach(clearTimeout);
+      if (this._actionFlushTimer) clearTimeout(this._actionFlushTimer);
       Object.values(this._tombstoneTimers || {}).forEach(clearTimeout);
       Object.values(this._errorTimers || {}).forEach(clearTimeout);
       if (this._upsellErrorTimer) clearTimeout(this._upsellErrorTimer);
@@ -2269,24 +2285,45 @@
         this._processingTimeout = null;
       }
     }
-    // ── Quantity changes (debounced) ──────────────────────────
+    // ── Quantity + remove mutations (debounced & coalesced) ───
+    // Every line mutation (qty change or remove) funnels through one short
+    // debounce buffer. A burst of clicks — several +'s, or deleting multiple
+    // lines in a row — collapses into a SINGLE server reconcile / re-render
+    // instead of one heavyweight round-trip per click (the cause of the qty
+    // "freeze" and the delete "blink"). The UI reflects each click instantly
+    // (pendingQty / tombstone fade), so the buffering is invisible to the
+    // shopper; it only coalesces the expensive part.
     queueQuantityChange(key, qty) {
       var pendingQty = Object.assign({}, this.state.pendingQty);
       pendingQty[key] = qty;
       this.setState({ pendingQty });
-      if (this._debounceTimers[key]) clearTimeout(this._debounceTimers[key]);
-      this._debounceTimers[key] = setTimeout(() => {
-        delete this._debounceTimers[key];
-        this.flushQuantityChange(key, qty);
-      }, DEBOUNCE_DELAY);
+      this._bufferAction(key, qty);
     }
-    flushQuantityChange(key, qty) {
+    // Stage one line mutation and (re)arm the shared flush timer. Last write
+    // per key wins (e.g. +,+,+ → final qty; a later remove → qty 0).
+    _bufferAction(key, qty) {
+      this._actionBuffer[key] = qty;
+      if (this._actionFlushTimer) clearTimeout(this._actionFlushTimer);
+      this._actionFlushTimer = setTimeout(() => this._flushActions(), DEBOUNCE_DELAY);
+    }
+    // Dispatch all buffered mutations as ONE cart-action → one server reconcile.
+    _flushActions() {
+      this._actionFlushTimer = null;
+      var buffer = this._actionBuffer;
+      this._actionBuffer = {};
+      var keys = Object.keys(buffer);
+      if (!keys.length) return;
+      var actions = keys.map(function(k2) {
+        return { key: k2, qty: buffer[k2] };
+      });
       var updating = Object.assign({}, this.state.updating);
-      updating[key] = true;
+      keys.forEach(function(k2) {
+        updating[k2] = true;
+      });
       this.setState({ updating });
       this._startProcessingTimeout();
       window.dispatchEvent(new CustomEvent("cartmax:cart-action", {
-        detail: { cart: this.state.cart, action: { key, qty } }
+        detail: { cart: this.state.cart, actions }
       }));
       this.announce("Updating cart...");
     }
@@ -2297,12 +2334,9 @@
     // 3. After TOMBSTONE_HOLD_MS, drop the tombstone. Analytics fire only when
     //    the server reconcile confirms the removal.
     handleRemove(key) {
-      if (this._debounceTimers[key]) {
-        clearTimeout(this._debounceTimers[key]);
-        delete this._debounceTimers[key];
-      }
       var cart = this.state.cart;
-      var line = cart && cart.items && cart.items.find(function(i2) {
+      if (!cart || !cart.items) return;
+      var line = cart.items.find(function(i2) {
         return i2.key === key;
       });
       if (line && line.properties && line.properties._freebie === "true") {
@@ -2315,15 +2349,56 @@
       if (line) this._removingTombstones[key] = line;
       var removing = Object.assign({}, this.state.removing);
       removing[key] = true;
-      var updating = Object.assign({}, this.state.updating);
-      updating[key] = true;
-      this.setState({ removing, updating });
-      this._startProcessingTimeout();
-      window.dispatchEvent(new CustomEvent("cartmax:cart-action", {
-        detail: { cart: this.state.cart, action: { key, qty: 0 } }
-      }));
+      var stripped = this._stripLine(cart, key);
+      this.setState({ removing, cart: stripped });
+      updateCartCount(stripped.item_count);
+      this._scheduleTombstoneDrop(key);
+      this._bufferAction(key, 0);
       this.announce("Removing item...");
-      if (this._tombstoneTimers[key]) clearTimeout(this._tombstoneTimers[key]);
+    }
+    // Optimistic local removal: drop one line and recompute cart totals so the
+    // footer stays right until the server reconcile lands. Mirrors the totals
+    // math in evaluate.js simulateCart().
+    _stripLine(cart, key) {
+      var items = [];
+      var total = 0, orig = 0, count = 0;
+      for (var i2 = 0; i2 < cart.items.length; i2++) {
+        var it = cart.items[i2];
+        if (it.key === key) continue;
+        items.push(it);
+        total += it.final_line_price || 0;
+        orig += it.original_line_price || it.line_price || 0;
+        count += it.quantity || 0;
+      }
+      return Object.assign({}, cart, {
+        items,
+        total_price: total,
+        original_total_price: orig,
+        total_discount: Math.max(0, orig - total),
+        item_count: count,
+        items_subtotal_price: total
+      });
+    }
+    // True while the shopper has edits that haven't reconciled yet: a debounce
+    // window armed, actions buffered, or optimistic quantities on screen. Used to
+    // suppress the empty-state and transient-empty carts mid-edit.
+    _hasPendingEdits() {
+      return this._actionFlushTimer != null || Object.keys(this._actionBuffer).length > 0 || Object.keys(this.state.pendingQty).length > 0;
+    }
+    // An incoming reconcile/optimistic cart that has 0 items while we still hold
+    // a non-empty cart AND more edits are queued is a mid-flight artifact, not a
+    // real emptying — applying it would flash the whole body blank.
+    _isTransientEmpty(incoming) {
+      var incomingEmpty = !incoming || !incoming.items || incoming.items.length === 0;
+      if (!incomingEmpty) return false;
+      var cur = this.state.cart;
+      var haveItems = cur && cur.items && cur.items.length > 0;
+      var moreComing = this._actionFlushTimer != null || Object.keys(this._actionBuffer).length > 0;
+      return haveItems && moreComing;
+    }
+    // Hold a tombstoned line in the DOM for its collapse animation, then drop it.
+    _scheduleTombstoneDrop(key) {
+      if (this._tombstoneTimers[key]) return;
       this._tombstoneTimers[key] = setTimeout(() => {
         delete this._tombstoneTimers[key];
         delete this._removingTombstones[key];
@@ -2583,7 +2658,7 @@
         {
           class: "cartmax-line-remove",
           onClick: () => this.handleRemove(item.key),
-          disabled: isUpdating || isRemoving,
+          disabled: isRemoving,
           "aria-label": "Remove " + item.product_title
         },
         /* @__PURE__ */ k(IconTrash, null)
@@ -2629,7 +2704,7 @@
         {
           class: "cartmax-qty-btn",
           onClick: () => displayQty <= 1 ? this.handleRemove(item.key) : this.queueQuantityChange(item.key, displayQty - 1),
-          disabled: isUpdating || isRemoving,
+          disabled: isRemoving,
           "aria-label": displayQty <= 1 ? "Remove " + item.product_title : "Decrease quantity"
         },
         displayQty <= 1 ? /* @__PURE__ */ k(IconTrash, null) : /* @__PURE__ */ k(IconMinus, null)
@@ -2638,7 +2713,7 @@
         {
           class: "cartmax-qty-btn",
           onClick: () => this.queueQuantityChange(item.key, displayQty + 1),
-          disabled: isUpdating,
+          disabled: isRemoving,
           "aria-label": "Increase quantity"
         },
         /* @__PURE__ */ k(IconPlus, null)
@@ -3312,8 +3387,9 @@
       if (!visible) {
         return /* @__PURE__ */ k("div", { class: "cartmax-wrapper" }, liveRegion);
       }
-      var isEmpty = !loading && cart && cart.items && cart.items.length === 0;
-      var hasItems = !loading && cart && cart.items && cart.items.length > 0;
+      var displayItems = this._displayItems();
+      var hasItems = !loading && displayItems.length > 0;
+      var isEmpty = !loading && displayItems.length === 0 && !this._hasPendingEdits();
       var count = cart ? cart.item_count : 0;
       var overlayClass = "cartmax-overlay";
       if (open) overlayClass += " cartmax-open";
@@ -3340,7 +3416,7 @@
         this.renderAnnouncementBar(),
         /* @__PURE__ */ k("div", { class: "cartmax-header" }, /* @__PURE__ */ k("span", { class: "cartmax-title" }, this._text.cart_title, count > 0 ? /* @__PURE__ */ k("span", { class: "cartmax-header-count" }, count) : null), /* @__PURE__ */ k("button", { class: "cartmax-close", onClick: this.close, "aria-label": "Close cart" }, /* @__PURE__ */ k(IconClose, null))),
         this.state.unavailableGifts.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-gift-unavailable" }, "A gift product is currently unavailable") : null,
-        /* @__PURE__ */ k("div", { class: "cartmax-body" }, hasItems && sec.show_progress_bar ? this.renderProgressBar() : null, hasItems && sec.show_claim_gifts ? this.renderClaimGifts() : null, hasItems && sec.show_offer_cards ? this.renderOfferDisplays() : null, loading ? this.renderLoading() : isEmpty ? this.renderEmpty() : hasItems ? this._displayItems().map((item) => this.renderLineItem(item)) : null, hasItems && sec.show_coupons ? this.renderCoupons() : null, hasItems && sec.show_upsells ? this.renderUpsells() : null),
+        /* @__PURE__ */ k("div", { class: "cartmax-body" }, hasItems && sec.show_progress_bar ? this.renderProgressBar() : null, hasItems && sec.show_claim_gifts ? this.renderClaimGifts() : null, hasItems && sec.show_offer_cards ? this.renderOfferDisplays() : null, loading ? this.renderLoading() : isEmpty ? this.renderEmpty() : hasItems ? displayItems.map((item) => this.renderLineItem(item)) : null, hasItems && sec.show_coupons ? this.renderCoupons() : null, hasItems && sec.show_upsells ? this.renderUpsells() : null),
         hasItems && sec.show_ribbon ? this.renderRibbon() : null,
         isEmpty && sec.show_upsells ? this.renderUpsells() : null,
         hasItems ? this.renderFooter() : null,
