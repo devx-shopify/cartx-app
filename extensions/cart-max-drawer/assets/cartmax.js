@@ -1912,9 +1912,26 @@
         console.error("[cartx] store subscriber error:", e2);
       }
     }
+    try {
+      if (typeof window !== "undefined" && window.dispatchEvent) {
+        window.dispatchEvent(new CustomEvent("cartmax:gql-store", {
+          detail: { cart: getOptimisticCart(), loading: _state.loading }
+        }));
+      }
+    } catch (_2) {
+    }
+  }
+  function getState() {
+    return _state;
   }
   function getOptimisticCart() {
     return _state.localCart || _state.serverCart;
+  }
+  try {
+    if (typeof window !== "undefined") {
+      window.__cartxStore = { getState, getOptimisticCart };
+    }
+  } catch (_2) {
   }
   function snapTo(gqlCart) {
     var mapped = mapCart(gqlCart);

@@ -48,12 +48,29 @@ function notify() {
   for (var i = 0; i < _subs.length; i++) {
     try { _subs[i](_state); } catch (e) { console.error('[cartx] store subscriber error:', e); }
   }
+  // Debug/observability: emit a window event so the GraphQL cart's transitions
+  // are traceable from the console (the store doesn't use the cartmax:* bus).
+  try {
+    if (typeof window !== 'undefined' && window.dispatchEvent) {
+      window.dispatchEvent(new CustomEvent('cartmax:gql-store', {
+        detail: { cart: getOptimisticCart(), loading: _state.loading },
+      }));
+    }
+  } catch (_) {}
 }
 
 export function getState() { return _state; }
 
 // What the UI renders: the optimistic local cart (falls back to server).
 export function getOptimisticCart() { return _state.localCart || _state.serverCart; }
+
+// Debug handle: inspect the GraphQL cart state from the console via
+// window.__cartxStore.getState().
+try {
+  if (typeof window !== 'undefined') {
+    window.__cartxStore = { getState: getState, getOptimisticCart: getOptimisticCart };
+  }
+} catch (_) {}
 
 function snapTo(gqlCart) {
   var mapped = mapCart(gqlCart);
