@@ -1,8 +1,10 @@
 /* eslint-disable */
 import { h, Component } from 'preact';
-import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, simulateCouponRemove } from './helpers';
+import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, simulateCouponRemove, normalizeVariantId } from './helpers';
 import { fireConfetti, setConfettiLottieUrl } from './confetti';
-import { waitForEvaluate } from './evaluate';
+import { waitForEvaluate, callEvaluate } from './evaluate';
+import { isGraphqlCartEnabled } from './storefront-cart';
+import { initStore as gqlInitStore, subscribe as gqlSubscribe, getOptimisticCart as gqlGetCart, changeQuantity as gqlChangeQuantity, removeLine as gqlRemoveLine, addLine as gqlAddLine, applyDiscountCode as gqlApplyCoupon, removeDiscountCode as gqlRemoveCoupon } from './cart-store';
 import { tracker } from './tracker';
 import { ANALYTICS_EVENTS } from './analytics-events';
 
@@ -230,6 +232,10 @@ export default class CartDrawer extends Component {
   }
 
   componentDidMount() {
+    // GraphQL cart path (Phase D) — gated; default off. When on, reads/writes
+    // for qty + remove route through the optimistic store instead of AJAX.
+    this._graphqlCart = isGraphqlCartEnabled();
+
     var rootEl = document.getElementById('cartmax-root');
     this._lastKnownItemCount = rootEl
       ? parseInt(rootEl.dataset.initialItemCount || '0', 10)
@@ -281,6 +287,9 @@ export default class CartDrawer extends Component {
     }, 5000);
 
     this._onCartChanged = (e) => {
+      // GraphQL path owns cart state; ignore AJAX-pipeline cart updates so the
+      // two don't fight over state.cart (the half-wired "item flashes" glitch).
+      if (this._graphqlCart) return;
       if (e.detail && e.detail.cart) {
         var cart = this._stabiliseOrder(e.detail.cart);
         this._currency = cart.currency || this._currency;
@@ -313,6 +322,7 @@ export default class CartDrawer extends Component {
     };
 
     this._onInternalReload = (e) => {
+      if (this._graphqlCart) return;   // GraphQL store owns cart state
       if (e.detail && e.detail.cart) {
         var newCart = this._stabiliseOrder(e.detail.cart);
 
@@ -371,6 +381,7 @@ export default class CartDrawer extends Component {
     };
 
     this._onOptimisticUpdate = (e) => {
+      if (this._graphqlCart) return;   // GraphQL store owns cart state
       if (e.detail && e.detail.cart) {
         var optimisticCart = this._stabiliseOrder(e.detail.cart);
         if (this._isTransientEmpty(optimisticCart)) return;
@@ -396,6 +407,24 @@ export default class CartDrawer extends Component {
     window.addEventListener('cartmax:internal-reload', this._onInternalReload);
     window.addEventListener('cartmax:optimistic-update', this._onOptimisticUpdate);
     window.addEventListener('cartmax:gift-unavailable', this._onGiftUnavailable);
+
+    // GraphQL cart path (Phase D, gated): subscribe to the optimistic store so
+    // the drawer renders the GraphQL cart, init it, then seed from the existing
+    // AJAX cart so a returning shopper's items carry over. Writes (qty/remove)
+    // route to the store in queueQuantityChange/handleRemove. The AJAX path
+    // above stays wired but the store's reads win once it settles.
+    if (this._graphqlCart) {
+      this._unsubGql = gqlSubscribe(() => {
+        var c = gqlGetCart();
+        if (c) {
+          this.setState({ cart: c, loading: false });
+          this._maybeRunGqlPromo(c);
+        }
+      });
+      // Seed inside init so the GraphQL cart never renders empty before its
+      // items land (the "item flashes away" glitch).
+      gqlInitStore(this.state.cart).catch(() => {});
+    }
 
     window.__cartmaxReady = true;
     if (window.__cartmaxQueue && window.__cartmaxQueue.length > 0) {
@@ -580,6 +609,9 @@ export default class CartDrawer extends Component {
   }
 
   componentWillUnmount() {
+    if (this._unsubGql) this._unsubGql();
+    if (this._openRevealTimer) clearTimeout(this._openRevealTimer);
+    if (this._gqlPromoTimer) clearTimeout(this._gqlPromoTimer);
     window.removeEventListener('cartmax:cart-changed', this._onCartChanged);
     window.removeEventListener('cartmax:eval-result', this._onEvalResult);
     window.removeEventListener('cartmax:internal-reload', this._onInternalReload);
@@ -935,6 +967,18 @@ export default class CartDrawer extends Component {
       });
     });
     document.body.style.overflow = 'hidden';
+    // If the host theme's cart handler ran too (our capture-phase interception
+    // was bypassed), it may have left a scroll-lock class on body/html. cartx is
+    // taking over the drawer, so clear it — otherwise the page stays unscrollable.
+    this._clearThemeScrollLock();
+    // Fail-safe: never leave the drawer open-but-invisible if the `styled` gate
+    // hasn't resolved yet (slow/empty styling source). Reveal shortly after open.
+    if (!this.state.styled) {
+      if (this._openRevealTimer) clearTimeout(this._openRevealTimer);
+      this._openRevealTimer = setTimeout(() => {
+        if (!this.state.styled) this.setState({ styled: true });
+      }, 350);
+    }
     this.announce('Cart opened');
     window.dispatchEvent(new CustomEvent('cartmax:drawer-opened'));
 
@@ -946,6 +990,71 @@ export default class CartDrawer extends Component {
     });
   }
 
+  // Strip common theme scroll-lock classes the host theme may have added to
+  // body/html when its (now-suppressed) cart drawer "opened". cartx owns the
+  // cart, so when our drawer opens or closes the page must scroll normally.
+  _clearThemeScrollLock() {
+    var CLASSES = ['overflow-hidden', 'no-scroll', 'scroll-lock', 'cart-drawer-open'];
+    [document.body, document.documentElement].forEach(function (el) {
+      if (!el) return;
+      for (var i = 0; i < CLASSES.length; i++) el.classList.remove(CLASSES[i]);
+    });
+  }
+
+  // ── GraphQL promo pipeline (Phase D: bar + gift auto-add) ──
+  // The evaluate-cart proxy computes the bar/ribbon/coupons/gifts from whatever
+  // cart we POST it. For the GraphQL path we feed it the mapped GraphQL cart,
+  // render the bar via the existing `eval-result` event, and route its gift
+  // to_add/to_remove through the STORE (not AJAX). Triggered only when the cart
+  // item signature changes (so gift reconciliation converges, no eval loop) and
+  // debounced so rapid edits collapse into one proxy call.
+  _cartSignature(cart) {
+    var items = (cart && cart.items) || [];
+    return items.map(function (it) {
+      return it.variant_id + ':' + (it.quantity || 0) + ':' + (it.properties ? (it.properties._offer_id || '') : '');
+    }).sort().join('|');
+  }
+
+  _maybeRunGqlPromo(cart) {
+    var sig = this._cartSignature(cart);
+    if (sig === this._lastPromoSig) return;   // no item change → no re-eval
+    this._lastPromoSig = sig;
+    if (this._gqlPromoTimer) clearTimeout(this._gqlPromoTimer);
+    this._gqlPromoTimer = setTimeout(() => this._runGqlPromo(), 250);
+  }
+
+  async _runGqlPromo() {
+    var cart = gqlGetCart();
+    if (!cart) return;
+    try {
+      var result = await callEvaluate(cart);
+      if (!result) return;
+      // Bar / ribbon / coupons / savings (reuses the existing handler).
+      window.dispatchEvent(new CustomEvent('cartmax:eval-result', {
+        detail: Object.assign({}, result, { _server: true }),
+      }));
+      this._reconcileGqlGifts(result, cart);
+    } catch (err) {
+      console.error('[cartx] gql promo eval failed:', err);
+    }
+  }
+
+  // Add/remove automatic gift lines on the GraphQL cart to match the eval result.
+  // Idempotent: only adds a gift not already present, only removes listed lines.
+  // Each store mutation re-triggers eval; it converges once gifts are settled.
+  _reconcileGqlGifts(result, cart) {
+    (result.to_remove || []).forEach(function (key) { gqlRemoveLine(key); });
+    var items = (cart && cart.items) || [];
+    (result.to_add || []).forEach(function (item) {
+      var vid = String(normalizeVariantId(item.variant_id));
+      var offerId = item.properties && item.properties._offer_id;
+      var present = items.some(function (it) {
+        return String(it.variant_id) === vid && it.properties && it.properties._offer_id === offerId;
+      });
+      if (!present) gqlAddLine(vid, item.quantity || 1, item.properties || {}, {});
+    });
+  }
+
   close() {
     if (this._focusCleanup) {
       this._focusCleanup();
@@ -953,6 +1062,7 @@ export default class CartDrawer extends Component {
     }
     this.setState({ open: false });
     document.body.style.overflow = '';
+    this._clearThemeScrollLock();
     this._closeTimer = setTimeout(() => {
       this.setState({ visible: false });
       this._closeTimer = null;
@@ -1008,6 +1118,12 @@ export default class CartDrawer extends Component {
   // shopper; it only coalesces the expensive part.
 
   queueQuantityChange(key, qty) {
+    // GraphQL cart path: route to the optimistic store (instant local update +
+    // single-flight server sync). The store's subscription re-renders the cart.
+    if (this._graphqlCart) {
+      if (qty <= 0) gqlRemoveLine(key); else gqlChangeQuantity(key, qty);
+      return;
+    }
     var pendingQty = Object.assign({}, this.state.pendingQty);
     pendingQty[key] = qty;
     this.setState({ pendingQty: pendingQty });
@@ -1050,6 +1166,9 @@ export default class CartDrawer extends Component {
   handleRemove(key) {
     var cart = this.state.cart;
     if (!cart || !cart.items) return;
+
+    // GraphQL cart path: optimistic remove via the store (re-renders on sync).
+    if (this._graphqlCart) { gqlRemoveLine(key); return; }
 
     var line = cart.items.find(function (i) { return i.key === key; });
 
@@ -1665,6 +1784,13 @@ export default class CartDrawer extends Component {
   async handleClaimAdd(variantId, claimId) {
     var key = 'claim_' + variantId;
 
+    if (this._graphqlCart) {
+      this.setState({ claimed: Object.assign({}, this.state.claimed, { [key]: true }) });
+      gqlAddLine(variantId, 1, { _freebie: 'true', _cartmax_claim: 'true', _claimed: 'true', _offer_id: claimId }, {});
+      tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, { promotion_id: claimId, promotion_type: 'claim-gift', variant_id: String(variantId) });
+      return;
+    }
+
     // Button-level optimistic: card flips to "Claimed ✓" immediately.
     // No optimistic line in the cart — the line materialises on reconcile.
     this._clearClaimError(key);
@@ -1731,6 +1857,12 @@ export default class CartDrawer extends Component {
   // inventory rejection.
   async handleOfferDisplayAdd(variantId, offerId, quantity) {
     var key = 'offer_' + variantId;
+
+    if (this._graphqlCart) {
+      this.setState({ claimed: Object.assign({}, this.state.claimed, { [key]: true }) });
+      gqlAddLine(variantId, quantity || 1, { _freebie: 'true', _offer_id: offerId, _acquired_on_page: window.location.pathname }, {});
+      return;
+    }
 
     this._clearClaimError(key);
     this.setState({
@@ -1944,6 +2076,11 @@ export default class CartDrawer extends Component {
 
   async handleCouponApply(code) {
     if (!code || !code.trim()) return;
+    if (this._graphqlCart) {
+      gqlApplyCoupon(code.trim());
+      this.setState({ couponInput: '', couponPanelOpen: false, couponError: null });
+      return;
+    }
     this.setState({ couponLoading: true, couponError: null });
     try {
       var currentCodes = this.getAppliedCodes();
@@ -2001,6 +2138,10 @@ export default class CartDrawer extends Component {
   }
 
   async handleCouponRemove(codeToRemove) {
+    if (this._graphqlCart) {
+      gqlRemoveCoupon(codeToRemove);
+      return;
+    }
     var snapshot = this.state.cart;
     this.setState({ couponLoading: true });
 
@@ -2196,6 +2337,17 @@ export default class CartDrawer extends Component {
   // Line-level optimistic add. Customer explicitly chose a paid item;
   // out-of-stock is an intuitive failure mode worth the line-blink risk.
   async handleUpsellAdd(variantId, productMeta) {
+    if (this._graphqlCart) {
+      gqlAddLine(variantId, 1, {}, {
+        price: Math.round(Number((productMeta && productMeta.price) || 0) * 100),
+        title: productMeta && productMeta.title,
+        product_title: productMeta && productMeta.title,
+        variant_title: productMeta && productMeta.variant_title,
+        image: productMeta && productMeta.image,
+      });
+      tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, { promotion_type: 'upsell', variant_id: String(variantId) });
+      return;
+    }
     var key = 'upsell_' + variantId;
     var snapshot = this.state.cart;
 

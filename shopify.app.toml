@@ -43,7 +43,7 @@ api_version = "2026-07"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_themes,read_products,write_products,read_discounts,write_discounts,read_customers,read_content,read_orders"
+scopes = "read_themes,read_products,write_products,read_discounts,write_discounts,read_customers,read_content,read_orders,unauthenticated_read_checkouts,unauthenticated_write_checkouts,unauthenticated_read_product_listings,unauthenticated_read_product_inventory"
 
 # App-owned shop metafield holding the drawer styling, exposed to the storefront
 # so the theme app extension (app-embed.liquid) can inline it and the drawer can

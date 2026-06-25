@@ -868,6 +868,367 @@
     };
   }
 
+  // app/drawer-src/src/storefront-cart.js
+  var _sf = {
+    shopDomain: "",
+    // e.g. "devx-dev.myshopify.com"
+    token: "",
+    // public Unauthenticated Storefront access token
+    apiVersion: "2026-01"
+    // pinned by P0
+  };
+  var _readyResolvers = [];
+  function setStorefrontConfig(cfg) {
+    if (!cfg) return;
+    if (cfg.shopDomain) _sf.shopDomain = cfg.shopDomain;
+    if (cfg.token) _sf.token = cfg.token;
+    if (cfg.apiVersion) _sf.apiVersion = cfg.apiVersion;
+    if (isStorefrontReady() && _readyResolvers.length) {
+      var rs = _readyResolvers;
+      _readyResolvers = [];
+      rs.forEach(function(r2) {
+        r2(true);
+      });
+    }
+  }
+  function isStorefrontReady() {
+    return !!(_sf.shopDomain && _sf.token);
+  }
+  function whenStorefrontReady(timeoutMs) {
+    if (isStorefrontReady()) return Promise.resolve(true);
+    return new Promise(function(resolve) {
+      _readyResolvers.push(resolve);
+      if (timeoutMs) setTimeout(function() {
+        resolve(isStorefrontReady());
+      }, timeoutMs);
+    });
+  }
+  function isGraphqlCartEnabled() {
+    try {
+      if (typeof window !== "undefined" && window.__cartxGraphqlCart === true) return true;
+      if (typeof localStorage !== "undefined" && localStorage.getItem("cartx:graphqlCart") === "1") return true;
+    } catch (_2) {
+    }
+    return false;
+  }
+  function endpoint() {
+    return "https://" + _sf.shopDomain + "/api/" + _sf.apiVersion + "/graphql.json";
+  }
+  async function sfFetch(query, variables) {
+    if (!isStorefrontReady()) {
+      throw new Error("[cartx] storefront cart not configured (token/shop missing)");
+    }
+    var res = await fetch(endpoint(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Storefront-Access-Token": _sf.token
+      },
+      body: JSON.stringify({ query, variables: variables || {} })
+    });
+    var json = await res.json();
+    if (json.errors && json.errors.length) {
+      throw new Error("[cartx] storefront GraphQL error: " + JSON.stringify(json.errors));
+    }
+    return json.data;
+  }
+  var CART_FRAGMENT = `
+  fragment Cart on Cart {
+    id
+    checkoutUrl
+    totalQuantity
+    note
+    attributes { key value }
+    cost {
+      subtotalAmount { amount currencyCode }
+      totalAmount { amount currencyCode }
+      totalTaxAmount { amount currencyCode }
+    }
+    discountCodes { applicable code }
+    lines(first: 250) {
+      edges {
+        node {
+          id
+          quantity
+          attributes { key value }
+          cost {
+            totalAmount { amount currencyCode }
+            amountPerQuantity { amount currencyCode }
+            compareAtAmountPerQuantity { amount currencyCode }
+          }
+          discountAllocations {
+            discountedAmount { amount currencyCode }
+            ... on CartCodeDiscountAllocation { code }
+            ... on CartAutomaticDiscountAllocation { title }
+            ... on CartCustomDiscountAllocation { title }
+          }
+          merchandise {
+            ... on ProductVariant {
+              id
+              title
+              sku
+              availableForSale
+              image { url altText width height }
+              price { amount currencyCode }
+              compareAtPrice { amount currencyCode }
+              selectedOptions { name value }
+              product {
+                id
+                title
+                handle
+                vendor
+                productType
+                featuredImage { url altText }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+  var Q_GET_CART = `
+  query GetCart($cartId: ID!) {
+    cart(id: $cartId) { ...Cart }
+  }
+  ${CART_FRAGMENT}
+`;
+  var M_CART_CREATE = `
+  mutation CartCreate($lines: [CartLineInput!], $attributes: [AttributeInput!]) {
+    cartCreate(input: { lines: $lines, attributes: $attributes }) {
+      cart { ...Cart }
+      userErrors { field message }
+    }
+  }
+  ${CART_FRAGMENT}
+`;
+  var M_LINES_ADD = `
+  mutation CartLinesAdd($cartId: ID!, $lines: [CartLineInput!]!) {
+    cartLinesAdd(cartId: $cartId, lines: $lines) {
+      cart { ...Cart }
+      userErrors { field message }
+    }
+  }
+  ${CART_FRAGMENT}
+`;
+  var M_LINES_UPDATE = `
+  mutation CartLinesUpdate($cartId: ID!, $lines: [CartLineUpdateInput!]!) {
+    cartLinesUpdate(cartId: $cartId, lines: $lines) {
+      cart { ...Cart }
+      userErrors { field message }
+    }
+  }
+  ${CART_FRAGMENT}
+`;
+  var M_LINES_REMOVE = `
+  mutation CartLinesRemove($cartId: ID!, $lineIds: [ID!]!) {
+    cartLinesRemove(cartId: $cartId, lineIds: $lineIds) {
+      cart { ...Cart }
+      userErrors { field message }
+    }
+  }
+  ${CART_FRAGMENT}
+`;
+  var M_DISCOUNT_CODES = `
+  mutation CartDiscountCodesUpdate($cartId: ID!, $discountCodes: [String!]) {
+    cartDiscountCodesUpdate(cartId: $cartId, discountCodes: $discountCodes) {
+      cart { ...Cart }
+      userErrors { field message }
+    }
+  }
+  ${CART_FRAGMENT}
+`;
+  var M_ATTRIBUTES = `
+  mutation CartAttributesUpdate($cartId: ID!, $attributes: [AttributeInput!]!) {
+    cartAttributesUpdate(cartId: $cartId, attributes: $attributes) {
+      cart { ...Cart }
+      userErrors { field message }
+    }
+  }
+  ${CART_FRAGMENT}
+`;
+  var M_BUYER_IDENTITY = `
+  mutation CartBuyerIdentityUpdate($cartId: ID!, $buyerIdentity: CartBuyerIdentityInput!) {
+    cartBuyerIdentityUpdate(cartId: $cartId, buyerIdentity: $buyerIdentity) {
+      cart { ...Cart }
+      userErrors { field message }
+    }
+  }
+  ${CART_FRAGMENT}
+`;
+  function unwrap(data, opName) {
+    var payload = data && data[opName];
+    if (!payload) return { cart: null, userErrors: [] };
+    return { cart: payload.cart || null, userErrors: payload.userErrors || [] };
+  }
+  async function cartCreate(lines, attributes) {
+    var data = await sfFetch(M_CART_CREATE, { lines: lines || [], attributes: attributes || [] });
+    return unwrap(data, "cartCreate");
+  }
+  async function getCart(cartId) {
+    var data = await sfFetch(Q_GET_CART, { cartId });
+    return data && data.cart || null;
+  }
+  async function cartLinesAdd(cartId, lines) {
+    var data = await sfFetch(M_LINES_ADD, { cartId, lines });
+    return unwrap(data, "cartLinesAdd");
+  }
+  async function cartLinesUpdate(cartId, lines) {
+    var data = await sfFetch(M_LINES_UPDATE, { cartId, lines });
+    return unwrap(data, "cartLinesUpdate");
+  }
+  async function cartLinesRemove(cartId, lineIds) {
+    var data = await sfFetch(M_LINES_REMOVE, { cartId, lineIds });
+    return unwrap(data, "cartLinesRemove");
+  }
+  async function cartDiscountCodesUpdate(cartId, discountCodes) {
+    var data = await sfFetch(M_DISCOUNT_CODES, { cartId, discountCodes: discountCodes || [] });
+    return unwrap(data, "cartDiscountCodesUpdate");
+  }
+  function cartIdKey() {
+    return "cartx:cartId:" + (_sf.shopDomain || "default");
+  }
+  function getStoredCartId() {
+    try {
+      return localStorage.getItem(cartIdKey()) || null;
+    } catch (_2) {
+      return null;
+    }
+  }
+  function storeCartId(id) {
+    try {
+      if (id) localStorage.setItem(cartIdKey(), id);
+    } catch (_2) {
+    }
+  }
+  function clearStoredCartId() {
+    try {
+      localStorage.removeItem(cartIdKey());
+    } catch (_2) {
+    }
+  }
+  async function getOrCreateCart() {
+    var id = getStoredCartId();
+    if (id) {
+      var existing = await getCart(id);
+      if (existing) return existing;
+      clearStoredCartId();
+    }
+    var created = await cartCreate([], []);
+    if (created.cart) storeCartId(created.cart.id);
+    return created.cart;
+  }
+  function numericId(gid) {
+    if (gid == null) return null;
+    var s2 = String(gid);
+    var m2 = s2.match(/(\d+)(?:\?|$)/);
+    return m2 ? Number(m2[1]) : null;
+  }
+  function toCents(amount) {
+    if (amount == null) return 0;
+    return Math.round(parseFloat(amount) * 100);
+  }
+  function attrsToProperties(attrs) {
+    var props = {};
+    (attrs || []).forEach(function(a2) {
+      if (a2 && a2.key != null) props[a2.key] = a2.value;
+    });
+    return props;
+  }
+  function mapLine(node) {
+    var m2 = node.merchandise || {};
+    var product = m2.product || {};
+    var unit = toCents(m2.price && m2.price.amount);
+    var qty = node.quantity || 0;
+    var lineTotal = node.cost && node.cost.totalAmount ? toCents(node.cost.totalAmount.amount) : unit * qty;
+    var compareUnit = m2.compareAtPrice ? toCents(m2.compareAtPrice.amount) : node.cost && node.cost.compareAtAmountPerQuantity ? toCents(node.cost.compareAtAmountPerQuantity.amount) : 0;
+    var originalLine = compareUnit ? compareUnit * qty : unit * qty;
+    var lineDiscount = Math.max(0, originalLine - lineTotal);
+    var img = m2.image && m2.image.url || product.featuredImage && product.featuredImage.url || null;
+    return {
+      // identity — the drawer keys lines by `key`; we use the GraphQL line id.
+      key: node.id,
+      id: numericId(m2.id),
+      variant_id: numericId(m2.id),
+      product_id: numericId(product.id),
+      quantity: qty,
+      properties: attrsToProperties(node.attributes),
+      // pricing (cents), matching /cart.js field names the drawer reads
+      price: unit,
+      original_price: compareUnit || unit,
+      final_price: unit,
+      line_price: lineTotal,
+      original_line_price: originalLine,
+      final_line_price: lineTotal,
+      total_discount: lineDiscount,
+      discounts: [],
+      // display
+      title: product.title ? m2.title && m2.title !== "Default Title" ? product.title + " - " + m2.title : product.title : m2.title || "",
+      product_title: product.title || "",
+      variant_title: m2.title && m2.title !== "Default Title" ? m2.title : null,
+      variant_options: (m2.selectedOptions || []).map(function(o2) {
+        return o2.value;
+      }),
+      options_with_values: (m2.selectedOptions || []).map(function(o2) {
+        return { name: o2.name, value: o2.value };
+      }),
+      sku: m2.sku || null,
+      vendor: product.vendor || null,
+      product_type: product.productType || "",
+      handle: product.handle || "",
+      image: img,
+      featured_image: img ? { url: img, alt: m2.image && m2.image.altText || null } : null,
+      url: product.handle ? "/products/" + product.handle + "?variant=" + numericId(m2.id) : null,
+      available: m2.availableForSale !== false,
+      // per-line discount allocations → the drawer's expected shape
+      line_level_discount_allocations: (node.discountAllocations || []).map(function(d2) {
+        return {
+          amount: toCents(d2.discountedAmount && d2.discountedAmount.amount),
+          discount_application: { title: d2.title || d2.code || "Discount" }
+        };
+      }),
+      line_level_total_discount: lineDiscount,
+      _gql_line_id: node.id
+      // keep the raw GraphQL line id for mutations
+    };
+  }
+  function mapCart(gqlCart) {
+    if (!gqlCart) return null;
+    var edges = gqlCart.lines && gqlCart.lines.edges || [];
+    var items = edges.map(function(e2) {
+      return mapLine(e2.node);
+    });
+    var subtotal = gqlCart.cost && gqlCart.cost.subtotalAmount ? toCents(gqlCart.cost.subtotalAmount.amount) : 0;
+    var total = gqlCart.cost && gqlCart.cost.totalAmount ? toCents(gqlCart.cost.totalAmount.amount) : subtotal;
+    var originalTotal = items.reduce(function(s2, it) {
+      return s2 + (it.original_line_price || 0);
+    }, 0);
+    var currency = gqlCart.cost && gqlCart.cost.totalAmount && gqlCart.cost.totalAmount.currencyCode || "";
+    var itemCount = gqlCart.totalQuantity != null ? gqlCart.totalQuantity : items.reduce(function(s2, it) {
+      return s2 + (it.quantity || 0);
+    }, 0);
+    return {
+      token: gqlCart.id,
+      note: gqlCart.note || "",
+      attributes: attrsToProperties(gqlCart.attributes),
+      item_count: itemCount,
+      items,
+      total_price: total,
+      original_total_price: originalTotal,
+      total_discount: Math.max(0, originalTotal - total),
+      items_subtotal_price: subtotal,
+      currency,
+      cart_level_discount_applications: [],
+      discount_codes: (gqlCart.discountCodes || []).map(function(d2) {
+        return { code: d2.code, applicable: d2.applicable };
+      }),
+      requires_shipping: true,
+      // GraphQL-only extras the drawer/checkout can use
+      checkout_url: gqlCart.checkoutUrl || null,
+      _gql_cart_id: gqlCart.id
+    };
+  }
+
   // app/drawer-src/src/evaluate.js
   var PROXY_URL = "/apps/cartmax/evaluate-cart";
   var _cachedConfig = null;
@@ -908,6 +1269,13 @@
     if (result && result._config) {
       _cachedConfig = result._config;
       _configCacheTime = Date.now();
+      if (result._config.storefront_token) {
+        setStorefrontConfig({
+          shopDomain: ctx.shopId,
+          token: result._config.storefront_token,
+          apiVersion: result._config.storefront_api_version
+        });
+      }
     }
     return result;
   }
@@ -1333,6 +1701,391 @@
   }).catch(function() {
   });
 
+  // app/drawer-src/src/cart-optimistic.js
+  function propsSignature(properties) {
+    var p2 = properties || {};
+    var keys = Object.keys(p2).sort();
+    var parts = [];
+    for (var i2 = 0; i2 < keys.length; i2++) parts.push(keys[i2] + "=" + p2[keys[i2]]);
+    return parts.join("&");
+  }
+  function lineSignature(item) {
+    return String(item.variant_id) + "|" + propsSignature(item.properties);
+  }
+  function variantGid(variantId) {
+    var s2 = String(variantId);
+    return s2.indexOf("gid://") === 0 ? s2 : "gid://shopify/ProductVariant/" + s2;
+  }
+  function attributesFromProps(properties) {
+    var p2 = properties || {};
+    return Object.keys(p2).map(function(k2) {
+      return { key: k2, value: String(p2[k2]) };
+    });
+  }
+  function recalcTotals(cart) {
+    var items = cart.items || [];
+    var total = 0, original = 0, count = 0;
+    for (var i2 = 0; i2 < items.length; i2++) {
+      var it = items[i2];
+      total += it.final_line_price || 0;
+      original += it.original_line_price || it.line_price || 0;
+      count += it.quantity || 0;
+    }
+    return Object.assign({}, cart, {
+      items,
+      item_count: count,
+      total_price: total,
+      original_total_price: original,
+      total_discount: Math.max(0, original - total),
+      items_subtotal_price: total
+    });
+  }
+  var _tempSeq = 0;
+  function createOptimisticItem(variantId, quantity, properties, meta) {
+    meta = meta || {};
+    var unit = meta.price || 0;
+    var qty = quantity || 1;
+    var line = unit * qty;
+    _tempSeq += 1;
+    return {
+      key: "pending_" + variantId + "_" + _tempSeq,
+      id: Number(variantId),
+      variant_id: Number(variantId),
+      product_id: meta.product_id != null ? Number(meta.product_id) : null,
+      quantity: qty,
+      properties: properties || {},
+      price: unit,
+      original_price: meta.compare_at || unit,
+      final_price: unit,
+      line_price: line,
+      original_line_price: (meta.compare_at || unit) * qty,
+      final_line_price: line,
+      total_discount: 0,
+      discounts: [],
+      title: meta.title || "",
+      product_title: meta.product_title || meta.title || "",
+      variant_title: meta.variant_title || null,
+      image: meta.image || null,
+      featured_image: meta.image ? { url: meta.image } : null,
+      handle: meta.handle || "",
+      url: meta.handle ? "/products/" + meta.handle + "?variant=" + variantId : null,
+      available: true,
+      line_level_discount_allocations: [],
+      _optimistic: true
+    };
+  }
+  function addItemToLocalCart(cart, newItem) {
+    var items = (cart.items || []).slice();
+    var sig = lineSignature(newItem);
+    var idx = -1;
+    for (var i2 = 0; i2 < items.length; i2++) {
+      if (lineSignature(items[i2]) === sig) {
+        idx = i2;
+        break;
+      }
+    }
+    if (idx === -1) {
+      items.unshift(newItem);
+    } else {
+      var ex = items[idx];
+      var qty = (ex.quantity || 0) + (newItem.quantity || 1);
+      items[idx] = Object.assign({}, ex, {
+        quantity: qty,
+        line_price: (ex.price || 0) * qty,
+        final_line_price: (ex.price || 0) * qty,
+        original_line_price: (ex.original_price || ex.price || 0) * qty
+      });
+    }
+    return recalcTotals(Object.assign({}, cart, { items }));
+  }
+  function setLineQuantity(cart, key, quantity) {
+    var items = [];
+    (cart.items || []).forEach(function(it) {
+      if (it.key !== key) {
+        items.push(it);
+        return;
+      }
+      if (quantity <= 0) return;
+      items.push(Object.assign({}, it, {
+        quantity,
+        line_price: (it.price || 0) * quantity,
+        final_line_price: (it.price || 0) * quantity,
+        original_line_price: (it.original_price || it.price || 0) * quantity
+      }));
+    });
+    return recalcTotals(Object.assign({}, cart, { items }));
+  }
+  function getCartDifference(serverCart, localCart) {
+    var serverItems = serverCart && serverCart.items || [];
+    var localItems = localCart && localCart.items || [];
+    var itemsToAdd = [];
+    var itemsToUpdate = [];
+    var lineIdsToRemove = [];
+    var serverBySig = {};
+    serverItems.forEach(function(it) {
+      var sig = lineSignature(it);
+      (serverBySig[sig] = serverBySig[sig] || []).push(it);
+    });
+    var localBySig = {};
+    localItems.forEach(function(it) {
+      var sig = lineSignature(it);
+      if (!localBySig[sig]) localBySig[sig] = { qty: 0, sample: it };
+      localBySig[sig].qty += it.quantity || 0;
+    });
+    Object.keys(localBySig).forEach(function(sig) {
+      if (serverBySig[sig]) return;
+      var entry = localBySig[sig];
+      if (entry.qty > 0) {
+        itemsToAdd.push({
+          merchandiseId: variantGid(entry.sample.variant_id),
+          quantity: entry.qty,
+          attributes: attributesFromProps(entry.sample.properties)
+        });
+      }
+    });
+    Object.keys(serverBySig).forEach(function(sig) {
+      var lines = serverBySig[sig];
+      var serverQty = lines.reduce(function(s2, l3) {
+        return s2 + (l3.quantity || 0);
+      }, 0);
+      var localQty = localBySig[sig] ? localBySig[sig].qty : 0;
+      var diff = localQty - serverQty;
+      if (diff === 0) return;
+      if (diff > 0) {
+        var first = lines[0];
+        itemsToUpdate.push({ id: first._gql_line_id || first.key, quantity: (first.quantity || 0) + diff });
+      } else {
+        var remaining = -diff;
+        for (var i2 = 0; i2 < lines.length && remaining > 0; i2++) {
+          var l2 = lines[i2];
+          var take = Math.min(l2.quantity || 0, remaining);
+          remaining -= take;
+          var nextQty = (l2.quantity || 0) - take;
+          var lineId = l2._gql_line_id || l2.key;
+          if (nextQty <= 0) lineIdsToRemove.push(lineId);
+          else itemsToUpdate.push({ id: lineId, quantity: nextQty });
+        }
+      }
+    });
+    return { itemsToAdd, itemsToUpdate, lineIdsToRemove };
+  }
+  function getDiscountCodesUpdate(serverCart, localCart) {
+    var s2 = (serverCart && serverCart.discount_codes || []).map(function(d2) {
+      return d2.code;
+    });
+    var l2 = (localCart && localCart.discount_codes || []).map(function(d2) {
+      return d2.code;
+    });
+    var add = l2.filter(function(c2) {
+      return s2.indexOf(c2) === -1;
+    });
+    var remove = s2.filter(function(c2) {
+      return l2.indexOf(c2) === -1;
+    });
+    if (!add.length && !remove.length) return null;
+    return l2.slice();
+  }
+
+  // app/drawer-src/src/cart-store.js
+  var _state = {
+    cartId: null,
+    serverCart: null,
+    // canonical (/cart.js shape via mapCart)
+    localCart: null,
+    // optimistic overlay (/cart.js shape)
+    loading: false,
+    ready: false
+  };
+  var _subs = [];
+  function subscribe(fn) {
+    _subs.push(fn);
+    return function unsubscribe() {
+      var i2 = _subs.indexOf(fn);
+      if (i2 !== -1) _subs.splice(i2, 1);
+    };
+  }
+  function notify() {
+    for (var i2 = 0; i2 < _subs.length; i2++) {
+      try {
+        _subs[i2](_state);
+      } catch (e2) {
+        console.error("[cartx] store subscriber error:", e2);
+      }
+    }
+  }
+  function getOptimisticCart() {
+    return _state.localCart || _state.serverCart;
+  }
+  function snapTo(gqlCart) {
+    var mapped = mapCart(gqlCart);
+    _state.serverCart = mapped;
+    _state.localCart = mapped;
+    if (mapped && mapped._gql_cart_id) {
+      _state.cartId = mapped._gql_cart_id;
+      storeCartId(mapped._gql_cart_id);
+    }
+    notify();
+  }
+  function setLocalCart(localCart) {
+    _state.localCart = localCart;
+    notify();
+    scheduleSync();
+  }
+  async function initStore(seedAjaxCart) {
+    if (_state.ready) return _state;
+    _state.loading = true;
+    notify();
+    try {
+      var ok = await whenStorefrontReady(8e3);
+      if (!ok) {
+        _state.ready = true;
+        _state.loading = false;
+        notify();
+        return _state;
+      }
+      var gqlCart = await getOrCreateCart();
+      if (gqlCart && gqlCart.id) {
+        _state.cartId = gqlCart.id;
+        storeCartId(gqlCart.id);
+      }
+      var empty = !gqlCart || !(gqlCart.lines && gqlCart.lines.edges || []).length;
+      var seedItems = seedAjaxCart && seedAjaxCart.items || [];
+      if (empty && seedItems.length && _state.cartId) {
+        var lines = seedItems.map(function(it) {
+          return {
+            merchandiseId: "gid://shopify/ProductVariant/" + it.variant_id,
+            quantity: it.quantity,
+            attributes: Object.keys(it.properties || {}).map(function(k2) {
+              return { key: k2, value: String(it.properties[k2]) };
+            })
+          };
+        });
+        var res = await cartLinesAdd(_state.cartId, lines);
+        if (res.cart) gqlCart = res.cart;
+      }
+      if (gqlCart) snapTo(gqlCart);
+    } catch (e2) {
+      console.error("[cartx] initStore failed:", e2);
+    } finally {
+      _state.loading = false;
+      _state.ready = true;
+      notify();
+    }
+    return _state;
+  }
+  var _syncing = false;
+  var _pendingResolve = null;
+  function queueSync() {
+    return new Promise(function(resolve) {
+      if (!_syncing) {
+        resolve();
+        return;
+      }
+      _pendingResolve = resolve;
+    });
+  }
+  function completeAndTriggerNext() {
+    _syncing = false;
+    if (_pendingResolve) {
+      var next = _pendingResolve;
+      _pendingResolve = null;
+      next();
+      return true;
+    }
+    return false;
+  }
+  async function scheduleSync() {
+    await queueSync();
+    await runSync();
+  }
+  async function runSync() {
+    if (!_state.localCart) return;
+    _syncing = true;
+    _state.loading = true;
+    notify();
+    try {
+      var cartId = _state.cartId;
+      if (!cartId) {
+        var created = await getOrCreateCart();
+        if (!created) throw new Error("no cart");
+        cartId = created.id;
+        _state.cartId = cartId;
+        snapTo(created);
+      }
+      var serverMapped = _state.serverCart;
+      if (!serverMapped) {
+        var fetched = await getCart(cartId);
+        if (!fetched) {
+          var recreated = await getOrCreateCart();
+          fetched = recreated;
+          cartId = recreated && recreated.id;
+          _state.cartId = cartId;
+        }
+        serverMapped = mapCart(fetched);
+      }
+      var diff = getCartDifference(serverMapped, _state.localCart);
+      var updatedGql = null;
+      if (diff.lineIdsToRemove.length) {
+        var r2 = await cartLinesRemove(cartId, diff.lineIdsToRemove);
+        if (r2.cart) updatedGql = r2.cart;
+      }
+      if (diff.itemsToUpdate.length) {
+        var u2 = await cartLinesUpdate(cartId, diff.itemsToUpdate);
+        if (u2.cart) updatedGql = u2.cart;
+      }
+      if (diff.itemsToAdd.length) {
+        var a2 = await cartLinesAdd(cartId, diff.itemsToAdd);
+        if (a2.cart) updatedGql = a2.cart;
+      }
+      var codes = getDiscountCodesUpdate(updatedGql ? mapCart(updatedGql) : serverMapped, _state.localCart);
+      if (codes) {
+        var d2 = await cartDiscountCodesUpdate(cartId, codes);
+        if (d2.cart) updatedGql = d2.cart;
+      }
+      var hasMore = completeAndTriggerNext();
+      if (!hasMore) {
+        if (updatedGql) snapTo(updatedGql);
+        _state.loading = false;
+        notify();
+      }
+    } catch (err) {
+      console.error("[cartx] syncCart failed:", err);
+      _state.loading = false;
+      completeAndTriggerNext();
+      notify();
+    }
+  }
+  function addLine(variantId, quantity, properties, meta) {
+    var base = _state.localCart || _state.serverCart || { items: [] };
+    setLocalCart(addItemToLocalCart(base, createOptimisticItem(variantId, quantity, properties, meta)));
+  }
+  function changeQuantity(key, quantity) {
+    var base = _state.localCart || _state.serverCart;
+    if (!base) return;
+    setLocalCart(setLineQuantity(base, key, quantity));
+  }
+  function removeLine(key) {
+    changeQuantity(key, 0);
+  }
+  function applyDiscountCode(code) {
+    var base = _state.localCart || _state.serverCart;
+    if (!base) return;
+    var codes = (base.discount_codes || []).slice();
+    if (codes.some(function(d2) {
+      return d2.code === code;
+    })) return;
+    codes.push({ code, applicable: true });
+    setLocalCart(Object.assign({}, base, { discount_codes: codes }));
+  }
+  function removeDiscountCode(code) {
+    var base = _state.localCart || _state.serverCart;
+    if (!base) return;
+    var codes = (base.discount_codes || []).filter(function(d2) {
+      return d2.code !== code;
+    });
+    setLocalCart(Object.assign({}, base, { discount_codes: codes }));
+  }
+
   // app/drawer-src/src/analytics-events.js
   var ANALYTICS_EVENTS = {
     DRAWER_OPENED: "drawer_opened",
@@ -1688,6 +2441,7 @@
       this._behavior = { auto_open_on_add: true, animation_style: "slide", close_on_overlay_click: true, close_on_esc: true };
     }
     componentDidMount() {
+      this._graphqlCart = isGraphqlCartEnabled();
       var rootEl = document.getElementById("cartmax-root");
       this._lastKnownItemCount = rootEl ? parseInt(rootEl.dataset.initialItemCount || "0", 10) : 0;
       if (rootEl && rootEl.dataset.initialCart) {
@@ -1718,6 +2472,7 @@
         if (!this.state.styled) this.setState({ styled: true });
       }, 5e3);
       this._onCartChanged = (e2) => {
+        if (this._graphqlCart) return;
         if (e2.detail && e2.detail.cart) {
           var cart = this._stabiliseOrder(e2.detail.cart);
           this._currency = cart.currency || this._currency;
@@ -1745,6 +2500,7 @@
         }
       };
       this._onInternalReload = (e2) => {
+        if (this._graphqlCart) return;
         if (e2.detail && e2.detail.cart) {
           var newCart = this._stabiliseOrder(e2.detail.cart);
           if (this._isTransientEmpty(newCart)) return;
@@ -1783,6 +2539,7 @@
         }
       };
       this._onOptimisticUpdate = (e2) => {
+        if (this._graphqlCart) return;
         if (e2.detail && e2.detail.cart) {
           var optimisticCart = this._stabiliseOrder(e2.detail.cart);
           if (this._isTransientEmpty(optimisticCart)) return;
@@ -1804,6 +2561,17 @@
       window.addEventListener("cartmax:internal-reload", this._onInternalReload);
       window.addEventListener("cartmax:optimistic-update", this._onOptimisticUpdate);
       window.addEventListener("cartmax:gift-unavailable", this._onGiftUnavailable);
+      if (this._graphqlCart) {
+        this._unsubGql = subscribe(() => {
+          var c2 = getOptimisticCart();
+          if (c2) {
+            this.setState({ cart: c2, loading: false });
+            this._maybeRunGqlPromo(c2);
+          }
+        });
+        initStore(this.state.cart).catch(() => {
+        });
+      }
       window.__cartmaxReady = true;
       if (window.__cartmaxQueue && window.__cartmaxQueue.length > 0) {
         var lastQueued = window.__cartmaxQueue[window.__cartmaxQueue.length - 1];
@@ -1944,6 +2712,9 @@
       });
     }
     componentWillUnmount() {
+      if (this._unsubGql) this._unsubGql();
+      if (this._openRevealTimer) clearTimeout(this._openRevealTimer);
+      if (this._gqlPromoTimer) clearTimeout(this._gqlPromoTimer);
       window.removeEventListener("cartmax:cart-changed", this._onCartChanged);
       window.removeEventListener("cartmax:eval-result", this._onEvalResult);
       window.removeEventListener("cartmax:internal-reload", this._onInternalReload);
@@ -2263,6 +3034,13 @@
         });
       });
       document.body.style.overflow = "hidden";
+      this._clearThemeScrollLock();
+      if (!this.state.styled) {
+        if (this._openRevealTimer) clearTimeout(this._openRevealTimer);
+        this._openRevealTimer = setTimeout(() => {
+          if (!this.state.styled) this.setState({ styled: true });
+        }, 350);
+      }
       this.announce("Cart opened");
       window.dispatchEvent(new CustomEvent("cartmax:drawer-opened"));
       this._openedAt = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
@@ -2272,6 +3050,67 @@
         item_count: cart ? cart.item_count : null
       });
     }
+    // Strip common theme scroll-lock classes the host theme may have added to
+    // body/html when its (now-suppressed) cart drawer "opened". cartx owns the
+    // cart, so when our drawer opens or closes the page must scroll normally.
+    _clearThemeScrollLock() {
+      var CLASSES = ["overflow-hidden", "no-scroll", "scroll-lock", "cart-drawer-open"];
+      [document.body, document.documentElement].forEach(function(el) {
+        if (!el) return;
+        for (var i2 = 0; i2 < CLASSES.length; i2++) el.classList.remove(CLASSES[i2]);
+      });
+    }
+    // ── GraphQL promo pipeline (Phase D: bar + gift auto-add) ──
+    // The evaluate-cart proxy computes the bar/ribbon/coupons/gifts from whatever
+    // cart we POST it. For the GraphQL path we feed it the mapped GraphQL cart,
+    // render the bar via the existing `eval-result` event, and route its gift
+    // to_add/to_remove through the STORE (not AJAX). Triggered only when the cart
+    // item signature changes (so gift reconciliation converges, no eval loop) and
+    // debounced so rapid edits collapse into one proxy call.
+    _cartSignature(cart) {
+      var items = cart && cart.items || [];
+      return items.map(function(it) {
+        return it.variant_id + ":" + (it.quantity || 0) + ":" + (it.properties ? it.properties._offer_id || "" : "");
+      }).sort().join("|");
+    }
+    _maybeRunGqlPromo(cart) {
+      var sig = this._cartSignature(cart);
+      if (sig === this._lastPromoSig) return;
+      this._lastPromoSig = sig;
+      if (this._gqlPromoTimer) clearTimeout(this._gqlPromoTimer);
+      this._gqlPromoTimer = setTimeout(() => this._runGqlPromo(), 250);
+    }
+    async _runGqlPromo() {
+      var cart = getOptimisticCart();
+      if (!cart) return;
+      try {
+        var result = await callEvaluate(cart);
+        if (!result) return;
+        window.dispatchEvent(new CustomEvent("cartmax:eval-result", {
+          detail: Object.assign({}, result, { _server: true })
+        }));
+        this._reconcileGqlGifts(result, cart);
+      } catch (err) {
+        console.error("[cartx] gql promo eval failed:", err);
+      }
+    }
+    // Add/remove automatic gift lines on the GraphQL cart to match the eval result.
+    // Idempotent: only adds a gift not already present, only removes listed lines.
+    // Each store mutation re-triggers eval; it converges once gifts are settled.
+    _reconcileGqlGifts(result, cart) {
+      (result.to_remove || []).forEach(function(key) {
+        removeLine(key);
+      });
+      var items = cart && cart.items || [];
+      (result.to_add || []).forEach(function(item) {
+        var vid = String(normalizeVariantId(item.variant_id));
+        var offerId = item.properties && item.properties._offer_id;
+        var present = items.some(function(it) {
+          return String(it.variant_id) === vid && it.properties && it.properties._offer_id === offerId;
+        });
+        if (!present) addLine(vid, item.quantity || 1, item.properties || {}, {});
+      });
+    }
     close() {
       if (this._focusCleanup) {
         this._focusCleanup();
@@ -2279,6 +3118,7 @@
       }
       this.setState({ open: false });
       document.body.style.overflow = "";
+      this._clearThemeScrollLock();
       this._closeTimer = setTimeout(() => {
         this.setState({ visible: false });
         this._closeTimer = null;
@@ -2327,6 +3167,11 @@
     // (pendingQty / tombstone fade), so the buffering is invisible to the
     // shopper; it only coalesces the expensive part.
     queueQuantityChange(key, qty) {
+      if (this._graphqlCart) {
+        if (qty <= 0) removeLine(key);
+        else changeQuantity(key, qty);
+        return;
+      }
       var pendingQty = Object.assign({}, this.state.pendingQty);
       pendingQty[key] = qty;
       this.setState({ pendingQty });
@@ -2369,6 +3214,10 @@
     handleRemove(key) {
       var cart = this.state.cart;
       if (!cart || !cart.items) return;
+      if (this._graphqlCart) {
+        removeLine(key);
+        return;
+      }
       var line = cart.items.find(function(i2) {
         return i2.key === key;
       });
@@ -2800,6 +3649,12 @@
     }
     async handleClaimAdd(variantId, claimId) {
       var key = "claim_" + variantId;
+      if (this._graphqlCart) {
+        this.setState({ claimed: Object.assign({}, this.state.claimed, { [key]: true }) });
+        addLine(variantId, 1, { _freebie: "true", _cartmax_claim: "true", _claimed: "true", _offer_id: claimId }, {});
+        tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, { promotion_id: claimId, promotion_type: "claim-gift", variant_id: String(variantId) });
+        return;
+      }
       this._clearClaimError(key);
       this.setState({
         claimed: Object.assign({}, this.state.claimed, { [key]: true }),
@@ -2858,6 +3713,11 @@
     // inventory rejection.
     async handleOfferDisplayAdd(variantId, offerId, quantity) {
       var key = "offer_" + variantId;
+      if (this._graphqlCart) {
+        this.setState({ claimed: Object.assign({}, this.state.claimed, { [key]: true }) });
+        addLine(variantId, quantity || 1, { _freebie: "true", _offer_id: offerId, _acquired_on_page: window.location.pathname }, {});
+        return;
+      }
       this._clearClaimError(key);
       this.setState({
         claimed: Object.assign({}, this.state.claimed, { [key]: true }),
@@ -3053,6 +3913,11 @@
     }
     async handleCouponApply(code) {
       if (!code || !code.trim()) return;
+      if (this._graphqlCart) {
+        applyDiscountCode(code.trim());
+        this.setState({ couponInput: "", couponPanelOpen: false, couponError: null });
+        return;
+      }
       this.setState({ couponLoading: true, couponError: null });
       try {
         var currentCodes = this.getAppliedCodes();
@@ -3106,6 +3971,10 @@
       }
     }
     async handleCouponRemove(codeToRemove) {
+      if (this._graphqlCart) {
+        removeDiscountCode(codeToRemove);
+        return;
+      }
       var snapshot = this.state.cart;
       this.setState({ couponLoading: true });
       if (snapshot) dispatchOptimistic(simulateCouponRemove(snapshot, codeToRemove));
@@ -3257,6 +4126,17 @@
     // Line-level optimistic add. Customer explicitly chose a paid item;
     // out-of-stock is an intuitive failure mode worth the line-blink risk.
     async handleUpsellAdd(variantId, productMeta) {
+      if (this._graphqlCart) {
+        addLine(variantId, 1, {}, {
+          price: Math.round(Number(productMeta && productMeta.price || 0) * 100),
+          title: productMeta && productMeta.title,
+          product_title: productMeta && productMeta.title,
+          variant_title: productMeta && productMeta.variant_title,
+          image: productMeta && productMeta.image
+        });
+        tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, { promotion_type: "upsell", variant_id: String(variantId) });
+        return;
+      }
       var key = "upsell_" + variantId;
       var snapshot = this.state.cart;
       this.setState({ updating: Object.assign({}, this.state.updating, { [key]: true }) });

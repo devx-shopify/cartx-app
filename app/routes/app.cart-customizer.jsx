@@ -10,6 +10,7 @@ import {
   getSelectedTheme,
 } from "../lib/config.server.js";
 import { syncDrawerMetafield } from "../lib/drawer-metafield.server.js";
+import { ensureStorefrontToken } from "../lib/storefront-token.server.js";
 import CartPreview from "../components/CartPreview.jsx";
 
 export const loader = async ({ request }) => {
@@ -20,6 +21,9 @@ export const loader = async ({ request }) => {
   // Backfill the storefront styling metafield for installs that configured the
   // drawer before this metafield existed (best-effort; never blocks the page).
   await syncDrawerMetafield(admin, config.drawer);
+  // Mint the app-owned Storefront access token on first admin visit (GraphQL
+  // cart migration, Phase A). Best-effort; reused once minted.
+  await ensureStorefrontToken(admin, shopId);
   return { drawer: config.drawer, promotionCoupons: config.coupons.filter((c) => c.enabled) };
 };
 

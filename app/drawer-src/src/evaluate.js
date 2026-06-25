@@ -6,6 +6,7 @@
 
 import { internalFetch, fetchCart, cartUpdateAll, getContext, normalizeVariantId, formatMoneyTemplate } from './helpers';
 import { localEvaluate } from './rules';
+import { setStorefrontConfig } from './storefront-cart';
 
 var PROXY_URL = '/apps/cartmax/evaluate-cart';
 
@@ -22,7 +23,7 @@ function isCacheValid() {
 
 // ── Evaluate-cart API ─────────────────────────────────────
 
-async function callEvaluate(cart) {
+export async function callEvaluate(cart) {
   var ctx = getContext();
   if (!ctx.shopId || !ctx.themeId) return null;
   var res = await fetch(PROXY_URL, {
@@ -57,6 +58,15 @@ async function callEvaluate(cart) {
   if (result && result._config) {
     _cachedConfig = result._config;
     _configCacheTime = Date.now();
+    // Configure the Storefront GraphQL cart service with the app-minted token
+    // (Phase A). Harmless when absent; the GraphQL path stays gated by the flag.
+    if (result._config.storefront_token) {
+      setStorefrontConfig({
+        shopDomain: ctx.shopId,
+        token: result._config.storefront_token,
+        apiVersion: result._config.storefront_api_version,
+      });
+    }
   }
   return result;
 }

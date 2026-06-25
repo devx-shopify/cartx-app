@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { EvaluateCartRequestSchema } from "../lib/schemas.js";
 import { checkRateLimit } from "../lib/rate-limit.server.js";
 import { loadConfig } from "../lib/config.server.js";
+import { loadStorefrontToken } from "../lib/storefront-token.server.js";
 import { adjustedTotal, adjustedQty, isFrozenPage, computeTotalSavings } from "../lib/helpers.server.js";
 import { evaluateOffers } from "../lib/evaluate/triggers.server.js";
 import { buildBar, getRibbonFromBar } from "../lib/evaluate/bar.server.js";
@@ -162,6 +163,10 @@ export const action = async ({ request }) => {
     })),
     progress_bar: config.progress_bar,
     money_format: moneyFormat || '',
+    // Storefront GraphQL cart (Phase A): public token (app-minted) + pinned API
+    // version. Null until minted (drawer falls back to AJAX; flag off anyway).
+    storefront_token: await loadStorefrontToken(shopId),
+    storefront_api_version: '2026-01',
   };
 
   return Response.json({
