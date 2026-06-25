@@ -2566,6 +2566,7 @@
           var c2 = getOptimisticCart();
           if (c2) {
             this.setState({ cart: c2, loading: false });
+            updateCartCount(c2.item_count);
             this._maybeRunGqlPromo(c2);
           }
         });
@@ -2965,6 +2966,7 @@
     }
     // ── Cart data ─────────────────────────────────────────────
     async loadCart() {
+      if (this._graphqlCart) return;
       if (!this.state.cart) {
         this.setState({ loading: true });
       }

@@ -418,6 +418,7 @@ export default class CartDrawer extends Component {
         var c = gqlGetCart();
         if (c) {
           this.setState({ cart: c, loading: false });
+          updateCartCount(c.item_count);   // keep the theme bubble in sync with the GraphQL cart
           this._maybeRunGqlPromo(c);
         }
       });
@@ -890,6 +891,10 @@ export default class CartDrawer extends Component {
   // ── Cart data ─────────────────────────────────────────────
 
   async loadCart() {
+    // GraphQL path owns the cart — never refetch /cart.js (the separate AJAX
+    // cart), which would overwrite the store's cart with stale items and mix in
+    // AJAX line keys. The store + its subscription are the source of truth.
+    if (this._graphqlCart) return;
     if (!this.state.cart) {
       this.setState({ loading: true });
     }
