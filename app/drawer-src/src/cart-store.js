@@ -236,11 +236,25 @@ async function runSync() {
       if (d.cart) updatedGql = d.cart;
     }
 
-    // Snap only when settled; if more edits queued, let the next sync snap so
-    // we don't clobber the shopper's in-flight changes.
+    // ALWAYS refresh the in-memory server cart from the mutation result — it's
+    // the authoritative cart, and the NEXT sync diffs against it. If we only did
+    // this on snap, then during rapid edits (where we defer the snap) serverCart
+    // goes stale, the next diff computes wrong removes/adds, and deleted lines
+    // reappear / counts bounce. (This was the bug behind "items come back".)
+    if (updatedGql) {
+      var mapped = mapCart(updatedGql);
+      _state.serverCart = mapped;
+      if (mapped && mapped._gql_cart_id) {
+        _state.cartId = mapped._gql_cart_id;
+        storeCartId(mapped._gql_cart_id);
+      }
+    }
+
+    // Snap the UI (localCart) to the authoritative cart only when settled; if
+    // more edits are queued, keep localCart so we don't clobber in-flight changes.
     var hasMore = completeAndTriggerNext();
     if (!hasMore) {
-      if (updatedGql) snapTo(updatedGql);   // authoritative cart from the mutation
+      if (_state.serverCart) _state.localCart = _state.serverCart;
       _state.loading = false; notify();
     }
   } catch (err) {

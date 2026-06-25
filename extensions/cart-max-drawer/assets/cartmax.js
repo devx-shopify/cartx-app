@@ -2059,9 +2059,17 @@
         var d2 = await cartDiscountCodesUpdate(cartId, codes);
         if (d2.cart) updatedGql = d2.cart;
       }
+      if (updatedGql) {
+        var mapped = mapCart(updatedGql);
+        _state.serverCart = mapped;
+        if (mapped && mapped._gql_cart_id) {
+          _state.cartId = mapped._gql_cart_id;
+          storeCartId(mapped._gql_cart_id);
+        }
+      }
       var hasMore = completeAndTriggerNext();
       if (!hasMore) {
-        if (updatedGql) snapTo(updatedGql);
+        if (_state.serverCart) _state.localCart = _state.serverCart;
         _state.loading = false;
         notify();
       }
