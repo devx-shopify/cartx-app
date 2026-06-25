@@ -4,7 +4,7 @@ import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, upda
 import { fireConfetti, setConfettiLottieUrl } from './confetti';
 import { waitForEvaluate, callEvaluate } from './evaluate';
 import { isGraphqlCartEnabled } from './storefront-cart';
-import { initStore as gqlInitStore, subscribe as gqlSubscribe, getOptimisticCart as gqlGetCart, changeQuantity as gqlChangeQuantity, removeLine as gqlRemoveLine, addLine as gqlAddLine, applyDiscountCode as gqlApplyCoupon, removeDiscountCode as gqlRemoveCoupon } from './cart-store';
+import { initStore as gqlInitStore, subscribe as gqlSubscribe, getOptimisticCart as gqlGetCart, changeQuantity as gqlChangeQuantity, removeLine as gqlRemoveLine, addLine as gqlAddLine, applyDiscountCode as gqlApplyCoupon, removeDiscountCode as gqlRemoveCoupon, whenSettled as gqlWhenSettled } from './cart-store';
 import { tracker } from './tracker';
 import { ANALYTICS_EVENTS } from './analytics-events';
 
@@ -425,6 +425,9 @@ export default class CartDrawer extends Component {
       // Seed inside init so the GraphQL cart never renders empty before its
       // items land (the "item flashes away" glitch).
       gqlInitStore(this.state.cart).catch(() => {});
+      // Phase E: take over the theme's add-to-cart so adds go to the GraphQL
+      // cart (not the separate AJAX cart).
+      this._installAtcTakeover();
     }
 
     window.__cartmaxReady = true;
@@ -611,6 +614,7 @@ export default class CartDrawer extends Component {
 
   componentWillUnmount() {
     if (this._unsubGql) this._unsubGql();
+    if (this._onAtcSubmit) document.removeEventListener('submit', this._onAtcSubmit, true);
     if (this._openRevealTimer) clearTimeout(this._openRevealTimer);
     if (this._gqlPromoTimer) clearTimeout(this._gqlPromoTimer);
     window.removeEventListener('cartmax:cart-changed', this._onCartChanged);
@@ -1004,6 +1008,40 @@ export default class CartDrawer extends Component {
       if (!el) return;
       for (var i = 0; i < CLASSES.length; i++) el.classList.remove(CLASSES[i]);
     });
+  }
+
+  // ── Phase E: theme add-to-cart takeover ──────────────────
+  // Capture-phase submit listener on the theme's ATC forms. The native
+  // /cart/add targets the SEPARATE AJAX cart, so we preventDefault it and route
+  // the add into the GraphQL cart (store.addLine) instead, then open the drawer.
+  // Reads variant id, quantity and line-item properties straight from the form,
+  // so it works without per-theme markup knowledge for standard ATC forms.
+  // (Themes whose ATC is a pure JS button with no form submit need a per-theme
+  // click adapter — a follow-up.)
+  _installAtcTakeover() {
+    this._onAtcSubmit = (e) => {
+      var form = e.target;
+      if (!form || form.nodeName !== 'FORM') return;
+      if ((form.getAttribute('action') || '').indexOf('/cart/add') === -1) return;
+      var fd;
+      try { fd = new FormData(form); } catch (_) { return; }
+      var variantId = fd.get('id');
+      if (!variantId) return;   // not a standard single-variant ATC form — let it through
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+      var qty = parseInt(fd.get('quantity') || '1', 10) || 1;
+      var props = {};
+      fd.forEach(function (val, key) {
+        if (key.indexOf('properties[') === 0 && key.charAt(key.length - 1) === ']') {
+          var pk = key.slice(11, -1);
+          if (pk) props[pk] = val;
+        }
+      });
+      gqlAddLine(variantId, qty, props, {});
+      this.openDrawer();
+    };
+    document.addEventListener('submit', this._onAtcSubmit, true);   // capture, before theme handlers
   }
 
   // ── GraphQL promo pipeline (Phase D: bar + gift auto-add) ──
@@ -2512,9 +2550,23 @@ export default class CartDrawer extends Component {
           </div>
           <a
             class={'cartmax-checkout-btn' + (this.state.checkoutWaiting ? ' cartmax-checkout-waiting' : '')}
-            href="/checkout"
+            href={this._graphqlCart && cart.checkout_url ? cart.checkout_url : '/checkout'}
             onClick={(e) => {
               tracker.persistSessionCookie();
+              // GraphQL path: checkout the canonical Storefront cart via its
+              // checkoutUrl. Wait for the sync to settle first so the server cart
+              // reflects the latest edits, then navigate.
+              if (this._graphqlCart) {
+                e.preventDefault();
+                if (this.state.checkoutWaiting) return;
+                this.setState({ checkoutWaiting: true });
+                gqlWhenSettled().then(() => {
+                  var url = (gqlGetCart() && gqlGetCart().checkout_url) || cart.checkout_url;
+                  this.setState({ checkoutWaiting: false });
+                  if (url) window.location.href = url;
+                });
+                return;
+              }
               var isProcessing = Object.keys(this.state.updating).length > 0;
               if (isProcessing || this.state.checkoutWaiting) {
                 e.preventDefault();

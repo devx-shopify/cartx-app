@@ -182,6 +182,21 @@ async function scheduleSync() {
   await runSync();
 }
 
+// Resolve once no sync is in flight and none is queued — so checkout waits for
+// the server cart to reflect the shopper's latest edits before navigating.
+// Bounded poll so it never hangs.
+export function whenSettled(timeoutMs) {
+  var deadline = timeoutMs || 4000;
+  var start = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
+  return new Promise(function (resolve) {
+    (function check() {
+      var elapsed = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : 0) - start;
+      if ((!_syncing && !_pendingResolve) || elapsed >= deadline) { resolve(); return; }
+      setTimeout(check, 50);
+    })();
+  });
+}
+
 async function runSync() {
   if (!_state.localCart) return;
   _syncing = true;

@@ -2015,6 +2015,20 @@
     await queueSync();
     await runSync();
   }
+  function whenSettled(timeoutMs) {
+    var deadline = timeoutMs || 4e3;
+    var start = typeof performance !== "undefined" && performance.now ? performance.now() : 0;
+    return new Promise(function(resolve) {
+      (function check() {
+        var elapsed = (typeof performance !== "undefined" && performance.now ? performance.now() : 0) - start;
+        if (!_syncing && !_pendingResolve || elapsed >= deadline) {
+          resolve();
+          return;
+        }
+        setTimeout(check, 50);
+      })();
+    });
+  }
   async function runSync() {
     if (!_state.localCart) return;
     _syncing = true;
@@ -2597,6 +2611,7 @@
         });
         initStore(this.state.cart).catch(() => {
         });
+        this._installAtcTakeover();
       }
       window.__cartmaxReady = true;
       if (window.__cartmaxQueue && window.__cartmaxQueue.length > 0) {
@@ -2739,6 +2754,7 @@
     }
     componentWillUnmount() {
       if (this._unsubGql) this._unsubGql();
+      if (this._onAtcSubmit) document.removeEventListener("submit", this._onAtcSubmit, true);
       if (this._openRevealTimer) clearTimeout(this._openRevealTimer);
       if (this._gqlPromoTimer) clearTimeout(this._gqlPromoTimer);
       window.removeEventListener("cartmax:cart-changed", this._onCartChanged);
@@ -3086,6 +3102,43 @@
         if (!el) return;
         for (var i2 = 0; i2 < CLASSES.length; i2++) el.classList.remove(CLASSES[i2]);
       });
+    }
+    // ── Phase E: theme add-to-cart takeover ──────────────────
+    // Capture-phase submit listener on the theme's ATC forms. The native
+    // /cart/add targets the SEPARATE AJAX cart, so we preventDefault it and route
+    // the add into the GraphQL cart (store.addLine) instead, then open the drawer.
+    // Reads variant id, quantity and line-item properties straight from the form,
+    // so it works without per-theme markup knowledge for standard ATC forms.
+    // (Themes whose ATC is a pure JS button with no form submit need a per-theme
+    // click adapter — a follow-up.)
+    _installAtcTakeover() {
+      this._onAtcSubmit = (e2) => {
+        var form = e2.target;
+        if (!form || form.nodeName !== "FORM") return;
+        if ((form.getAttribute("action") || "").indexOf("/cart/add") === -1) return;
+        var fd;
+        try {
+          fd = new FormData(form);
+        } catch (_2) {
+          return;
+        }
+        var variantId = fd.get("id");
+        if (!variantId) return;
+        e2.preventDefault();
+        e2.stopPropagation();
+        if (typeof e2.stopImmediatePropagation === "function") e2.stopImmediatePropagation();
+        var qty = parseInt(fd.get("quantity") || "1", 10) || 1;
+        var props = {};
+        fd.forEach(function(val, key) {
+          if (key.indexOf("properties[") === 0 && key.charAt(key.length - 1) === "]") {
+            var pk = key.slice(11, -1);
+            if (pk) props[pk] = val;
+          }
+        });
+        addLine(variantId, qty, props, {});
+        this.openDrawer();
+      };
+      document.addEventListener("submit", this._onAtcSubmit, true);
     }
     // ── GraphQL promo pipeline (Phase D: bar + gift auto-add) ──
     // The evaluate-cart proxy computes the bar/ribbon/coupons/gifts from whatever
@@ -4278,9 +4331,20 @@
         "a",
         {
           class: "cartmax-checkout-btn" + (this.state.checkoutWaiting ? " cartmax-checkout-waiting" : ""),
-          href: "/checkout",
+          href: this._graphqlCart && cart.checkout_url ? cart.checkout_url : "/checkout",
           onClick: (e2) => {
             tracker.persistSessionCookie();
+            if (this._graphqlCart) {
+              e2.preventDefault();
+              if (this.state.checkoutWaiting) return;
+              this.setState({ checkoutWaiting: true });
+              whenSettled().then(() => {
+                var url = getOptimisticCart() && getOptimisticCart().checkout_url || cart.checkout_url;
+                this.setState({ checkoutWaiting: false });
+                if (url) window.location.href = url;
+              });
+              return;
+            }
             var isProcessing = Object.keys(this.state.updating).length > 0;
             if (isProcessing || this.state.checkoutWaiting) {
               e2.preventDefault();
