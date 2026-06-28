@@ -129,7 +129,9 @@ export async function syncShopSettings(admin, shopDomain) {
 export async function clearEnterpriseStatus(shopDomain) {
   return db.store.update({
     where: { storeDomain: shopDomain },
-    data: { isLegacy: false, legacyPrice: null },
+    // Reset planTier too — otherwise a stale "enterprise" label lingers and the
+    // /enterprise dashboard keeps showing the store as Enterprise after cancel.
+    data: { planTier: "free", isLegacy: false, legacyPrice: null },
   });
 }
 
