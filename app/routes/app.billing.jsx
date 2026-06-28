@@ -521,32 +521,15 @@ export default function BillingPage() {
                             Cancel subscription
                           </s-button>
                         ) : (
-                          <div style={{ textAlign: "center" }}>
+                          <div style={{ textAlign: "center", fontSize: 13, color: "#6d7175" }}>
+                            Email{" "}
                             <a
                               href={`mailto:${enterpriseContactEmail}?subject=${encodeURIComponent("Enterprise plan for my store")}`}
-                              style={{
-                                display: "block",
-                                textAlign: "center",
-                                padding: "10px 16px",
-                                border: "1px solid #c9cccf",
-                                borderRadius: 8,
-                                color: "#1a1a1a",
-                                fontWeight: 600,
-                                fontSize: 14,
-                                textDecoration: "none",
-                              }}
+                              style={{ color: "#2c6ecb", fontWeight: 500 }}
                             >
-                              Contact us to upgrade
+                              {enterpriseContactEmail}
                             </a>
-                            <div style={{ marginTop: 8, fontSize: 12, color: "#6d7175" }}>
-                              Email{" "}
-                              <a
-                                href={`mailto:${enterpriseContactEmail}`}
-                                style={{ color: "#2c6ecb", fontWeight: 500 }}
-                              >
-                                {enterpriseContactEmail}
-                              </a>
-                            </div>
+                            {" "}to upgrade
                           </div>
                         )
                       ) : isCurrent ? (
