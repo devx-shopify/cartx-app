@@ -52,8 +52,7 @@ const STATS = [
   { value: "0 lines", label: "Theme code to write" },
 ];
 
-// Replace this when the App Store listing is live.
-const APP_STORE_URL = "https://apps.shopify.com/";
+const APP_STORE_URL = "https://apps.shopify.com/cartx";
 
 export default function Index() {
   return (
