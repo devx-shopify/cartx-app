@@ -1,3 +1,4 @@
+import { useLoaderData } from "react-router";
 import MarketingShell, { TOKENS, FONT_STACK, HEADING_FONT } from "../components/MarketingShell.jsx";
 
 export const meta = () => [
@@ -6,9 +7,14 @@ export const meta = () => [
 ];
 
 const LAST_UPDATED = "May 25, 2026";
-const CONTACT_EMAIL = "ansh.varshney@devxlabs.ai";
+
+// Single contact address — override via the CARTX_CONTACT_EMAIL Fly secret.
+export const loader = () => ({
+  contactEmail: process.env.CARTX_CONTACT_EMAIL || "ansh.varshney@devxlabs.ai",
+});
 
 export default function Privacy() {
+  const { contactEmail: CONTACT_EMAIL } = useLoaderData();
   return (
     <MarketingShell>
       <article style={{

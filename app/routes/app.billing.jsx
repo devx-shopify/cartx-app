@@ -10,13 +10,14 @@ import {
   cancelSubscription,
   clearEnterpriseStatus,
   PLANS,
+  ENTERPRISE_CONTACT_EMAIL,
 } from "../lib/billing.server.js";
 import VStack from "../components/VStack.jsx";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const planData = await getActivePlan(admin, session.shop);
-  return { planData };
+  return { planData, enterpriseContactEmail: ENTERPRISE_CONTACT_EMAIL };
 };
 
 export const action = async ({ request }) => {
@@ -101,7 +102,6 @@ const CLIENT_PLANS = {
 // Normal stores see a single Pro card (+ an Enterprise contact note). Stores
 // the team has put on Enterprise also see their Enterprise plan and Pro.
 const ANNUAL_DISCOUNT_PCT = 20;
-const ENTERPRISE_EMAIL = "ansh.varshney@devxlabs.ai";
 
 const FEATURE_LIST = [
   { key: "drawer", label: "Cart drawer (progress bar, upsells, coupons)" },
@@ -138,7 +138,7 @@ const PLAN_FEATURES = {
 };
 
 export default function BillingPage() {
-  const { planData } = useLoaderData();
+  const { planData, enterpriseContactEmail } = useLoaderData();
   const fetcher = useFetcher();
   const shopify = useAppBridge();
 
@@ -161,9 +161,9 @@ export default function BillingPage() {
 
   // Approved Enterprise stores (pending-approval returns earlier) see their
   // Enterprise plan as current plus Pro as a downgrade option. Everyone else
-  // sees a single Pro card; Enterprise is contact-sales only (note below).
+  // sees Pro plus a contact-only Enterprise card (no button — email to upgrade).
   const isEnterpriseStore = planData.isLegacy;
-  const planOrder = isEnterpriseStore ? ["enterprise", "pro"] : ["pro"];
+  const planOrder = isEnterpriseStore ? ["enterprise", "pro"] : ["pro", "enterprise"];
 
   useEffect(() => {
     if (!submitting) setActivePlanAction(null);
@@ -310,30 +310,38 @@ export default function BillingPage() {
 
                     <div style={{ marginBottom: 4 }}>
                       {isEnterprise ? (
-                        <>
-                          <span
-                            style={{
-                              fontSize: 32,
-                              fontWeight: 700,
-                              color: "#1a1a1a",
-                            }}
-                          >
-                            {planData.amount > 0
-                              ? `$${planData.amount}`
-                              : "Free"}
-                          </span>
-                          {planData.amount > 0 && (
+                        isEnterpriseStore ? (
+                          <>
                             <span
                               style={{
-                                fontSize: 14,
-                                color: "#6d7175",
-                                marginLeft: 2,
+                                fontSize: 32,
+                                fontWeight: 700,
+                                color: "#1a1a1a",
                               }}
                             >
-                              /mo
+                              {planData.amount > 0
+                                ? `$${planData.amount}`
+                                : "Free"}
                             </span>
-                          )}
-                        </>
+                            {planData.amount > 0 && (
+                              <span
+                                style={{
+                                  fontSize: 14,
+                                  color: "#6d7175",
+                                  marginLeft: 2,
+                                }}
+                              >
+                                /mo
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span
+                            style={{ fontSize: 32, fontWeight: 700, color: "#1a1a1a" }}
+                          >
+                            Custom
+                          </span>
+                        )
                       ) : billingCycle === "annual" ? (
                         <>
                           <span
@@ -499,18 +507,48 @@ export default function BillingPage() {
 
                     <div style={{ marginTop: "auto", paddingTop: 24 }}>
                       {isEnterprise ? (
-                        <s-button
-                          tone="critical"
-                          onClick={handleCancel}
-                          fullWidth
-                          {...(activePlanAction === "free"
-                            ? { loading: true, disabled: true }
-                            : submitting
-                              ? { disabled: true }
-                              : {})}
-                        >
-                          Cancel subscription
-                        </s-button>
+                        isEnterpriseStore ? (
+                          <s-button
+                            tone="critical"
+                            onClick={handleCancel}
+                            fullWidth
+                            {...(activePlanAction === "free"
+                              ? { loading: true, disabled: true }
+                              : submitting
+                                ? { disabled: true }
+                                : {})}
+                          >
+                            Cancel subscription
+                          </s-button>
+                        ) : (
+                          <div style={{ textAlign: "center" }}>
+                            <a
+                              href={`mailto:${enterpriseContactEmail}?subject=${encodeURIComponent("Enterprise plan for my store")}`}
+                              style={{
+                                display: "block",
+                                textAlign: "center",
+                                padding: "10px 16px",
+                                border: "1px solid #c9cccf",
+                                borderRadius: 8,
+                                color: "#1a1a1a",
+                                fontWeight: 600,
+                                fontSize: 14,
+                                textDecoration: "none",
+                              }}
+                            >
+                              Contact us to upgrade
+                            </a>
+                            <div style={{ marginTop: 8, fontSize: 12, color: "#6d7175" }}>
+                              Email{" "}
+                              <a
+                                href={`mailto:${enterpriseContactEmail}`}
+                                style={{ color: "#2c6ecb", fontWeight: 500 }}
+                              >
+                                {enterpriseContactEmail}
+                              </a>
+                            </div>
+                          </div>
+                        )
                       ) : isCurrent ? (
                         billingCycle !== currentCycle ? (
                           <s-button
@@ -566,22 +604,6 @@ export default function BillingPage() {
             })}
           </div>
 
-          {!isEnterpriseStore && (
-            <div
-              style={{ textAlign: "center", fontSize: 13, color: "#6d7175" }}
-            >
-              {`Running a high-volume store? We offer custom `}
-              <strong style={{ color: "#1a1a1a" }}>Enterprise</strong>
-              {` pricing — email `}
-              <a
-                href={`mailto:${ENTERPRISE_EMAIL}`}
-                style={{ color: "#2c6ecb", fontWeight: 500 }}
-              >
-                {ENTERPRISE_EMAIL}
-              </a>
-              {` and we'll set up a custom plan for your store.`}
-            </div>
-          )}
         </VStack>
       </div>
     </s-page>

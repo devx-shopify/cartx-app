@@ -25,7 +25,10 @@ export const PLANS = {
   },
 };
 
-export const ENTERPRISE_CONTACT_EMAIL = "ansh.varshney@devxlabs.ai";
+// Single contact address shown to merchants (Enterprise upgrades, privacy page,
+// etc.). Override via the CARTX_CONTACT_EMAIL Fly secret; falls back to current.
+export const ENTERPRISE_CONTACT_EMAIL =
+  process.env.CARTX_CONTACT_EMAIL || "ansh.varshney@devxlabs.ai";
 
 const INTERVAL_BY_CYCLE = {
   monthly: "EVERY_30_DAYS",
