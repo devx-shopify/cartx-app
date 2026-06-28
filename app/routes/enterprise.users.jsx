@@ -66,6 +66,7 @@ export default function EnterpriseUsers() {
           </div>
           <div style={s.headerRight}>
             <a href="/enterprise" style={s.navLink}>Stores</a>
+            <a href="/enterprise/audit" style={s.navLink}>Activity</a>
             <span style={s.userEmail}>{user.email}</span>
             <Form method="post" action="/enterprise/logout">
               <button type="submit" style={s.linkBtn}>Sign out</button>

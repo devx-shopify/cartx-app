@@ -66,6 +66,19 @@ model AdminUser {
   @@index([email])
 }
 
+// Audit trail for /enterprise admin actions (price changes, reverts, deletes…).
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorEmail  String // which admin performed it
+  action      String // set_enterprise_price | revert_enterprise | delete_store | reset_onboarding
+  storeDomain String?
+  detail      String? // human-readable summary, e.g. "$0 → $200/mo"
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([storeDomain])
+}
+
 model ThemeConfig {
   id        String   @id @default(cuid())
   shopId    String

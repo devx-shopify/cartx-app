@@ -2,6 +2,15 @@ import { useEffect, useState } from "react";
 import { Form, useActionData, useLoaderData, useNavigation } from "react-router";
 import db from "../db.server.js";
 import { requireAdmin } from "../lib/admin-auth.server.js";
+import { logAudit } from "../lib/audit.server.js";
+
+const DEFAULT_ONBOARDING = JSON.stringify({
+  completed: false,
+  steps: { offer_created: false, settings_configured: false, app_enabled: false, previewed: false },
+  selectedThemeId: null,
+});
+
+const priceLabel = (p) => (p === 0 ? "Free" : `$${p}/mo`);
 
 export const loader = async ({ request }) => {
   const user = await requireAdmin(request);
@@ -10,7 +19,7 @@ export const loader = async ({ request }) => {
 };
 
 export const action = async ({ request }) => {
-  await requireAdmin(request);
+  const me = await requireAdmin(request);
   const form = await request.formData();
   const _action = form.get("_action");
   const storeDomain = String(form.get("storeDomain") || "").trim().toLowerCase();
@@ -21,13 +30,18 @@ export const action = async ({ request }) => {
     const price = raw != null && raw !== "" ? parseInt(raw, 10) : 0;
     if (Number.isNaN(price) || price < 0) return { error: "Price must be 0 or higher." };
     const notes = String(form.get("notes") || "").trim() || null;
+    const existing = await db.store.findUnique({ where: { storeDomain }, select: { legacyPrice: true, isLegacy: true } });
     const store = await db.store.upsert({
       where: { storeDomain },
       create: { storeDomain, planTier: "enterprise", billingMethod: "shopify", isLegacy: true, legacyPrice: price, notes },
       update: { planTier: "enterprise", billingMethod: "shopify", isLegacy: true, legacyPrice: price, notes },
     });
-    const label = price === 0 ? "Free" : `$${price}/mo`;
-    return { ok: true, toast: `${store.storeDomain} set to Enterprise · ${label}` };
+    const wasEnterprise = existing?.isLegacy;
+    const detail = wasEnterprise
+      ? `${priceLabel(existing.legacyPrice ?? 0)} → ${priceLabel(price)}`
+      : `set to ${priceLabel(price)}`;
+    await logAudit({ actorEmail: me.email, action: "set_enterprise_price", storeDomain, detail });
+    return { ok: true, toast: `${store.storeDomain} set to Enterprise · ${priceLabel(price)}` };
   }
 
   if (_action === "remove_enterprise") {
@@ -36,12 +50,21 @@ export const action = async ({ request }) => {
       where: { storeDomain },
       data: { planTier: "free", billingMethod: "shopify", isLegacy: false, legacyPrice: null },
     });
+    await logAudit({ actorEmail: me.email, action: "revert_enterprise", storeDomain, detail: "reverted to standard billing" });
     return { ok: true, toast: `${storeDomain} reverted to standard billing.` };
+  }
+
+  if (_action === "reset_onboarding") {
+    if (!storeDomain) return { error: "Store domain is required." };
+    await db.store.update({ where: { storeDomain }, data: { onboarding: DEFAULT_ONBOARDING } });
+    await logAudit({ actorEmail: me.email, action: "reset_onboarding", storeDomain });
+    return { ok: true, toast: `Onboarding reset for ${storeDomain}.` };
   }
 
   if (_action === "delete") {
     if (!storeDomain) return { error: "Store domain is required." };
     await db.store.delete({ where: { storeDomain } }).catch(() => {});
+    await logAudit({ actorEmail: me.email, action: "delete_store", storeDomain });
     return { ok: true, toast: `${storeDomain} removed.` };
   }
 
@@ -88,6 +111,7 @@ export default function EnterpriseDashboard() {
             <span style={s.headerTitle}>Store Management</span>
           </div>
           <div style={s.headerRight}>
+            <a href="/enterprise/audit" style={s.navLink}>Activity</a>
             <a href="/enterprise/users" style={s.navLink}>Admin users</a>
             <span style={s.userEmail}>{user.email}</span>
             <Form method="post" action="/enterprise/logout">
@@ -223,6 +247,8 @@ function StoreForm({ store, busy, onCancel }) {
         />
       </div>
 
+      {isEdit ? <StoreDetail store={store} /> : null}
+
       <div style={s.panelActions}>
         <button type="submit" name="_action" value="upsert_enterprise" disabled={busy} style={s.primaryBtn}>
           {busy ? "Saving…" : isEdit ? "Save changes" : "Add store"}
@@ -231,11 +257,34 @@ function StoreForm({ store, busy, onCancel }) {
         {isEdit ? (
           <>
             <button type="submit" name="_action" value="remove_enterprise" style={s.secondaryBtn}>Revert to standard</button>
+            <button type="submit" name="_action" value="reset_onboarding" style={s.secondaryBtn}>Reset onboarding</button>
             <button type="submit" name="_action" value="delete" style={s.dangerBtn}>Delete store</button>
           </>
         ) : null}
       </div>
     </Form>
+  );
+}
+
+function StoreDetail({ store }) {
+  let onboarding = null;
+  try { onboarding = JSON.parse(store.onboarding || "{}"); } catch (_) { /* ignore */ }
+  const rows = [
+    ["Currency", store.currencyCode || "—"],
+    ["Timezone", store.ianaTimezone || "—"],
+    ["Onboarding", onboarding?.completed ? "Completed" : "In progress"],
+    ["Created", new Date(store.createdAt).toLocaleString()],
+    ["Updated", new Date(store.updatedAt).toLocaleString()],
+  ];
+  return (
+    <div style={s.detail}>
+      {rows.map(([k, v]) => (
+        <div key={k} style={s.detailRow}>
+          <span style={s.detailKey}>{k}</span>
+          <span style={s.detailVal}>{v}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -279,6 +328,10 @@ const s = {
   finput: { padding: "10px 12px", border: "1px solid #c9cccf", borderRadius: 8, fontSize: 14, fontFamily: "inherit" },
   readonly: { background: "#f6f6f7", color: "#6b7280" },
   panelActions: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 },
+  detail: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8, padding: "12px 0", borderTop: "1px solid #f0f0f0" },
+  detailRow: { display: "flex", flexDirection: "column", gap: 2 },
+  detailKey: { fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.3 },
+  detailVal: { fontSize: 13, color: "#1a1a1a", fontWeight: 500 },
   tableWrap: { background: "#fff", border: "1px solid #e3e3e3", borderRadius: 12, overflow: "hidden" },
   table: { width: "100%", borderCollapse: "collapse", fontSize: 14 },
   th: { textAlign: "left", padding: "12px 16px", fontSize: 12, fontWeight: 600, color: "#6b7280", borderBottom: "1px solid #e3e3e3", textTransform: "uppercase", letterSpacing: 0.3 },
