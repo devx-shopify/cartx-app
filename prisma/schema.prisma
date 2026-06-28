@@ -50,6 +50,19 @@ model Store {
   @@index([storeDomain])
 }
 
+// Internal team members who can sign into the standalone /enterprise dashboard
+// (email + password, separate from Shopify admin auth).
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([email])
+}
+
 model ThemeConfig {
   id        String   @id @default(cuid())
   shopId    String
