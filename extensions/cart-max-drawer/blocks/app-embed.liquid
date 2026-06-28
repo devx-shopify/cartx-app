@@ -63,6 +63,29 @@
   (function() {
     'use strict';
 
+    // ── Early public-API stub ─────────────────────────────────
+    // Partner apps integrate by calling window.cartx.addItem(...) (see
+    // docs/partner-cart-integration.md). This inline script runs before the
+    // drawer bundle mounts, so we expose a stub that BUFFERS calls onto _q and
+    // the real CartDrawer flushes them on mount. open/toggle set the existing
+    // open-intent flag the click handler below already honors.
+    if (!window.cartx) {
+      var _cartxQueue = [];
+      window.cartx = {
+        _q: _cartxQueue,
+        _stub: true,
+        addItem: function () {
+          _cartxQueue.push(['addItem', [].slice.call(arguments)]);
+          return Promise.resolve();
+        },
+        open: function () { window.__cartmaxOpenIntent = true; },
+        toggle: function () { window.__cartmaxOpenIntent = true; },
+        close: function () {},
+        refresh: function () {},
+        isOpen: function () { return false; },
+      };
+    }
+
     // Match both /cart/add.js AND /cart/add (Dawn uses the non-.js form)
     var CART_PATTERNS = ['/cart/add', '/cart/update', '/cart/change', '/cart/clear'];
 

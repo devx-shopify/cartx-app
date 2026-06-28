@@ -834,6 +834,46 @@ function ContentTab({ s, update }) {
 
       <s-section heading="Checkout" description="Customize the checkout footer bar and savings ribbon.">
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <SegmentedControl
+            label="Checkout type"
+            options={[
+              { value: "native", label: "Native (Shopify)" },
+              { value: "custom", label: "Custom checkout" },
+            ]}
+            value={s.checkout?.mode || "native"}
+            onChange={(v) => update("checkout.mode", v)}
+          />
+          {s.checkout?.mode === "custom" && (
+            <>
+              <SegmentedControl
+                label="Checkout provider"
+                options={[
+                  { value: "gokwik", label: "GoKwik" },
+                ]}
+                value={s.checkout?.provider || "gokwik"}
+                onChange={(v) => update("checkout.provider", v)}
+              />
+              {(s.checkout?.provider || "gokwik") === "gokwik" && (
+                <>
+                  <s-text-field
+                    label="GoKwik merchant ID (mid)"
+                    details="From your GoKwik onboarding. Required for GoKwik checkout to open."
+                    value={s.checkout?.gokwik?.mid || ""}
+                    onInput={(e) => update("checkout.gokwik.mid", e.target.value)}
+                  />
+                  <SegmentedControl
+                    label="GoKwik environment"
+                    options={[
+                      { value: "production", label: "Production" },
+                      { value: "sandbox", label: "Sandbox" },
+                    ]}
+                    value={s.checkout?.gokwik?.environment || "production"}
+                    onChange={(v) => update("checkout.gokwik.environment", v)}
+                  />
+                </>
+              )}
+            </>
+          )}
           <s-text-field
             label="Checkout message"
             details="Shown between two lock icons below the checkout button. Leave empty to hide."

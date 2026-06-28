@@ -7,6 +7,7 @@ import { isGraphqlCartEnabled } from './storefront-cart';
 import { initStore as gqlInitStore, subscribe as gqlSubscribe, getOptimisticCart as gqlGetCart, changeQuantity as gqlChangeQuantity, removeLine as gqlRemoveLine, addLine as gqlAddLine, applyDiscountCode as gqlApplyCoupon, removeDiscountCode as gqlRemoveCoupon, whenSettled as gqlWhenSettled } from './cart-store';
 import { tracker } from './tracker';
 import { ANALYTICS_EVENTS } from './analytics-events';
+import { CHECKOUT_PROVIDERS } from './checkout-providers';
 
 // ── Timing constants ────────────────────────────────────────
 
@@ -229,6 +230,7 @@ export default class CartDrawer extends Component {
     this._shape = { button_style: 'solid' };
     this._sections = { show_progress_bar: true, show_claim_gifts: true, show_offer_cards: true, show_coupons: true, show_upsells: true, show_ribbon: true };
     this._behavior = { auto_open_on_add: true, animation_style: 'slide', close_on_overlay_click: true, close_on_esc: true };
+    this._checkout = { mode: 'native', provider: 'gokwik', gokwik: { mid: '', environment: 'production' } };
   }
 
   componentDidMount() {
@@ -483,7 +485,15 @@ export default class CartDrawer extends Component {
       : null;
 
     // ── Public API for third-party apps ──────────────────
+    // Cooperative integration contract: partner apps call window.cartx.addItem()
+    // (or dispatch a `cartx:add` CustomEvent) instead of POSTing /cart/add
+    // themselves. We route the add into whichever cart is canonical (AJAX or the
+    // GraphQL store), so the partner never needs to know our cart engine.
+    // See docs/partner-cart-integration.md.
     var self = this;
+    // Preserve any addItem/open calls the partner made before we mounted — the
+    // early stub in app-embed.liquid buffers them on window.cartx._q.
+    var pendingQueue = (window.cartx && window.cartx._q) || [];
     window.cartx = {
       open: function () {
         // Adopt the trigger captured by the inline click handler so focus
@@ -496,7 +506,19 @@ export default class CartDrawer extends Component {
       toggle: function () { self.state.open ? self.close() : (self.loadCart(), self.openDrawer()); },
       refresh: function () { self.loadCart(); window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: {} })); },
       isOpen: function () { return self.state.open; },
+      addItem: function (payload) { return self.addItemPublic(payload); },
     };
+    // Listen for the decoupled event contract too (no load-order dependency).
+    this._onPublicAdd = function (e) { self.addItemPublic((e && e.detail) || {}); };
+    window.addEventListener('cartx:add', this._onPublicAdd);
+    // Flush anything buffered by the pre-mount stub.
+    pendingQueue.forEach(function (entry) {
+      var method = entry[0];
+      var args = entry[1] || [];
+      if (window.cartx && typeof window.cartx[method] === 'function') {
+        try { window.cartx[method].apply(window.cartx, args); } catch (_) { /* ignore */ }
+      }
+    });
 
     // Cart icon selectors — broadened to cover Dawn, Refresh, Sense, Origin,
     // Horizon, and other modern Shopify themes that wrap the icon in a
@@ -615,6 +637,7 @@ export default class CartDrawer extends Component {
   componentWillUnmount() {
     if (this._unsubGql) this._unsubGql();
     if (this._onAtcSubmit) document.removeEventListener('submit', this._onAtcSubmit, true);
+    if (this._onPublicAdd) window.removeEventListener('cartx:add', this._onPublicAdd);
     if (this._openRevealTimer) clearTimeout(this._openRevealTimer);
     if (this._gqlPromoTimer) clearTimeout(this._gqlPromoTimer);
     window.removeEventListener('cartmax:cart-changed', this._onCartChanged);
@@ -743,6 +766,15 @@ export default class CartDrawer extends Component {
       close_on_esc: beh.close_on_esc !== false,
     };
     this._confettiEnabled = beh.confetti !== false;
+    var ck = drawer.checkout || {};
+    this._checkout = {
+      mode: ck.mode === 'custom' ? 'custom' : 'native',
+      provider: ck.provider || 'gokwik',
+      gokwik: {
+        mid: (ck.gokwik && ck.gokwik.mid) || '',
+        environment: (ck.gokwik && ck.gokwik.environment === 'sandbox') ? 'sandbox' : 'production',
+      },
+    };
     this._injectCustomCSS(drawer.advanced && drawer.advanced.custom_css);
     this._loadCustomFont(drawer.typography);
   }
@@ -1042,6 +1074,79 @@ export default class CartDrawer extends Component {
       this.openDrawer();
     };
     document.addEventListener('submit', this._onAtcSubmit, true);   // capture, before theme handlers
+  }
+
+  // Public add entry point — used by window.cartx.addItem() and the `cartx:add`
+  // event. Partner apps call this so their add lands in cartx's cart regardless
+  // of which engine (AJAX or GraphQL store) is canonical. Returns a Promise.
+  // payload: { id|variant_id, quantity, properties, source?, open? }
+  addItemPublic(payload) {
+    payload = payload || {};
+    var id = payload.id || payload.variant_id || payload.variantId;
+    if (!id) {
+      console.warn('[cartx] addItem: missing variant id', payload);
+      return Promise.reject(new Error('cartx.addItem: missing variant id'));
+    }
+    id = String(normalizeVariantId(id));
+    var qty = parseInt(payload.quantity != null ? payload.quantity : payload.qty, 10) || 1;
+    var props = payload.properties || {};
+    if (payload.source) {
+      props = Object.assign({}, props);
+      props._cartx_source = String(payload.source);   // optional attribution
+    }
+    var self = this;
+    var shouldOpen = payload.open != null
+      ? !!payload.open
+      : (this._behavior && this._behavior.auto_open_on_add !== false);
+
+    if (this._graphqlCart) {
+      gqlAddLine(id, qty, props, {});
+      if (shouldOpen) this.openDrawer();
+      return gqlWhenSettled ? gqlWhenSettled() : Promise.resolve();
+    }
+    return internalFetch('/cart/add.js', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: id, quantity: qty, properties: props }),
+    }).then(function (r) { return r.json(); }).then(function (line) {
+      self.loadCart();
+      if (shouldOpen) self.openDrawer();
+      window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: { source: 'api' } }));
+      return line;
+    });
+  }
+
+  // Custom checkout. When the merchant selects "Custom", hand off to the chosen
+  // provider PRESET (cartx-shipped open-logic in checkout-providers.js) using the
+  // brand's config. Falls back to a per-store window.cartxCheckout / cartx:checkout
+  // hook (escape hatch for providers without a preset). Returns true if a handler
+  // took over; false (so the caller navigates to native /checkout) otherwise.
+  _triggerCustomCheckout(cart) {
+    var ck = this._checkout || {};
+    // 1. Built-in provider preset + per-brand config.
+    var preset = ck.provider && CHECKOUT_PROVIDERS[ck.provider];
+    if (preset) {
+      var cfg = ck[ck.provider] || {};
+      try {
+        if (preset(cfg, cart)) return true;
+      } catch (err) {
+        console.error('[cartx] checkout provider "' + ck.provider + '" failed:', err);
+      }
+    }
+    // 2. Escape hatch: a per-store hook (no preset / bespoke provider).
+    try {
+      if (typeof window.cartxCheckout === 'function') {
+        window.cartxCheckout(cart);
+        return true;
+      }
+      var ev = new CustomEvent('cartx:checkout', { detail: { cart: cart, handled: false }, cancelable: true });
+      var dispatched = window.dispatchEvent(ev);
+      if (!dispatched || ev.detail.handled) return true;   // preventDefault() or handled=true
+    } catch (err) {
+      console.error('[cartx] custom checkout hook failed:', err);
+    }
+    console.warn('[cartx] Custom checkout selected but no provider preset matched and no window.cartxCheckout handler — falling back to native checkout.');
+    return false;
   }
 
   // ── GraphQL promo pipeline (Phase D: bar + gift auto-add) ──
@@ -2553,6 +2658,25 @@ export default class CartDrawer extends Component {
             href={this._graphqlCart && cart.checkout_url ? cart.checkout_url : '/checkout'}
             onClick={(e) => {
               tracker.persistSessionCookie();
+              // Custom checkout: hand off to the per-store provider snippet
+              // (window.cartxCheckout / cartx:checkout) instead of navigating. We
+              // settle the cart first so the snippet sees the latest cart, then
+              // fire the hook. If nothing is wired up, fall back to native.
+              if (this._checkout && this._checkout.mode === 'custom') {
+                e.preventDefault();
+                if (this.state.checkoutWaiting) return;
+                this.setState({ checkoutWaiting: true });
+                var settle = this._graphqlCart ? gqlWhenSettled() : waitForEvaluate();
+                settle.then(() => {
+                  this.setState({ checkoutWaiting: false });
+                  if (this._triggerCustomCheckout(this.state.cart || cart)) return;   // handler took over
+                  var fallback = this._graphqlCart
+                    ? ((gqlGetCart() && gqlGetCart().checkout_url) || cart.checkout_url)
+                    : null;
+                  window.location.href = fallback || '/checkout';
+                });
+                return;
+              }
               // GraphQL path: checkout the canonical Storefront cart via its
               // checkoutUrl. Wait for the sync to settle first so the server cart
               // reflects the latest edits, then navigate.
