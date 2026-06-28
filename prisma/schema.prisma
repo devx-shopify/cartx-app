@@ -53,12 +53,15 @@ model Store {
 // Internal team members who can sign into the standalone /enterprise dashboard
 // (email + password, separate from Shopify admin auth).
 model AdminUser {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  name         String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             String    @id @default(cuid())
+  email          String    @unique
+  passwordHash   String
+  name           String?
+  failedAttempts Int       @default(0) // consecutive failed logins (reset on success)
+  lockedUntil    DateTime? // set after too many failures; login blocked until then
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([email])
 }

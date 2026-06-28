@@ -88,6 +88,7 @@ export default function EnterpriseDashboard() {
             <span style={s.headerTitle}>Store Management</span>
           </div>
           <div style={s.headerRight}>
+            <a href="/enterprise/users" style={s.navLink}>Admin users</a>
             <span style={s.userEmail}>{user.email}</span>
             <Form method="post" action="/enterprise/logout">
               <button type="submit" style={s.linkBtn}>Sign out</button>
@@ -257,7 +258,8 @@ const s = {
   header: { display: "flex", alignItems: "center", justifyContent: "space-between" },
   brand: { fontFamily: "'Instrument Serif', serif", fontSize: 28, color: "#1a1a1a", marginRight: 12 },
   headerTitle: { fontSize: 15, fontWeight: 600, color: "#42474c" },
-  headerRight: { display: "flex", alignItems: "center", gap: 12 },
+  headerRight: { display: "flex", alignItems: "center", gap: 16 },
+  navLink: { fontSize: 13, fontWeight: 500, color: "#2c6ecb", textDecoration: "none" },
   userEmail: { fontSize: 13, color: "#6b7280" },
   toastOk: { background: "#eafaf0", border: "1px solid #aee4c4", color: "#136c39", padding: "10px 14px", borderRadius: 8, fontSize: 13 },
   toastErr: { background: "#fdecec", border: "1px solid #f5c2c2", color: "#b42318", padding: "10px 14px", borderRadius: 8, fontSize: 13 },

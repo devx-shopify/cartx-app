@@ -9,7 +9,14 @@ export const loader = async ({ request }) => {
 
 export const action = async ({ request }) => {
   const form = await request.formData();
-  const user = await login(form.get("email"), form.get("password"));
+  const { user, lockedUntil } = await login(form.get("email"), form.get("password"));
+  if (lockedUntil) {
+    const mins = Math.max(
+      1,
+      Math.ceil((new Date(lockedUntil).getTime() - Date.now()) / 60000),
+    );
+    return { error: `Too many failed attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.` };
+  }
   if (!user) return { error: "Invalid email or password." };
   return createUserSession(user.id, "/enterprise");
 };
