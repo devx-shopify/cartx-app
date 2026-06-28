@@ -159,11 +159,11 @@ export default function BillingPage() {
   // immediately obvious what they're paying for.
   const [billingCycle, setBillingCycle] = useState(currentCycle);
 
-  // Approved Enterprise stores (pending-approval returns earlier) see their
-  // Enterprise plan as current plus Pro as a downgrade option. Everyone else
-  // sees Pro plus a contact-only Enterprise card (no button — email to upgrade).
+  // Pro is always first, Enterprise always second — regardless of plan/amount.
+  // For enterprise stores the Enterprise card shows their cartx-set price + a
+  // cancel option; for everyone else it's a contact-only card (email to upgrade).
   const isEnterpriseStore = planData.isLegacy;
-  const planOrder = isEnterpriseStore ? ["enterprise", "pro"] : ["pro", "enterprise"];
+  const planOrder = ["pro", "enterprise"];
 
   useEffect(() => {
     if (!submitting) setActivePlanAction(null);
