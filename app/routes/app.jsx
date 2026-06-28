@@ -38,9 +38,6 @@ export const loader = async ({ request }) => {
     // Default to free if billing query fails
   }
 
-  // eslint-disable-next-line no-undef
-  const isAdmin = shopId === process.env.ADMIN_SHOP;
-
   return {
     // eslint-disable-next-line no-undef
     apiKey: process.env.SHOPIFY_API_KEY || "",
@@ -48,7 +45,6 @@ export const loader = async ({ request }) => {
     activeThemeId,
     mainThemeId: mainTheme?.id || "default",
     planData,
-    isAdmin,
   };
 };
 
@@ -306,7 +302,7 @@ export function ThemeSwitcher({ themes, activeThemeId, mainThemeId }) {
 }
 
 export default function App() {
-  const { apiKey, themes, activeThemeId, mainThemeId, planData, isAdmin } = useLoaderData();
+  const { apiKey, themes, activeThemeId, mainThemeId, planData } = useLoaderData();
 
   return (
     <AppProvider embedded apiKey={apiKey}>
@@ -317,7 +313,6 @@ export default function App() {
         <s-link href="/app/analytics">Analytics</s-link>
         <s-link href="/app/settings">Settings</s-link>
         <s-link href="/app/billing">Plans</s-link>
-        {isAdmin && <s-link href="/app/internal">Admin</s-link>}
       </s-app-nav>
       <Outlet context={{ themes, activeThemeId, mainThemeId, planData }} />
     </AppProvider>
