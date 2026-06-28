@@ -111,39 +111,49 @@
     // Flag for cartx's own API calls — skip interception for these
     window.__cartmaxInternal = false;
 
-    // Patch window.fetch
     var originalFetch = window.fetch;
-    var _cartmaxFetching = false;
 
+    // Coalesced cart refresh. After ANY external cart mutation we re-fetch
+    // /cart.js and broadcast `cartmax:cart-changed` with the latest state.
+    // Overlapping mutations are NEVER dropped: if a refresh is already running,
+    // we flag a trailing one so the FINAL cart is always dispatched. (The old
+    // single-flight `_cartmaxFetching` guard SKIPPED any cart op that overlapped
+    // an in-flight refetch — on busy stores with multiple apps + a theme that
+    // fires several cart calls per add, that silently swallowed the first add,
+    // so the drawer didn't open and the progress bar didn't update until the
+    // next interaction.)
+    var _refreshing = false;
+    var _refreshQueued = false;
+    function refreshCart(srcUrl) {
+      if (_refreshing) { _refreshQueued = true; return; }
+      _refreshing = true;
+      originalFetch.call(window, '/cart.js')
+        .then(function(r) { return r.json(); })
+        .then(function(cart) {
+          try { console.log('[cx-diag]', (performance.now()|0) + 'ms', 'dispatch cart-changed count=', cart.item_count, 'ready=', !!window.__cartmaxReady, 'src=', srcUrl); } catch (_) {}
+          window.dispatchEvent(new CustomEvent('cartmax:cart-changed', {
+            detail: { source: 'intercept', url: srcUrl, cart: cart }
+          }));
+        })
+        .catch(function(err) { console.error('[CartMax] cart refresh failed:', err); })
+        .finally(function() {
+          _refreshing = false;
+          if (_refreshQueued) { _refreshQueued = false; refreshCart(srcUrl); }
+        });
+    }
+
+    // Patch window.fetch — observe external cart mutations, then refresh.
     window.fetch = function() {
       var url = extractUrl(arguments[0]);
-      // Don't intercept our own calls (internal cart ops or /cart.js refetch)
-      if (_cartmaxFetching || window.__cartmaxInternal) {
-        return originalFetch.apply(this, arguments);
+      var ret = originalFetch.apply(this, arguments);
+      if (!window.__cartmaxInternal && isCartEndpoint(url)) {
+        try { console.log('[cx-diag]', (performance.now()|0) + 'ms', 'intercept(fetch)', url, 'ready=', !!window.__cartmaxReady); } catch (_) {}
+        ret.then(function() { refreshCart(url); }).catch(function() {});
       }
-      if (isCartEndpoint(url)) {
-        console.log('[CartMax] Intercepted fetch:', url);
-        return originalFetch.apply(this, arguments).then(function(response) {
-          _cartmaxFetching = true;
-          originalFetch.call(window, '/cart.js').then(function(r) {
-            return r.json();
-          }).then(function(cart) {
-            console.log('[CartMax] Dispatching cart-changed event', cart);
-            window.dispatchEvent(new CustomEvent('cartmax:cart-changed', {
-              detail: { source: 'fetch', url: url, cart: cart }
-            }));
-          }).catch(function(err) {
-            console.error('[CartMax] Error fetching cart:', err);
-          }).finally(function() {
-            _cartmaxFetching = false;
-          });
-          return response;
-        });
-      }
-      return originalFetch.apply(this, arguments);
+      return ret;
     };
 
-    // Patch XMLHttpRequest
+    // Patch XMLHttpRequest — same coalesced refresh on load.
     var originalXHROpen = XMLHttpRequest.prototype.open;
     var originalXHRSend = XMLHttpRequest.prototype.send;
 
@@ -155,17 +165,8 @@
     XMLHttpRequest.prototype.send = function() {
       var xhr = this;
       if (xhr._cartmaxUrl && isCartEndpoint(xhr._cartmaxUrl) && !window.__cartmaxInternal) {
-        console.log('[CartMax] Intercepted XHR:', xhr._cartmaxUrl);
-        xhr.addEventListener('load', function() {
-          // Fetch fresh cart state
-          originalFetch.call(window, '/cart.js').then(function(r) {
-            return r.json();
-          }).then(function(cart) {
-            window.dispatchEvent(new CustomEvent('cartmax:cart-changed', {
-              detail: { source: 'xhr', url: xhr._cartmaxUrl, cart: cart }
-            }));
-          }).catch(function() {});
-        });
+        try { console.log('[cx-diag]', (performance.now()|0) + 'ms', 'intercept(xhr)', xhr._cartmaxUrl, 'ready=', !!window.__cartmaxReady); } catch (_) {}
+        xhr.addEventListener('load', function() { refreshCart(xhr._cartmaxUrl); });
       }
       return originalXHRSend.apply(this, arguments);
     };
@@ -174,6 +175,7 @@
     window.__cartmaxQueue = [];
     window.addEventListener('cartmax:cart-changed', function(e) {
       if (!window.__cartmaxReady) {
+        try { console.log('[cx-diag]', (performance.now()|0) + 'ms', 'BUFFERED cart-changed count=', e.detail && e.detail.cart && e.detail.cart.item_count); } catch (_) {}
         window.__cartmaxQueue.push(e);
       }
     });

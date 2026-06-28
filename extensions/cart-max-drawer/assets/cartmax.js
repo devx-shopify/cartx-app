@@ -2365,36 +2365,6 @@
     }
   };
 
-  // app/drawer-src/src/checkout-providers.js
-  var CHECKOUT_PROVIDERS = {
-    // GoKwik 1-click. Reads the native Shopify cart server-side (via the cart
-    // token), so we pass identity only — never line items.
-    gokwik: function(config, cart) {
-      var sdk = window.gokwikSdk;
-      if (!sdk || typeof sdk.initCheckout !== "function") {
-        console.warn("[cartx] GoKwik SDK (window.gokwikSdk) unavailable \u2014 falling back to native checkout.");
-        return false;
-      }
-      if (!config || !config.mid) {
-        console.warn("[cartx] GoKwik merchant id (mid) not configured \u2014 falling back to native checkout.");
-        return false;
-      }
-      try {
-        sdk.initCheckout({
-          environment: config.environment || "production",
-          type: "merchantInfo",
-          mid: config.mid,
-          merchantParams: {}
-          // GoKwik resolves the cart server-side via the Shopify cart token
-        });
-        return true;
-      } catch (err) {
-        console.error("[cartx] GoKwik initCheckout failed:", err);
-        return false;
-      }
-    }
-  };
-
   // app/drawer-src/src/CartDrawer.jsx
   var CLOSE_DELAY = 250;
   var DEBOUNCE_DELAY = 300;
@@ -2508,9 +2478,12 @@
       this._shape = { button_style: "solid" };
       this._sections = { show_progress_bar: true, show_claim_gifts: true, show_offer_cards: true, show_coupons: true, show_upsells: true, show_ribbon: true };
       this._behavior = { auto_open_on_add: true, animation_style: "slide", close_on_overlay_click: true, close_on_esc: true };
-      this._checkout = { mode: "native", provider: "gokwik", gokwik: { mid: "", environment: "production" } };
     }
     componentDidMount() {
+      try {
+        console.log("[cx-diag]", (performance.now() | 0) + "ms", "drawer mount start");
+      } catch (_2) {
+      }
       this._graphqlCart = isGraphqlCartEnabled();
       var rootEl = document.getElementById("cartmax-root");
       this._lastKnownItemCount = rootEl ? parseInt(rootEl.dataset.initialItemCount || "0", 10) : 0;
@@ -2545,6 +2518,10 @@
         if (this._graphqlCart) return;
         if (e2.detail && e2.detail.cart) {
           var cart = this._stabiliseOrder(e2.detail.cart);
+          try {
+            console.log("[cx-diag]", (performance.now() | 0) + "ms", "_onCartChanged count=", cart.item_count, "lastKnown=", this._lastKnownItemCount, "autoOpen=", this._behavior.auto_open_on_add, "willOpen=", !!(this._behavior.auto_open_on_add && cart.item_count > this._lastKnownItemCount), "src=", e2.detail.source);
+          } catch (_2) {
+          }
           this._currency = cart.currency || this._currency;
           this.setState({ cart, loading: false });
           updateCartCount(cart.item_count);
@@ -2645,14 +2622,23 @@
         this._installAtcTakeover();
       }
       window.__cartmaxReady = true;
-      if (window.__cartmaxQueue && window.__cartmaxQueue.length > 0) {
-        var lastQueued = window.__cartmaxQueue[window.__cartmaxQueue.length - 1];
-        var queuedCount = lastQueued.detail && lastQueued.detail.cart ? lastQueued.detail.cart.item_count : null;
-        this.loadCart();
-        if (queuedCount === null || queuedCount > this._lastKnownItemCount) {
-          this.openDrawer();
+      var queued = (window.__cartmaxQueue || []).slice();
+      window.__cartmaxQueue = [];
+      var lastWithCart = null;
+      for (var qi = queued.length - 1; qi >= 0; qi--) {
+        if (queued[qi] && queued[qi].detail && queued[qi].detail.cart) {
+          lastWithCart = queued[qi];
+          break;
         }
-        window.__cartmaxQueue = [];
+      }
+      try {
+        console.log("[cx-diag]", (performance.now() | 0) + "ms", "flush: ready set, queued=", queued.length, "lastWithCartCount=", lastWithCart && lastWithCart.detail.cart.item_count, "openIntent=", window.__cartmaxOpenIntent);
+      } catch (_2) {
+      }
+      if (lastWithCart) {
+        window.dispatchEvent(new CustomEvent("cartmax:cart-changed", { detail: lastWithCart.detail }));
+      } else if (queued.length > 0) {
+        this.loadCart();
       } else if (window.__cartmaxOpenIntent) {
         window.__cartmaxOpenIntent = false;
         if (window.__cartmaxTrigger) this._triggerElement = window.__cartmaxTrigger;
@@ -2932,15 +2918,6 @@
         close_on_esc: beh.close_on_esc !== false
       };
       this._confettiEnabled = beh.confetti !== false;
-      var ck = drawer.checkout || {};
-      this._checkout = {
-        mode: ck.mode === "custom" ? "custom" : "native",
-        provider: ck.provider || "gokwik",
-        gokwik: {
-          mid: ck.gokwik && ck.gokwik.mid || "",
-          environment: ck.gokwik && ck.gokwik.environment === "sandbox" ? "sandbox" : "production"
-        }
-      };
       this._injectCustomCSS(drawer.advanced && drawer.advanced.custom_css);
       this._loadCustomFont(drawer.typography);
     }
@@ -3236,36 +3213,6 @@
         window.dispatchEvent(new CustomEvent("cartmax:cart-changed", { detail: { source: "api" } }));
         return line;
       });
-    }
-    // Custom checkout. When the merchant selects "Custom", hand off to the chosen
-    // provider PRESET (cartx-shipped open-logic in checkout-providers.js) using the
-    // brand's config. Falls back to a per-store window.cartxCheckout / cartx:checkout
-    // hook (escape hatch for providers without a preset). Returns true if a handler
-    // took over; false (so the caller navigates to native /checkout) otherwise.
-    _triggerCustomCheckout(cart) {
-      var ck = this._checkout || {};
-      var preset = ck.provider && CHECKOUT_PROVIDERS[ck.provider];
-      if (preset) {
-        var cfg = ck[ck.provider] || {};
-        try {
-          if (preset(cfg, cart)) return true;
-        } catch (err) {
-          console.error('[cartx] checkout provider "' + ck.provider + '" failed:', err);
-        }
-      }
-      try {
-        if (typeof window.cartxCheckout === "function") {
-          window.cartxCheckout(cart);
-          return true;
-        }
-        var ev = new CustomEvent("cartx:checkout", { detail: { cart, handled: false }, cancelable: true });
-        var dispatched = window.dispatchEvent(ev);
-        if (!dispatched || ev.detail.handled) return true;
-      } catch (err) {
-        console.error("[cartx] custom checkout hook failed:", err);
-      }
-      console.warn("[cartx] Custom checkout selected but no provider preset matched and no window.cartxCheckout handler \u2014 falling back to native checkout.");
-      return false;
     }
     // ── GraphQL promo pipeline (Phase D: bar + gift auto-add) ──
     // The evaluate-cart proxy computes the bar/ribbon/coupons/gifts from whatever
@@ -4461,19 +4408,6 @@
           href: this._graphqlCart && cart.checkout_url ? cart.checkout_url : "/checkout",
           onClick: (e2) => {
             tracker.persistSessionCookie();
-            if (this._checkout && this._checkout.mode === "custom") {
-              e2.preventDefault();
-              if (this.state.checkoutWaiting) return;
-              this.setState({ checkoutWaiting: true });
-              var settle = this._graphqlCart ? whenSettled() : waitForEvaluate();
-              settle.then(() => {
-                this.setState({ checkoutWaiting: false });
-                if (this._triggerCustomCheckout(this.state.cart || cart)) return;
-                var fallback = this._graphqlCart ? getOptimisticCart() && getOptimisticCart().checkout_url || cart.checkout_url : null;
-                window.location.href = fallback || "/checkout";
-              });
-              return;
-            }
             if (this._graphqlCart) {
               e2.preventDefault();
               if (this.state.checkoutWaiting) return;

@@ -108,16 +108,6 @@ export const DEFAULT_CONFIG = {
       confetti: true,
       confetti_lottie_url: '',
     },
-    checkout: {
-      // 'native' = Shopify checkout. 'custom' = hand off to a provider preset
-      // (cartx-shipped open-logic) using the per-brand config below.
-      mode: 'native',
-      provider: 'gokwik',   // which preset, when mode === 'custom'
-      gokwik: {
-        mid: '',                      // GoKwik merchant id (per-brand, from onboarding)
-        environment: 'production',    // 'production' | 'sandbox'
-      },
-    },
     advanced: {
       custom_css: '',
     },

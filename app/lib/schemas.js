@@ -260,14 +260,6 @@ export const DrawerConfigSchema = z.object({
     confetti: z.boolean().default(true),
     confetti_lottie_url: z.string().default(''),
   }).default({}),
-  checkout: z.object({
-    mode: z.enum(['native', 'custom']).default('native'),
-    provider: z.enum(['gokwik']).default('gokwik'),   // extend as providers are added
-    gokwik: z.object({
-      mid: z.string().default(''),
-      environment: z.enum(['production', 'sandbox']).default('production'),
-    }).default({}),
-  }).default({}),
   advanced: z.object({
     custom_css: z.string().default(''),
   }).default({}),
