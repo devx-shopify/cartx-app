@@ -223,6 +223,13 @@ export default class CartDrawer extends Component {
     this._layout = { drawer_position: 'right', image_style: 'rounded', qty_style: 'bordered', show_vendor: false, show_variant_switcher: true, show_remove_btn: true, show_payment_icons: true, show_compare_price: true };
     this._variantCache = {}; // product_id -> variants[]
     this._compareAtCache = {}; // variant_id (string) -> compare_at_price (cents, per unit)
+    // Monotonic token for cart reads. A /cart.js read issued before a mutation
+    // can resolve after it; we drop any read older than the latest authoritative
+    // update so the count bubble never flickers back to a stale value.
+    this._cartReadSeq = 0;
+    // In-flight cart mutation promises (variant switch, etc.). Checkout awaits
+    // these so it never navigates with a pre-mutation cart (old variant).
+    this._activeOps = new Set();
     this._upsells = { card_layout: 'horizontal', card_size: 'medium', heading: '', btn_text: 'ADD TO CART', show_compare_price: true };
     this._announcement = { text: '', type: 'static' };
     this._progressBar = { track_thickness: 'normal', milestone_icon_svg: '', completed_icon_svg: '' };
@@ -295,6 +302,7 @@ export default class CartDrawer extends Component {
         var cart = this._stabiliseOrder(e.detail.cart);
         try { console.log('[cx-diag]', (performance.now()|0) + 'ms', '_onCartChanged count=', cart.item_count, 'lastKnown=', this._lastKnownItemCount, 'autoOpen=', this._behavior.auto_open_on_add, 'willOpen=', !!(this._behavior.auto_open_on_add && cart.item_count > this._lastKnownItemCount), 'src=', e.detail.source); } catch (_) {}
         this._currency = cart.currency || this._currency;
+        this._cartReadSeq++;   // authoritative cart — supersede any in-flight loadCart
         this.setState({ cart: cart, loading: false });
         updateCartCount(cart.item_count);
         this._deferPrefetchCompareAt(cart.items || []);
@@ -376,6 +384,7 @@ export default class CartDrawer extends Component {
           removing: Object.keys(removing).length > 0 ? removing : this.state.removing,
           pendingQty: {},
         });
+        this._cartReadSeq++;   // authoritative cart — supersede any in-flight loadCart
         updateCartCount(newCart.item_count);
         this.announce('Cart updated');
         this._clearProcessingTimeout();
@@ -394,6 +403,7 @@ export default class CartDrawer extends Component {
         Object.keys(this._actionBuffer).forEach((k) => {
           if (this.state.pendingQty.hasOwnProperty(k)) keepPending[k] = this.state.pendingQty[k];
         });
+        this._cartReadSeq++;   // optimistic cart — supersede any in-flight loadCart
         this.setState({ cart: optimisticCart, pendingQty: keepPending });
         updateCartCount(optimisticCart.item_count);
       }
@@ -937,15 +947,41 @@ export default class CartDrawer extends Component {
     if (!this.state.cart) {
       this.setState({ loading: true });
     }
+    // Claim the latest read token. If a newer cart update (an interceptor
+    // cart-changed, a reconcile, or another loadCart) lands before this /cart.js
+    // resolves, this read is stale and must NOT paint — otherwise the count
+    // bubble flickers back to the pre-mutation value (0 → 1 → 0 → 1 on add).
+    var seq = ++this._cartReadSeq;
     try {
       var cart = this._stabiliseOrder(await fetchCart());
+      if (seq !== this._cartReadSeq) return;
       this._currency = cart.currency || this._currency;
       this.setState({ cart: cart, loading: false });
       updateCartCount(cart.item_count);
       this._deferPrefetchCompareAt(cart.items || []);
     } catch (err) {
-      this.setState({ loading: false });
+      if (seq === this._cartReadSeq) this.setState({ loading: false });
     }
+  }
+
+  // ── Cart-mutation tracking ────────────────────────────────
+  // Register an in-flight cart mutation (variant switch, etc.) so checkout can
+  // wait for it to commit before navigating. Self-clears on settle.
+  _trackOp(promise) {
+    this._activeOps.add(promise);
+    var clear = () => { this._activeOps.delete(promise); };
+    promise.then(clear, clear);
+    return promise;
+  }
+
+  // Resolves once no cart mutations are in flight (re-checks, since one op can
+  // kick off another). Used by checkout so the server cart reflects the latest
+  // edit — e.g. a just-selected variant — before we leave for /checkout.
+  whenCartIdle() {
+    if (this._activeOps.size === 0) return Promise.resolve();
+    var self = this;
+    return Promise.all(Array.from(this._activeOps).map((p) => p.catch(() => {})))
+      .then(() => (self._activeOps.size === 0 ? undefined : self.whenCartIdle()));
   }
 
   // Run compare-at prefetch off the first-paint path. These /products/{handle}.js
@@ -1641,32 +1677,39 @@ export default class CartDrawer extends Component {
 
     this._startProcessingTimeout();
 
-    try {
-      await internalFetch('/cart/change.js', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: key, quantity: 0 }),
-      });
-      await internalFetch('/cart/add.js', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: Number(newVariantId), quantity: qty }),
-      });
-      var cart = await fetchCart();
-      this._currency = cart.currency || this._currency;
-      window.dispatchEvent(new CustomEvent('cartmax:internal-reload', { detail: { cart: cart } }));
-    } catch (err) {
-      console.error('[cartx] Variant switch error:', err);
-      if (snapshot) {
-        this.setState({ cart: snapshot, pendingQty: {} });
-        updateCartCount(snapshot.item_count);
+    // Track the change→add→reconcile sequence so an instant checkout click
+    // waits for the new variant to actually land in the server cart instead of
+    // navigating with the old variant still in it.
+    var op = (async () => {
+      try {
+        await internalFetch('/cart/change.js', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: key, quantity: 0 }),
+        });
+        await internalFetch('/cart/add.js', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: Number(newVariantId), quantity: qty }),
+        });
+        var cart = await fetchCart();
+        this._currency = cart.currency || this._currency;
+        window.dispatchEvent(new CustomEvent('cartmax:internal-reload', { detail: { cart: cart } }));
+      } catch (err) {
+        console.error('[cartx] Variant switch error:', err);
+        if (snapshot) {
+          this.setState({ cart: snapshot, pendingQty: {} });
+          updateCartCount(snapshot.item_count);
+        }
+        var usedKey = newVariant ? pendingKey : key;
+        var newUpdating = Object.assign({}, this.state.updating);
+        delete newUpdating[usedKey];
+        this.setState({ updating: newUpdating });
+        this.loadCart();
       }
-      var usedKey = newVariant ? pendingKey : key;
-      var newUpdating = Object.assign({}, this.state.updating);
-      delete newUpdating[usedKey];
-      this.setState({ updating: newUpdating });
-      this.loadCart();
-    }
+    })();
+    this._trackOp(op);
+    await op;
   }
 
   // ── Render: Line Item ─────────────────────────────────────
@@ -2648,12 +2691,15 @@ export default class CartDrawer extends Component {
                 });
                 return;
               }
-              var isProcessing = Object.keys(this.state.updating).length > 0;
+              var isProcessing = Object.keys(this.state.updating).length > 0 || this._activeOps.size > 0;
               if (isProcessing || this.state.checkoutWaiting) {
                 e.preventDefault();
                 if (this.state.checkoutWaiting) return;
                 this.setState({ checkoutWaiting: true });
-                waitForEvaluate().then(() => {
+                // Wait for in-flight cart mutations (e.g. a just-selected variant)
+                // to commit, THEN for the eval pipeline, before leaving — so the
+                // server cart we check out reflects the latest edit.
+                this.whenCartIdle().then(() => waitForEvaluate()).then(() => {
                   this.setState({ checkoutWaiting: false });
                   if (checkoutJs) {
                     try { new Function('button', checkoutJs)(buttonEl); } catch (_) { window.location.href = '/checkout'; }

@@ -253,6 +253,16 @@ cart-notification-component [role="dialog"] {
   contain-intrinsic-size: auto 100px;
 }
 
+/* When this line's variant switcher is open, lift it above sibling lines and
+   drop the per-line containment (z-index/content-visibility) so the absolutely
+   positioned dropdown floats over the cart instead of being clipped or painted
+   beneath the next line item. */
+.cartmax-line-item:has(.cartmax-variant-pill--open) {
+  z-index: 50;
+  content-visibility: visible;
+  overflow: visible;
+}
+
 /* Removal collapses smoothly (height + fade) instead of vanishing, so deleting
    a line never blanks the list. The transition lives ONLY on this rule (not on
    the base .cartmax-line-item) so it fires exclusively when a line is being
@@ -595,12 +605,18 @@ cart-notification-component [role="dialog"] {
 }
 
 .cartmax-variant-dropdown {
+  /* Float over the cart instead of sitting in flow — keeps the line-item
+     height fixed when the switcher opens (was pushing the row taller). */
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
   min-width: 160px;
-  z-index: 10;
+  max-height: min(280px, 60vh);
+  overflow-y: auto;
+  z-index: 20;
   border: 1px solid var(--cartmax-border, #e5e7eb);
   border-radius: var(--cartmax-radius, 8px);
   background: var(--cartmax-bg, #ffffff);
-  overflow: hidden;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 

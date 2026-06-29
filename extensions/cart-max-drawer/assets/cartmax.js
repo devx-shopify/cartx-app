@@ -2472,6 +2472,8 @@
       this._layout = { drawer_position: "right", image_style: "rounded", qty_style: "bordered", show_vendor: false, show_variant_switcher: true, show_remove_btn: true, show_payment_icons: true, show_compare_price: true };
       this._variantCache = {};
       this._compareAtCache = {};
+      this._cartReadSeq = 0;
+      this._activeOps = /* @__PURE__ */ new Set();
       this._upsells = { card_layout: "horizontal", card_size: "medium", heading: "", btn_text: "ADD TO CART", show_compare_price: true };
       this._announcement = { text: "", type: "static" };
       this._progressBar = { track_thickness: "normal", milestone_icon_svg: "", completed_icon_svg: "" };
@@ -2523,6 +2525,7 @@
           } catch (_2) {
           }
           this._currency = cart.currency || this._currency;
+          this._cartReadSeq++;
           this.setState({ cart, loading: false });
           updateCartCount(cart.item_count);
           this._deferPrefetchCompareAt(cart.items || []);
@@ -2580,6 +2583,7 @@
             removing: Object.keys(removing).length > 0 ? removing : this.state.removing,
             pendingQty: {}
           });
+          this._cartReadSeq++;
           updateCartCount(newCart.item_count);
           this.announce("Cart updated");
           this._clearProcessingTimeout();
@@ -2595,6 +2599,7 @@
           Object.keys(this._actionBuffer).forEach((k2) => {
             if (this.state.pendingQty.hasOwnProperty(k2)) keepPending[k2] = this.state.pendingQty[k2];
           });
+          this._cartReadSeq++;
           this.setState({ cart: optimisticCart, pendingQty: keepPending });
           updateCartCount(optimisticCart.item_count);
         }
@@ -3048,15 +3053,37 @@
       if (!this.state.cart) {
         this.setState({ loading: true });
       }
+      var seq = ++this._cartReadSeq;
       try {
         var cart = this._stabiliseOrder(await fetchCart());
+        if (seq !== this._cartReadSeq) return;
         this._currency = cart.currency || this._currency;
         this.setState({ cart, loading: false });
         updateCartCount(cart.item_count);
         this._deferPrefetchCompareAt(cart.items || []);
       } catch (err) {
-        this.setState({ loading: false });
+        if (seq === this._cartReadSeq) this.setState({ loading: false });
       }
+    }
+    // ── Cart-mutation tracking ────────────────────────────────
+    // Register an in-flight cart mutation (variant switch, etc.) so checkout can
+    // wait for it to commit before navigating. Self-clears on settle.
+    _trackOp(promise) {
+      this._activeOps.add(promise);
+      var clear = () => {
+        this._activeOps.delete(promise);
+      };
+      promise.then(clear, clear);
+      return promise;
+    }
+    // Resolves once no cart mutations are in flight (re-checks, since one op can
+    // kick off another). Used by checkout so the server cart reflects the latest
+    // edit — e.g. a just-selected variant — before we leave for /checkout.
+    whenCartIdle() {
+      if (this._activeOps.size === 0) return Promise.resolve();
+      var self = this;
+      return Promise.all(Array.from(this._activeOps).map((p2) => p2.catch(() => {
+      }))).then(() => self._activeOps.size === 0 ? void 0 : self.whenCartIdle());
     }
     // Run compare-at prefetch off the first-paint path. These /products/{handle}.js
     // requests only feed strike-through prices, which are not needed for the
@@ -3648,32 +3675,36 @@
         });
       }
       this._startProcessingTimeout();
-      try {
-        await internalFetch("/cart/change.js", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: key, quantity: 0 })
-        });
-        await internalFetch("/cart/add.js", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: Number(newVariantId), quantity: qty })
-        });
-        var cart = await fetchCart();
-        this._currency = cart.currency || this._currency;
-        window.dispatchEvent(new CustomEvent("cartmax:internal-reload", { detail: { cart } }));
-      } catch (err) {
-        console.error("[cartx] Variant switch error:", err);
-        if (snapshot) {
-          this.setState({ cart: snapshot, pendingQty: {} });
-          updateCartCount(snapshot.item_count);
+      var op = (async () => {
+        try {
+          await internalFetch("/cart/change.js", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: key, quantity: 0 })
+          });
+          await internalFetch("/cart/add.js", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: Number(newVariantId), quantity: qty })
+          });
+          var cart = await fetchCart();
+          this._currency = cart.currency || this._currency;
+          window.dispatchEvent(new CustomEvent("cartmax:internal-reload", { detail: { cart } }));
+        } catch (err) {
+          console.error("[cartx] Variant switch error:", err);
+          if (snapshot) {
+            this.setState({ cart: snapshot, pendingQty: {} });
+            updateCartCount(snapshot.item_count);
+          }
+          var usedKey = newVariant ? pendingKey : key;
+          var newUpdating = Object.assign({}, this.state.updating);
+          delete newUpdating[usedKey];
+          this.setState({ updating: newUpdating });
+          this.loadCart();
         }
-        var usedKey = newVariant ? pendingKey : key;
-        var newUpdating = Object.assign({}, this.state.updating);
-        delete newUpdating[usedKey];
-        this.setState({ updating: newUpdating });
-        this.loadCart();
-      }
+      })();
+      this._trackOp(op);
+      await op;
     }
     // ── Render: Line Item ─────────────────────────────────────
     renderLineItem(item) {
@@ -4430,12 +4461,12 @@
               });
               return;
             }
-            var isProcessing = Object.keys(this.state.updating).length > 0;
+            var isProcessing = Object.keys(this.state.updating).length > 0 || this._activeOps.size > 0;
             if (isProcessing || this.state.checkoutWaiting) {
               e2.preventDefault();
               if (this.state.checkoutWaiting) return;
               this.setState({ checkoutWaiting: true });
-              waitForEvaluate().then(() => {
+              this.whenCartIdle().then(() => waitForEvaluate()).then(() => {
                 this.setState({ checkoutWaiting: false });
                 if (checkoutJs) {
                   try {
