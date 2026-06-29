@@ -4410,7 +4410,7 @@
           onClick: (e2) => {
             tracker.persistSessionCookie();
             var checkoutJs = this._behavior.checkout_js;
-            var buttonEl = checkoutJs ? document.createElement("button") : e2.currentTarget;
+            var buttonEl = e2.currentTarget;
             if (this._graphqlCart) {
               e2.preventDefault();
               if (this.state.checkoutWaiting) return;
@@ -4451,11 +4451,13 @@
             }
             if (checkoutJs) {
               e2.preventDefault();
+              this.setState({ checkoutWaiting: true });
               try {
                 new Function("button", checkoutJs)(buttonEl);
               } catch (_2) {
                 window.location.href = "/checkout";
               }
+              setTimeout(() => this.setState({ checkoutWaiting: false }), 500);
             }
           }
         },
