@@ -28,7 +28,7 @@
       }
     },
     "output": {
-      "discountApplicationStrategy": "FIRST",
+      "discountApplicationStrategy": "ALL",
       "discounts": []
     }
   }

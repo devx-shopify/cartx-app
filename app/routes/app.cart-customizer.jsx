@@ -414,7 +414,7 @@ export default function CartCustomizer() {
     const lottieUrl = settings.behavior.confetti_lottie_url;
     if (lottieUrl) {
       const existing = document.querySelector("script[data-cartmax-lottie-admin]");
-      function playLottie() {
+      const playLottie = () => {
         const player = document.createElement("dotlottie-player");
         player.setAttribute("src", lottieUrl);
         player.setAttribute("autoplay", "");
@@ -423,7 +423,7 @@ export default function CartCustomizer() {
         previewEl.appendChild(player);
         player.addEventListener("complete", () => player.remove());
         setTimeout(() => { if (player.parentNode) player.remove(); }, 6000);
-      }
+      };
       if (customElements.get("dotlottie-player")) playLottie();
       else if (!existing) {
         const s2 = document.createElement("script");

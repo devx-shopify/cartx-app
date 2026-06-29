@@ -53,20 +53,21 @@ export const action = async ({ request }) => {
     return Response.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // shop comes from Shopify-signed query param — trust it
+  // shop MUST come from the Shopify-signed query param — it is covered by the
+  // HMAC verified above. Never fall back to a client-supplied body field, or a
+  // caller could read another shop's config/storefront token under a valid
+  // signature and rotate the value to evade rate limiting.
   const url = new URL(request.url);
-  const shopId = url.searchParams.get("shop") || body.shop_id;
-
-  if (shopId) {
-    const rateResult = checkRateLimit(shopId);
-    if (!rateResult.allowed) {
-      return Response.json({ error: "Rate limit exceeded" }, { status: 429 });
-    }
-  }
+  const shopId = url.searchParams.get("shop");
   const themeId = body.theme_id;
 
   if (!shopId || !themeId) {
     return Response.json({ error: "Missing shop or theme_id" }, { status: 400 });
+  }
+
+  const rateResult = checkRateLimit(shopId);
+  if (!rateResult.allowed) {
+    return Response.json({ error: "Rate limit exceeded" }, { status: 429 });
   }
 
   const parsed = EvaluateCartRequestSchema.safeParse({
@@ -122,7 +123,7 @@ export const action = async ({ request }) => {
     claimGifts = resolveClaimGifts(config.claim_gifts || [], cart, adjTotal, adjQty, page, customer);
   } catch (err) {
     console.error('[cartx] Evaluate pipeline error:', err);
-    return Response.json({ error: "Evaluation failed", message: err.message }, { status: 500 });
+    return Response.json({ error: "Evaluation failed" }, { status: 500 });
   }
 
   // Remove claimed items whose threshold is no longer met

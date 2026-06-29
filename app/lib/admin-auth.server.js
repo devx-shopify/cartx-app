@@ -4,10 +4,26 @@ import { hashPassword, verifyPassword } from "./password.js";
 
 // Standalone email/password auth for the /enterprise dashboard — independent of
 // Shopify admin auth. Session is a signed, httpOnly cookie.
-const SESSION_SECRET =
-  process.env.ADMIN_SESSION_SECRET ||
-  process.env.SHOPIFY_API_SECRET ||
-  "cartx-dev-insecure-secret-change-me";
+const DEV_SECRET = "cartx-dev-insecure-secret-change-me";
+const IS_PROD = process.env.NODE_ENV === "production";
+
+// In production we REQUIRE a dedicated, strong ADMIN_SESSION_SECRET. A missing
+// (or default) secret would let anyone forge an admin session cookie, so we
+// refuse to boot rather than fall back to a guessable value. We never reuse
+// SHOPIFY_API_SECRET here — keep the two trust domains separate.
+const SESSION_SECRET = (() => {
+  const fromEnv = process.env.ADMIN_SESSION_SECRET;
+  if (IS_PROD) {
+    if (!fromEnv || fromEnv === DEV_SECRET) {
+      throw new Error(
+        "ADMIN_SESSION_SECRET must be set to a strong, unique value in production. " +
+          "Set it as a secret (e.g. `fly secrets set ADMIN_SESSION_SECRET=$(openssl rand -hex 32)`).",
+      );
+    }
+    return fromEnv;
+  }
+  return fromEnv || DEV_SECRET;
+})();
 
 // Login lockout: after MAX_FAILED consecutive failures, block this account for
 // LOCK_MINUTES. Resets on a successful login.
@@ -18,9 +34,11 @@ const storage = createCookieSessionStorage({
   cookie: {
     name: "__cartx_admin",
     httpOnly: true,
-    sameSite: "lax",
+    sameSite: "strict",
     path: "/",
-    secure: process.env.NODE_ENV === "production",
+    // Default to Secure everywhere except explicit local development, so the
+    // admin cookie is never sent in cleartext behind TLS with NODE_ENV unset.
+    secure: process.env.NODE_ENV !== "development",
     secrets: [SESSION_SECRET],
     maxAge: 60 * 60 * 24 * 7, // 7 days
   },

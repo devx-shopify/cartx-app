@@ -59,7 +59,7 @@ export function isGraphqlCartEnabled() {
   try {
     if (typeof window !== 'undefined' && window.__cartxGraphqlCart === true) return true;
     if (typeof localStorage !== 'undefined' && localStorage.getItem('cartx:graphqlCart') === '1') return true;
-  } catch (_) {}
+  } catch (_) { /* storage may be unavailable */ }
   return false;
 }
 
@@ -282,11 +282,11 @@ export function getStoredCartId() {
 }
 
 export function storeCartId(id) {
-  try { if (id) localStorage.setItem(cartIdKey(), id); } catch (_) {}
+  try { if (id) localStorage.setItem(cartIdKey(), id); } catch (_) { /* storage may be unavailable */ }
 }
 
 export function clearStoredCartId() {
-  try { localStorage.removeItem(cartIdKey()); } catch (_) {}
+  try { localStorage.removeItem(cartIdKey()); } catch (_) { /* storage may be unavailable */ }
 }
 
 // Reuse the persisted cart if still valid, else create a fresh one.

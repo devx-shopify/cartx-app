@@ -1,3 +1,11 @@
 .cache
 build
 node_modules
+
+# Never bake secrets, local state, or VCS history into the image
+.env
+.env.*
+.git
+.shopify
+*.sqlite
+.react-router

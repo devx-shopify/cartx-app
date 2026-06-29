@@ -336,7 +336,7 @@ async function updateDiscountMetafield(admin, discountId, functionConfig) {
   const metafieldId = metaJson.data?.discountNode?.metafield?.id;
 
   if (metafieldId) {
-    await admin.graphql(
+    const res = await admin.graphql(
       `#graphql
       mutation updateMetafield($metafields: [MetafieldsSetInput!]!) {
         metafieldsSet(metafields: $metafields) {
@@ -358,6 +358,15 @@ async function updateDiscountMetafield(admin, discountId, functionConfig) {
         },
       }
     );
+    // The metafield write is what actually configures the discount Function —
+    // a silent failure leaves a live discount with stale config, so surface it.
+    const json = await res.json();
+    const errors = json.data?.metafieldsSet?.userErrors ?? [];
+    if (errors.length > 0) {
+      throw new Error(
+        `Failed to update discount metafield: ${errors.map((e) => e.message).join("; ")}`,
+      );
+    }
   }
 }
 

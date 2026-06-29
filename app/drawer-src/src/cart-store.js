@@ -56,7 +56,7 @@ function notify() {
         detail: { cart: getOptimisticCart(), loading: _state.loading },
       }));
     }
-  } catch (_) {}
+  } catch (_) { /* best-effort UI notification */ }
 }
 
 export function getState() { return _state; }
@@ -70,7 +70,7 @@ try {
   if (typeof window !== 'undefined') {
     window.__cartxStore = { getState: getState, getOptimisticCart: getOptimisticCart };
   }
-} catch (_) {}
+} catch (_) { /* debug handle is optional */ }
 
 function snapTo(gqlCart) {
   var mapped = mapCart(gqlCart);

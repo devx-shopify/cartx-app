@@ -4,46 +4,32 @@
     "target": "cart.lines.discounts.generate.run",
     "input": {
       "cart": {
+        "cartxActive": { "value": "on" },
         "lines": [
           {
             "id": "gid://shopify/CartLine/0",
+            "quantity": 2,
             "cost": {
-              "subtotalAmount": {
-                "amount": "100.0"
-              }
-            }
+              "amountPerQuantity": { "amount": "100.0" },
+              "subtotalAmount": { "amount": "200.0" }
+            },
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "id": "gid://shopify/ProductVariant/111"
+            },
+            "freebieAttr": null
           }
         ]
       },
       "discount": {
-        "discountClasses": ["ORDER"]
+        "discountClasses": ["ORDER"],
+        "metafield": {
+          "value": "{\"offers\":[{\"offer_id\":\"vol-1\",\"variant_ids\":[\"111\"],\"discount_mode\":\"percentage\",\"tiers\":[{\"quantity\":2,\"value\":20}],\"message\":\"Volume Deal\"}]}"
+        }
       }
     },
     "output": {
-      "operations": [
-        {
-          "orderDiscountsAdd": {
-            "candidates": [
-              {
-                "message": "10% OFF ORDER",
-                "targets": [
-                  {
-                    "orderSubtotal": {
-                      "excludedCartLineIds": []
-                    }
-                  }
-                ],
-                "value": {
-                  "percentage": {
-                    "value": 10.0
-                  }
-                }
-              }
-            ],
-            "selectionStrategy": "FIRST"
-          }
-        }
-      ]
+      "operations": []
     }
   }
 }

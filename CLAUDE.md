@@ -35,3 +35,15 @@ Prisma/Postgres; deployed on Fly.io; Sentry monitoring; two Shopify Functions
   `extensions/cart-max-drawer/assets/cartmax.js`.
 - Storefront token is delivered via the `/apps/cartmax` proxy `_config` (NOT a
   Liquid filter — none exists for it).
+
+## Quality gates
+- `npm test` runs both Shopify Function suites (freebie + volume) via the
+  workspaces. Keep them green; the volume gate test guards the cartx-active
+  safety gate that prevents discounts going live store-wide.
+- `npm run lint` must exit 0 (errors only; ~40 a11y/unused warnings are
+  tolerated). Build artifacts (`cartmax.js`) and generated code are not linted.
+- **Known gap (post-go-live):** `npm run typecheck` passes but `tsconfig.json`
+  `include` omits `.js/.jsx`, so the app source is effectively unchecked.
+  Enabling `checkJs`/`.jsx` is a large triage deferred until after launch.
+- Legacy `storefront/src/*` is superseded by `app/drawer-src/src/*` (both
+  esbuild to the same `cartmax.js`); the drawer build is canonical.

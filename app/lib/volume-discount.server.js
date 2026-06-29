@@ -99,7 +99,7 @@ async function updateMetafield(admin, discountId, functionConfig) {
     ? discountId
     : `gid://shopify/DiscountAutomaticNode/${discountId}`;
 
-  await admin.graphql(
+  const res = await admin.graphql(
     `#graphql
     mutation updateMetafield($metafields: [MetafieldsSetInput!]!) {
       metafieldsSet(metafields: $metafields) {
@@ -119,6 +119,15 @@ async function updateMetafield(admin, discountId, functionConfig) {
       },
     }
   );
+  // The metafield write configures the discount Function — surface a failed
+  // write instead of leaving a live discount with stale config.
+  const json = await res.json();
+  const errors = json.data?.metafieldsSet?.userErrors ?? [];
+  if (errors.length > 0) {
+    throw new Error(
+      `Failed to update volume discount metafield: ${errors.map((e) => e.message).join("; ")}`,
+    );
+  }
 }
 
 // ── Public API ──────────────────────────────────────────

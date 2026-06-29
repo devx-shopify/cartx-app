@@ -4,51 +4,37 @@
     "target": "cart.lines.discounts.generate.run",
     "input": {
       "cart": {
+        "cartxActive": { "value": "on" },
         "lines": [
           {
             "id": "gid://shopify/CartLine/0",
+            "quantity": 3,
             "cost": {
-              "subtotalAmount": {
-                "amount": "6.0"
-              }
-            }
+              "amountPerQuantity": { "amount": "50.0" },
+              "subtotalAmount": { "amount": "150.0" }
+            },
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "id": "gid://shopify/ProductVariant/222"
+            },
+            "freebieAttr": null
           }
         ]
       },
       "discount": {
-        "discountClasses": ["PRODUCT", "ORDER", "SHIPPING"]
+        "discountClasses": ["PRODUCT", "ORDER"],
+        "metafield": {
+          "value": "{\"offers\":[{\"offer_id\":\"vol-2\",\"variant_ids\":[\"222\"],\"discount_mode\":\"percentage\",\"tiers\":[{\"quantity\":3,\"value\":10}],\"message\":\"Bulk Deal\"}]}"
+        }
       }
     },
-    "inputBytes": 126,
     "output": {
       "operations": [
-        {
-          "orderDiscountsAdd": {
-            "candidates": [
-              {
-                "message": "10% OFF ORDER",
-                "targets": [
-                  {
-                    "orderSubtotal": {
-                      "excludedCartLineIds": []
-                    }
-                  }
-                ],
-                "value": {
-                  "percentage": {
-                    "value": 10.0
-                  }
-                }
-              }
-            ],
-            "selectionStrategy": "FIRST"
-          }
-        },
         {
           "productDiscountsAdd": {
             "candidates": [
               {
-                "message": "20% OFF PRODUCT",
+                "message": "Bulk Deal",
                 "targets": [
                   {
                     "cartLine": {
@@ -57,13 +43,13 @@
                   }
                 ],
                 "value": {
-                  "percentage": {
-                    "value": 20.0
+                  "fixedAmount": {
+                    "amount": "15.00"
                   }
                 }
               }
             ],
-            "selectionStrategy": "FIRST"
+            "selectionStrategy": "ALL"
           }
         }
       ]

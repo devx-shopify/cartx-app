@@ -1312,7 +1312,7 @@
     var items = [];
     for (var i2 = 0; i2 < cart.items.length; i2++) {
       var item = cart.items[i2];
-      if (actionMap.hasOwnProperty(item.key)) {
+      if (Object.prototype.hasOwnProperty.call(actionMap, item.key)) {
         var newQty = actionMap[item.key];
         if (newQty > 0) {
           var unitPrice = item.quantity > 0 ? Math.round(item.price) : 0;
