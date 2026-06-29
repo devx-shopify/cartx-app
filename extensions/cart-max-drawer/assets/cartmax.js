@@ -2915,7 +2915,8 @@
         auto_open_on_add: beh.auto_open_on_add !== false,
         animation_style: beh.animation_style || "slide",
         close_on_overlay_click: beh.close_on_overlay_click !== false,
-        close_on_esc: beh.close_on_esc !== false
+        close_on_esc: beh.close_on_esc !== false,
+        checkout_js: beh.checkout_js || ""
       };
       this._confettiEnabled = beh.confetti !== false;
       this._injectCustomCSS(drawer.advanced && drawer.advanced.custom_css);
@@ -4408,6 +4409,8 @@
           href: this._graphqlCart && cart.checkout_url ? cart.checkout_url : "/checkout",
           onClick: (e2) => {
             tracker.persistSessionCookie();
+            var checkoutJs = this._behavior.checkout_js;
+            var buttonEl = e2.currentTarget;
             if (this._graphqlCart) {
               e2.preventDefault();
               if (this.state.checkoutWaiting) return;
@@ -4415,7 +4418,15 @@
               whenSettled().then(() => {
                 var url = getOptimisticCart() && getOptimisticCart().checkout_url || cart.checkout_url;
                 this.setState({ checkoutWaiting: false });
-                if (url) window.location.href = url;
+                if (checkoutJs) {
+                  try {
+                    new Function("button", checkoutJs)(buttonEl);
+                  } catch (_2) {
+                    if (url) window.location.href = url;
+                  }
+                } else if (url) {
+                  window.location.href = url;
+                }
               });
               return;
             }
@@ -4426,8 +4437,25 @@
               this.setState({ checkoutWaiting: true });
               waitForEvaluate().then(() => {
                 this.setState({ checkoutWaiting: false });
-                window.location.href = "/checkout";
+                if (checkoutJs) {
+                  try {
+                    new Function("button", checkoutJs)(buttonEl);
+                  } catch (_2) {
+                    window.location.href = "/checkout";
+                  }
+                } else {
+                  window.location.href = "/checkout";
+                }
               });
+              return;
+            }
+            if (checkoutJs) {
+              e2.preventDefault();
+              try {
+                new Function("button", checkoutJs)(buttonEl);
+              } catch (_2) {
+                window.location.href = "/checkout";
+              }
             }
           }
         },

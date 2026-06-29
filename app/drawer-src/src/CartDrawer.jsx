@@ -775,6 +775,7 @@ export default class CartDrawer extends Component {
       animation_style: beh.animation_style || 'slide',
       close_on_overlay_click: beh.close_on_overlay_click !== false,
       close_on_esc: beh.close_on_esc !== false,
+      checkout_js: beh.checkout_js || '',
     };
     this._confettiEnabled = beh.confetti !== false;
     this._injectCustomCSS(drawer.advanced && drawer.advanced.custom_css);
@@ -2627,6 +2628,8 @@ export default class CartDrawer extends Component {
             href={this._graphqlCart && cart.checkout_url ? cart.checkout_url : '/checkout'}
             onClick={(e) => {
               tracker.persistSessionCookie();
+              var checkoutJs = this._behavior.checkout_js;
+              var buttonEl = e.currentTarget;
               // GraphQL path: checkout the canonical Storefront cart via its
               // checkoutUrl. Wait for the sync to settle first so the server cart
               // reflects the latest edits, then navigate.
@@ -2637,7 +2640,11 @@ export default class CartDrawer extends Component {
                 gqlWhenSettled().then(() => {
                   var url = (gqlGetCart() && gqlGetCart().checkout_url) || cart.checkout_url;
                   this.setState({ checkoutWaiting: false });
-                  if (url) window.location.href = url;
+                  if (checkoutJs) {
+                    try { new Function('button', checkoutJs)(buttonEl); } catch (_) { if (url) window.location.href = url; }
+                  } else if (url) {
+                    window.location.href = url;
+                  }
                 });
                 return;
               }
@@ -2648,8 +2655,17 @@ export default class CartDrawer extends Component {
                 this.setState({ checkoutWaiting: true });
                 waitForEvaluate().then(() => {
                   this.setState({ checkoutWaiting: false });
-                  window.location.href = '/checkout';
+                  if (checkoutJs) {
+                    try { new Function('button', checkoutJs)(buttonEl); } catch (_) { window.location.href = '/checkout'; }
+                  } else {
+                    window.location.href = '/checkout';
+                  }
                 });
+                return;
+              }
+              if (checkoutJs) {
+                e.preventDefault();
+                try { new Function('button', checkoutJs)(buttonEl); } catch (_) { window.location.href = '/checkout'; }
               }
             }}
           >

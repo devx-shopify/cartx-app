@@ -1237,6 +1237,58 @@ function BehaviorTab({ s, update, onTestConfetti }) {
           )}
         </div>
       </s-section>
+
+      <s-section heading="Checkout button" description="What happens when the customer taps Checkout. If the snippet throws an error, cartx falls back to /checkout.">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <SegmentedControl
+            label="Action"
+            options={[
+              { value: "", label: "Go to /checkout" },
+              { value: "custom", label: "Custom JavaScript" },
+            ]}
+            value={s.behavior.checkout_js ? "custom" : ""}
+            onChange={(v) => {
+              if (v === "") {
+                update("behavior.checkout_js", "");
+              } else if (!s.behavior.checkout_js) {
+                update("behavior.checkout_js", "window.onCheckoutClick(button)");
+              }
+            }}
+          />
+          {s.behavior.checkout_js ? (
+            <>
+              <textarea
+                value={s.behavior.checkout_js}
+                onInput={(e) => update("behavior.checkout_js", e.target.value)}
+                rows={4}
+                placeholder="window.onCheckoutClick(button)"
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  padding: "12px 14px",
+                  border: "1px solid #d4d6d8",
+                  borderRadius: 10,
+                  fontSize: 12,
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                  resize: "vertical",
+                  background: "#fff",
+                  color: "#1a1a1a",
+                  lineHeight: 1.6,
+                  outline: "none",
+                }}
+              />
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <s-button onClick={() => update("behavior.checkout_js", "window.onCheckoutClick(button)")}>GoKwik</s-button>
+                <s-button onClick={() => update("behavior.checkout_js", "window.RazorpayMagicCheckout && window.RazorpayMagicCheckout.trigger()")}>Razorpay Magic</s-button>
+                <s-button onClick={() => update("behavior.checkout_js", "window.ScCheckout && window.ScCheckout.open()")}>Shiprocket</s-button>
+              </div>
+              <s-text color="subdued">
+                The snippet runs as a JS function body. <code>button</code> refers to the checkout button element. If it throws, cartx falls back to /checkout.
+              </s-text>
+            </>
+          ) : null}
+        </div>
+      </s-section>
     </div>
   );
 }
