@@ -4410,7 +4410,7 @@
           onClick: (e2) => {
             tracker.persistSessionCookie();
             var checkoutJs = this._behavior.checkout_js;
-            var buttonEl = e2.currentTarget;
+            var buttonEl = checkoutJs ? document.createElement("button") : e2.currentTarget;
             if (this._graphqlCart) {
               e2.preventDefault();
               if (this.state.checkoutWaiting) return;

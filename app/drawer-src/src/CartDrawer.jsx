@@ -2629,7 +2629,7 @@ export default class CartDrawer extends Component {
             onClick={(e) => {
               tracker.persistSessionCookie();
               var checkoutJs = this._behavior.checkout_js;
-              var buttonEl = e.currentTarget;
+              var buttonEl = checkoutJs ? document.createElement('button') : e.currentTarget;
               // GraphQL path: checkout the canonical Storefront cart via its
               // checkoutUrl. Wait for the sync to settle first so the server cart
               // reflects the latest edits, then navigate.
