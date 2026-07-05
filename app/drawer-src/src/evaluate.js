@@ -8,7 +8,7 @@ import { internalFetch, fetchCart, cartUpdateAll, getContext, normalizeVariantId
 import { localEvaluate } from './rules';
 import { setStorefrontConfig } from './storefront-cart';
 
-var PROXY_URL = '/apps/cartmax/evaluate-cart';
+var PROXY_URL = '/apps/cartx/evaluate-cart';
 
 // ── Config cache ──────────────────────────────────────────
 // Cached from first server evaluate. Used for instant local eval.

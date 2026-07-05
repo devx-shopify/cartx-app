@@ -61,5 +61,5 @@ redirect_urls = [ "https://cartx.fly.dev/auth/callback" ]
 
 [app_proxy]
 url = "https://cartx.fly.dev/proxy"
-subpath = "cartmax"
+subpath = "cartx"
 prefix = "apps"

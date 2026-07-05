@@ -7,7 +7,7 @@
 //
 // Mirrors the proven op set from devx-commerce/foxtale-star-utils
 // (services/cart.ts + graphql/*), adapted to plain JS and to cartx's needs:
-//  - token + api version come from the /apps/cartmax proxy `_config` (or an
+//  - token + api version come from the /apps/cartx proxy `_config` (or an
 //    injected dev config), NOT a Hydrogen env.
 //  - `mapCart()` converts the GraphQL Cart → the drawer's existing /cart.js
 //    shape so CartDrawer.jsx renders it with zero changes.

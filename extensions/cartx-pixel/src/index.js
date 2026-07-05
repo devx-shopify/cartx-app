@@ -9,7 +9,7 @@
 
 import { register } from '@shopify/web-pixels-extension';
 
-const PROXY_BASE = '/apps/cartmax';
+const PROXY_BASE = '/apps/cartx';
 const ENDPOINT = PROXY_BASE + '/analytics';
 const SESSION_COOKIE = 'cartx_session_id';
 

@@ -546,7 +546,7 @@ export default class CartDrawer extends Component {
       tracker.init({
         shopId: rootEl.dataset.shopId || '',
         customerId: rootEl.dataset.customerId || null,
-        proxyBase: rootEl.dataset.proxyBase || '/apps/cartmax',
+        proxyBase: rootEl.dataset.proxyBase || '/apps/cartx',
         enabled: analyticsEnabled,
       });
     }

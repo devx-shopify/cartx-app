@@ -1235,7 +1235,7 @@
   }
 
   // app/drawer-src/src/evaluate.js
-  var PROXY_URL = "/apps/cartmax/evaluate-cart";
+  var PROXY_URL = "/apps/cartx/evaluate-cart";
   var _cachedConfig = null;
   var _configCacheTime = 0;
   var CONFIG_CACHE_TTL = 6e4;
@@ -2470,7 +2470,7 @@
 
   // app/drawer-src/src/tracker.js
   var SESSION_KEY = "cartx_session_id";
-  var DEFAULT_PROXY_BASE = "/apps/cartmax";
+  var DEFAULT_PROXY_BASE = "/apps/cartx";
   var ENDPOINT_PATH = "/analytics";
   function safeSessionStorage() {
     try {
@@ -3014,7 +3014,7 @@
         tracker.init({
           shopId: rootEl.dataset.shopId || "",
           customerId: rootEl.dataset.customerId || null,
-          proxyBase: rootEl.dataset.proxyBase || "/apps/cartmax",
+          proxyBase: rootEl.dataset.proxyBase || "/apps/cartx",
           enabled: analyticsEnabled
         });
       }
