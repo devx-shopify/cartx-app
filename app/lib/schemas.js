@@ -147,6 +147,7 @@ export const VisualMilestoneSchema = z.object({
 export const UpsellProductSchema = z.object({
   product_id: z.string().min(1),
   title: z.string().min(1),
+  handle: z.string().optional(),
   image_url: z.string(),
   variant_id: z.string().min(1),
   price: z.string().min(1),

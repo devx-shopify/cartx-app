@@ -2217,11 +2217,12 @@
   }
   function isAjaxCartStoreEnabled(config) {
     try {
-      if (typeof window !== "undefined" && window.__cartxAjaxCartStore === true) return true;
-      if (typeof localStorage !== "undefined" && localStorage.getItem("cartx:ajaxCartStore") === "1") return true;
+      if (typeof window !== "undefined" && window.__cartxAjaxCartStore === false) return false;
+      if (typeof localStorage !== "undefined" && localStorage.getItem("cartx:ajaxCartStore") === "0") return false;
     } catch (_2) {
     }
-    return !!(config && config.ajax_cart_store);
+    if (config && config.ajax_cart_store === false) return false;
+    return true;
   }
   function getState2() {
     return _state2;
@@ -2807,6 +2808,8 @@
       this._variantCache = {};
       this._compareAtCache = {};
       this._prefetchedHandles = {};
+      this._upsellAvailable = {};
+      this._upsellFetched = {};
       this._cartReadSeq = 0;
       this._activeOps = /* @__PURE__ */ new Set();
       this._upsells = { card_layout: "horizontal", card_size: "medium", heading: "", btn_text: "ADD TO CART", show_compare_price: true };
@@ -4882,6 +4885,29 @@
         this.setState({ updating: newUpdating });
       }
     }
+    // Fetch live availability for upsell products (once per handle per session) so
+    // sold-out variants show "Sold out" instead of an add button. Uses the same
+    // /products/{handle}.js source as the compare-at prefetch.
+    _ensureUpsellAvailability(products) {
+      var self = this;
+      (products || []).forEach(function(p2) {
+        var handle = p2.handle;
+        if (!handle || self._upsellFetched[handle]) return;
+        self._upsellFetched[handle] = true;
+        fetch("/products/" + handle + ".js").then(function(r2) {
+          return r2.ok ? r2.json() : null;
+        }).then(function(data) {
+          if (!data || !data.variants) return;
+          var changed = false;
+          data.variants.forEach(function(v2) {
+            self._upsellAvailable[String(v2.id)] = !!v2.available;
+            changed = true;
+          });
+          if (changed) self.setState({});
+        }).catch(function() {
+        });
+      });
+    }
     renderUpsells() {
       var result = this.state.evalResult;
       if (!result || !result.upsells || !result.upsells.enabled) return null;
@@ -4900,6 +4926,7 @@
         return cartVariantIds.indexOf(vid) === -1;
       });
       if (filtered.length === 0) return null;
+      this._ensureUpsellAvailability(filtered);
       var curr = this._currency;
       var self = this;
       var u2 = this._upsells;
@@ -4912,6 +4939,7 @@
         var vid = String(p2.variant_id);
         if (vid.startsWith("gid://")) vid = vid.split("/").pop();
         var isAdding = self.state.updating["upsell_" + vid];
+        var soldOut = self._upsellAvailable[vid] === false;
         var productMeta = {
           title: p2.title,
           image: p2.image_url,
@@ -4920,13 +4948,13 @@
         return /* @__PURE__ */ k("div", { class: "cartmax-upsell-card " + sizeClass, key: p2.product_id }, p2.image_url ? /* @__PURE__ */ k("img", { class: "cartmax-upsell-img", src: resizeImage(p2.image_url, imgPx), alt: p2.title, loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-upsell-img-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image")), /* @__PURE__ */ k("div", { class: "cartmax-upsell-info" }, /* @__PURE__ */ k("div", { class: "cartmax-upsell-title" }, p2.title), /* @__PURE__ */ k("div", { class: "cartmax-upsell-price" }, /* @__PURE__ */ k("span", { class: "cartmax-upsell-sale" }, formatMoney(Number(p2.price) * 100, curr)), u2.show_compare_price && p2.compare_at_price ? /* @__PURE__ */ k("span", { class: "cartmax-upsell-compare" }, formatMoney(Number(p2.compare_at_price) * 100, curr)) : null), /* @__PURE__ */ k(
           "button",
           {
-            class: "cartmax-upsell-add",
+            class: "cartmax-upsell-add" + (soldOut ? " cartmax-upsell-add--soldout" : ""),
             onClick: function() {
-              self.handleUpsellAdd(vid, productMeta);
+              if (!soldOut) self.handleUpsellAdd(vid, productMeta);
             },
-            disabled: isAdding
+            disabled: isAdding || soldOut
           },
-          isAdding ? "Adding..." : btnText
+          soldOut ? "Sold out" : isAdding ? "Adding..." : btnText
         )));
       })));
     }

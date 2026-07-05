@@ -241,6 +241,8 @@ export default class CartDrawer extends Component {
     this._variantCache = {}; // product_id -> variants[]
     this._compareAtCache = {}; // variant_id (string) -> compare_at_price (cents, per unit)
     this._prefetchedHandles = {}; // product handle -> true, so compare-at is fetched once per session
+    this._upsellAvailable = {};   // variant_id (string) -> bool; live availability for upsell cards
+    this._upsellFetched = {};     // upsell handle -> true, fetched once per session
     // Monotonic token for cart reads. A /cart.js read issued before a mutation
     // can resolve after it; we drop any read older than the latest authoritative
     // update so the count bubble never flickers back to a stale value.
@@ -2788,6 +2790,30 @@ export default class CartDrawer extends Component {
     }
   }
 
+  // Fetch live availability for upsell products (once per handle per session) so
+  // sold-out variants show "Sold out" instead of an add button. Uses the same
+  // /products/{handle}.js source as the compare-at prefetch.
+  _ensureUpsellAvailability(products) {
+    var self = this;
+    (products || []).forEach(function (p) {
+      var handle = p.handle;
+      if (!handle || self._upsellFetched[handle]) return;
+      self._upsellFetched[handle] = true;
+      fetch('/products/' + handle + '.js')
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (!data || !data.variants) return;
+          var changed = false;
+          data.variants.forEach(function (v) {
+            self._upsellAvailable[String(v.id)] = !!v.available;
+            changed = true;
+          });
+          if (changed) self.setState({});
+        })
+        .catch(function () {});
+    });
+  }
+
   renderUpsells() {
     var result = this.state.evalResult;
     if (!result || !result.upsells || !result.upsells.enabled) return null;
@@ -2806,6 +2832,8 @@ export default class CartDrawer extends Component {
       return cartVariantIds.indexOf(vid) === -1;
     });
     if (filtered.length === 0) return null;
+
+    this._ensureUpsellAvailability(filtered);
 
     var curr = this._currency;
     var self = this;
@@ -2828,6 +2856,10 @@ export default class CartDrawer extends Component {
             var vid = String(p.variant_id);
             if (vid.startsWith('gid://')) vid = vid.split('/').pop();
             var isAdding = self.state.updating['upsell_' + vid];
+            // Sold out only once we've fetched availability and it's false —
+            // unknown (not yet fetched) stays addable so we never hide the button
+            // prematurely.
+            var soldOut = self._upsellAvailable[vid] === false;
             var productMeta = {
               title: p.title,
               image: p.image_url,
@@ -2849,10 +2881,10 @@ export default class CartDrawer extends Component {
                     }
                   </div>
                   <button
-                    class="cartmax-upsell-add"
-                    onClick={function () { self.handleUpsellAdd(vid, productMeta); }}
-                    disabled={isAdding}
-                  >{isAdding ? 'Adding...' : btnText}</button>
+                    class={'cartmax-upsell-add' + (soldOut ? ' cartmax-upsell-add--soldout' : '')}
+                    onClick={function () { if (!soldOut) self.handleUpsellAdd(vid, productMeta); }}
+                    disabled={isAdding || soldOut}
+                  >{soldOut ? 'Sold out' : (isAdding ? 'Adding...' : btnText)}</button>
                 </div>
               </div>
             );

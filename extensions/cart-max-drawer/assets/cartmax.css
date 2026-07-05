@@ -2074,6 +2074,13 @@ cart-notification-component [role="dialog"] {
   margin-top: 2px;
 }
 
+/* Sold-out upsell: no add affordance, clearly unavailable. */
+.cartmax-upsell-add--soldout {
+  opacity: 0.55;
+  cursor: not-allowed;
+  text-transform: uppercase;
+}
+
 .cartmax-upsell-card--small .cartmax-upsell-add {
   height: 28px;
 }

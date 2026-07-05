@@ -48,16 +48,18 @@ function notify() {
   }
 }
 
-// Flag gate (mirrors isGraphqlCartEnabled): opt in via localStorage
-// `cartx:ajaxCartStore` = '1', window.__cartxAjaxCartStore = true, or the
-// server config `_config.ajax_cart_store`. Default OFF — the current AJAX path
-// stays live until this is validated and the old path is removed.
+// The AJAX optimistic store is now the LIVE cart path (default ON). Kill
+// switches remain, so it can be disabled without a deploy if anything surfaces:
+// localStorage `cartx:ajaxCartStore` = '0', window.__cartxAjaxCartStore = false,
+// or the server config `_config.ajax_cart_store === false`. The old optimistic
+// path is still in place as the fallback until it's removed in a later cleanup.
 export function isAjaxCartStoreEnabled(config) {
   try {
-    if (typeof window !== 'undefined' && window.__cartxAjaxCartStore === true) return true;
-    if (typeof localStorage !== 'undefined' && localStorage.getItem('cartx:ajaxCartStore') === '1') return true;
+    if (typeof window !== 'undefined' && window.__cartxAjaxCartStore === false) return false;
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('cartx:ajaxCartStore') === '0') return false;
   } catch (_) { /* storage may be unavailable */ }
-  return !!(config && config.ajax_cart_store);
+  if (config && config.ajax_cart_store === false) return false;
+  return true;
 }
 
 export function getState() { return _state; }

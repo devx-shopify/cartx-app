@@ -162,6 +162,7 @@ export const action = async ({ request }) => {
             ... on Product {
               id
               title
+              handle
               featuredImage { url }
               variants(first: 1) { edges { node { id price compareAtPrice } } }
             }
@@ -172,7 +173,9 @@ export const action = async ({ request }) => {
     const json = await res.json();
     config.upsells.products = (json.data?.nodes ?? []).filter(Boolean).map((node) => {
       const firstVariant = node.variants?.edges?.[0]?.node;
-      return { product_id: node.id, title: node.title, image_url: node.featuredImage?.url ?? "", variant_id: firstVariant?.id ?? "", price: firstVariant?.price ?? "0", compare_at_price: firstVariant?.compareAtPrice || undefined };
+      // handle lets the drawer fetch /products/{handle}.js for live availability
+      // (to show "Sold out" instead of the add button).
+      return { product_id: node.id, title: node.title, handle: node.handle ?? "", image_url: node.featuredImage?.url ?? "", variant_id: firstVariant?.id ?? "", price: firstVariant?.price ?? "0", compare_at_price: firstVariant?.compareAtPrice || undefined };
     });
   } else if (!body.keep_upsell_products) {
     config.upsells.products = [];
