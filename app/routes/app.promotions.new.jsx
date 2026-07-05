@@ -35,9 +35,10 @@ export const action = async ({ request }) => {
   delete body._type;
 
   if (type === "offer") {
-    // Enrich gift variants so the drawer can show titles + images on the
-    // "Show offer card only" cards without an extra storefront fetch.
-    if (body.reward?.type === "auto_add_gift" && body.reward.add_mode === "display") {
+    // Enrich gift variants (title + image) so the drawer can render the gift
+    // instantly — the "Show offer card" cards AND the auto-added gift line
+    // (optimistic add) — without an extra storefront fetch.
+    if (body.reward?.type === "auto_add_gift") {
       const vids = body.reward.gift_variants || [];
       const variantDataMap = await fetchVariantData(admin, vids);
       body.reward.gift_variant_data = enrichVariantData(vids, variantDataMap);

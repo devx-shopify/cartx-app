@@ -59,7 +59,7 @@ export const action = async ({ request, params }) => {
   if (type === "offer") {
     const idx = config.offers.findIndex((o) => o.id === params.id);
     if (idx === -1) throw new Response("Offer not found", { status: 404 });
-    if (body.reward?.type === "auto_add_gift" && body.reward.add_mode === "display") {
+    if (body.reward?.type === "auto_add_gift") {
       const vids = body.reward.gift_variants || [];
       const variantDataMap = await fetchVariantData(admin, vids);
       body.reward.gift_variant_data = enrichVariantData(vids, variantDataMap);
