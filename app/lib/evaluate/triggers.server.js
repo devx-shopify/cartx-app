@@ -117,11 +117,19 @@ export function evaluateOffers(
 
     if (offer.reward.type === 'auto_add_gift') {
       if (offer.reward.add_mode === 'auto') {
+        const autoVariantData = offer.reward.gift_variant_data || []
         for (const variantId of offer.reward.gift_variants) {
           if (!alreadyInCart(cart, variantId, offer.id)) {
+            const gd = autoVariantData.find(
+              (d) => normalizeId(d.variant_id) === normalizeId(variantId)
+            )
             toAdd.push({
               variant_id: variantId,
               quantity: offer.reward.quantity_per_variant,
+              // Include display data so the drawer renders the real gift line
+              // instantly (no "Free gift" skeleton before reconcile).
+              title: gd?.title || '',
+              image: gd?.image || '',
               properties: {
                 [LINE_PROPS.FREEBIE]: 'true',
                 [LINE_PROPS.ACQUIRED_ON_PAGE]: page,

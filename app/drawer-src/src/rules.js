@@ -95,10 +95,18 @@ function evaluateOffers(offers, cart, adjTotal, adjQty, page, customer) {
               li.properties && li.properties['_offer_id'] === offer.id;
           });
           if (!alreadyIn) {
+            // Attach the gift's display data (cached in the offer config) so the
+            // drawer can render an optimistic gift line instantly, with the real
+            // title/image, before the server add lands.
+            var gdata = (offer.reward.gift_variant_data || []).find(function (d) {
+              return normalizeId(d.variant_id) === vid;
+            }) || {};
             toAdd.push({
               variant_id: giftVids[g],
               quantity: offer.reward.quantity_per_variant || 1,
               properties: { _freebie: 'true', _offer_id: offer.id },
+              title: gdata.title || '',
+              image: gdata.image || '',
             });
           }
         }

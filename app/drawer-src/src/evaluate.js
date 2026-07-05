@@ -89,7 +89,7 @@ function configHasVolumeOffer(cfg) {
   return false;
 }
 
-async function ensureCartxAttribute(cart) {
+export async function ensureCartxAttribute(cart) {
   if (_cartxAttrEnsured) return;
   if (!configHasVolumeOffer(_cachedConfig)) return;
   var attrs = (cart && cart.attributes) || {};
@@ -428,6 +428,94 @@ var _pendingCart = null;
 var _pendingActions = [];
 var _evaluateResolvers = []; // Resolvers waiting for evaluate to settle
 
+// Build an optimistic (FREE) cart line for a gift, keyed `pending_*` so
+// _stabiliseOrder promotes it to the real Shopify line on reconcile. Shared by
+// the auto-add path (applyOptimisticGifts) and the manual claim/offer adds, so
+// every gift shows the instant it's chosen instead of after the /cart/add
+// round-trip. `keyPrefix` distinguishes the source (gift/claim/offer).
+export function buildPendingGiftLine(variantId, quantity, properties, title, image, keyPrefix) {
+  var vid = String(normalizeVariantId(variantId));
+  var offerId = properties && properties._offer_id;
+  return {
+    key: (keyPrefix || 'pending_gift_') + offerId + '_' + vid,
+    id: Number(vid),
+    variant_id: Number(vid),
+    product_id: 0,
+    quantity: quantity || 1,
+    title: title || 'Free gift',
+    product_title: title || 'Free gift',
+    variant_title: null,
+    image: image || '',
+    price: 0,
+    original_price: 0,
+    final_price: 0,
+    line_price: 0,
+    final_line_price: 0,
+    original_line_price: 0,
+    line_level_discount_allocations: [],
+    properties: properties || { _freebie: 'true', _offer_id: offerId },
+  };
+}
+
+// The auto-gift add/remove plan for a cart, computed LOCALLY (no server round
+// trip) from the cached config. Returns { to_add, to_remove } — to_add items
+// carry title/image from gift_variant_data so the store can render the real
+// gift line instantly; to_remove are line keys whose offer is no longer
+// triggered (so a gift is pulled the instant the cart drops below threshold).
+// Null when the config cache isn't warm yet.
+export function localGiftDelta(cart) {
+  if (!cart || !isCacheValid()) return null;
+  var ctx = getContext();
+  var local = localEvaluate(_cachedConfig, cart, { id: ctx.customerId, tags: ctx.customerTags });
+  if (!local) return null;
+  return { to_add: local.to_add || [], to_remove: local.to_remove || [] };
+}
+
+// Merge the gifts a just-crossed threshold implies into a cart, for INSTANT
+// display — so an auto-add gift line appears the moment the bar fills, instead
+// of after the server eval + /cart/add round-trip. Gifts whose offer is no
+// longer triggered are dropped. Returns the same cart reference (no change)
+// when nothing applies, so callers can cheaply detect a no-op. The real add
+// still runs via the server path.
+export function applyOptimisticGifts(cart) {
+  if (!cart || !isCacheValid()) return cart;
+  var ctx = getContext();
+  var local = localEvaluate(_cachedConfig, cart, { id: ctx.customerId, tags: ctx.customerTags });
+  if (!local) return cart;
+  var toAdd = local.to_add || [];
+  // Only ADD optimistically. Removal is left to the server reconcile: applying
+  // local to_remove here can strip a just-manually-added gift (offer/claim)
+  // mid-reconcile, which reverted the card. Auto gifts still disappear on the
+  // next server eval when a threshold drops — a beat slower, but never wrong.
+  if (toAdd.length === 0) return cart;
+
+  var items = (cart.items || []).slice();
+  for (var a = 0; a < toAdd.length; a++) {
+    var g = toAdd[a];
+    // Skip gifts already present (avoids a duplicate optimistic line).
+    var vid = String(normalizeVariantId(g.variant_id));
+    var offerId = g.properties && g.properties._offer_id;
+    var exists = items.some(function (it) {
+      return String(normalizeVariantId(it.variant_id)) === vid &&
+        it.properties && it.properties._offer_id === offerId;
+    });
+    if (exists) continue;
+    // Only render the instant line when we actually have the gift's display
+    // data (title). Without it we'd flash a generic "Free gift" placeholder
+    // that then gets swapped for the real product — worse than just letting the
+    // server reconcile add it. gift_variant_data (saved with the offer) is what
+    // populates this, so a properly-configured offer shows the real gift at once.
+    if (!g.title) continue;
+    items.push(buildPendingGiftLine(g.variant_id, g.quantity, g.properties, g.title, g.image, 'pending_gift_'));
+  }
+
+  if (items.length === (cart.items || []).length) return cart;
+
+  var itemCount = 0;
+  for (var i = 0; i < items.length; i++) itemCount += (items[i].quantity || 0);
+  return Object.assign({}, cart, { items: items, item_count: itemCount });
+}
+
 // Returns a promise that resolves when all in-flight evaluations complete.
 // Resolves immediately if nothing is running.
 export function waitForEvaluate() {
@@ -592,12 +680,21 @@ window.addEventListener('cartmax:drawer-opened', function () {
   }
 });
 
+// When the AJAX cart store is active it owns cart mutations AND drives eval +
+// gift reconcile itself (CartDrawer._runAjaxPromo). This pipeline must stand
+// down so it doesn't ALSO apply gifts via its own /cart/* calls (double-add).
+function ajaxStoreActive() {
+  return typeof window !== 'undefined' && window.__cartxAjaxCartStoreActive === true;
+}
+
 window.addEventListener('cartmax:cart-action', function (e) {
+  if (ajaxStoreActive()) return;
   var detail = e.detail || {};
   runEvaluate(detail.cart, detail.actions || detail.action);
 });
 
 window.addEventListener('cartmax:cart-changed', function (e) {
+  if (ajaxStoreActive()) return;
   runEvaluate(e.detail && e.detail.cart);
 });
 

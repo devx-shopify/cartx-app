@@ -747,6 +747,13 @@ cart-notification-component [role="dialog"] {
   line-height: 1.2;
 }
 
+/* Total is recalculating on the server (discount-aware). Dim it briefly so the
+   change reads as "updating" rather than a lag/glitch. */
+.cartmax-price-updating {
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
+}
+
 .cartmax-price-breakup-link {
   font-size: 12px;
   font-weight: 500;

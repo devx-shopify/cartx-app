@@ -130,7 +130,6 @@
       originalFetch.call(window, '/cart.js')
         .then(function(r) { return r.json(); })
         .then(function(cart) {
-          try { console.log('[cx-diag]', (performance.now()|0) + 'ms', 'dispatch cart-changed count=', cart.item_count, 'ready=', !!window.__cartmaxReady, 'src=', srcUrl); } catch (_) {}
           window.dispatchEvent(new CustomEvent('cartmax:cart-changed', {
             detail: { source: 'intercept', url: srcUrl, cart: cart }
           }));
@@ -147,7 +146,6 @@
       var url = extractUrl(arguments[0]);
       var ret = originalFetch.apply(this, arguments);
       if (!window.__cartmaxInternal && isCartEndpoint(url)) {
-        try { console.log('[cx-diag]', (performance.now()|0) + 'ms', 'intercept(fetch)', url, 'ready=', !!window.__cartmaxReady); } catch (_) {}
         ret.then(function() { refreshCart(url); }).catch(function() {});
       }
       return ret;
@@ -165,7 +163,6 @@
     XMLHttpRequest.prototype.send = function() {
       var xhr = this;
       if (xhr._cartmaxUrl && isCartEndpoint(xhr._cartmaxUrl) && !window.__cartmaxInternal) {
-        try { console.log('[cx-diag]', (performance.now()|0) + 'ms', 'intercept(xhr)', xhr._cartmaxUrl, 'ready=', !!window.__cartmaxReady); } catch (_) {}
         xhr.addEventListener('load', function() { refreshCart(xhr._cartmaxUrl); });
       }
       return originalXHRSend.apply(this, arguments);
@@ -175,7 +172,6 @@
     window.__cartmaxQueue = [];
     window.addEventListener('cartmax:cart-changed', function(e) {
       if (!window.__cartmaxReady) {
-        try { console.log('[cx-diag]', (performance.now()|0) + 'ms', 'BUFFERED cart-changed count=', e.detail && e.detail.cart && e.detail.cart.item_count); } catch (_) {}
         window.__cartmaxQueue.push(e);
       }
     });

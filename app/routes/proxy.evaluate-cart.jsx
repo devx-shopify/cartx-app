@@ -153,12 +153,22 @@ export const action = async ({ request }) => {
 
   const totalSavings = computeTotalSavings(cart);
 
+  // The storefront token is optional (the drawer falls back to AJAX when it's
+  // null). A mint/DB hiccup must never take down the whole evaluate-cart
+  // response — guard it so a failure degrades to null instead of a 500.
+  let storefrontToken = null;
+  try {
+    storefrontToken = await loadStorefrontToken(shopId);
+  } catch (err) {
+    console.error('[cartx] loadStorefrontToken error:', err);
+  }
+
   // Build lightweight config for client-side caching
   const clientConfig = {
     offers: (config.offers || []).filter((o) => o.enabled).map((o) => ({
       id: o.id,
       trigger: o.trigger,
-      reward: { type: o.reward.type, gift_variants: o.reward.gift_variants, quantity_per_variant: o.reward.quantity_per_variant, add_mode: o.reward.add_mode },
+      reward: { type: o.reward.type, gift_variants: o.reward.gift_variants, gift_variant_data: o.reward.gift_variant_data, quantity_per_variant: o.reward.quantity_per_variant, add_mode: o.reward.add_mode },
       page_handles: o.page_handles,
       bar: o.bar,
     })),
@@ -166,7 +176,7 @@ export const action = async ({ request }) => {
     money_format: moneyFormat || '',
     // Storefront GraphQL cart (Phase A): public token (app-minted) + pinned API
     // version. Null until minted (drawer falls back to AJAX; flag off anyway).
-    storefront_token: await loadStorefrontToken(shopId),
+    storefront_token: storefrontToken,
     storefront_api_version: '2026-01',
   };
 

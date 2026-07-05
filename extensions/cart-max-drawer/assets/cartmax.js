@@ -752,10 +752,15 @@
               return normalizeVariantId(li.variant_id) === vid && li.properties && li.properties["_offer_id"] === offer.id;
             });
             if (!alreadyIn) {
+              var gdata = (offer.reward.gift_variant_data || []).find(function(d2) {
+                return normalizeVariantId(d2.variant_id) === vid;
+              }) || {};
               toAdd.push({
                 variant_id: giftVids[g2],
                 quantity: offer.reward.quantity_per_variant || 1,
-                properties: { _freebie: "true", _offer_id: offer.id }
+                properties: { _freebie: "true", _offer_id: offer.id },
+                title: gdata.title || "",
+                image: gdata.image || ""
               });
             }
           }
@@ -1564,6 +1569,60 @@
   var _pendingCart = null;
   var _pendingActions = [];
   var _evaluateResolvers = [];
+  function buildPendingGiftLine(variantId, quantity, properties, title, image, keyPrefix) {
+    var vid = String(normalizeVariantId(variantId));
+    var offerId = properties && properties._offer_id;
+    return {
+      key: (keyPrefix || "pending_gift_") + offerId + "_" + vid,
+      id: Number(vid),
+      variant_id: Number(vid),
+      product_id: 0,
+      quantity: quantity || 1,
+      title: title || "Free gift",
+      product_title: title || "Free gift",
+      variant_title: null,
+      image: image || "",
+      price: 0,
+      original_price: 0,
+      final_price: 0,
+      line_price: 0,
+      final_line_price: 0,
+      original_line_price: 0,
+      line_level_discount_allocations: [],
+      properties: properties || { _freebie: "true", _offer_id: offerId }
+    };
+  }
+  function localGiftDelta(cart) {
+    if (!cart || !isCacheValid()) return null;
+    var ctx = getContext();
+    var local = localEvaluate(_cachedConfig, cart, { id: ctx.customerId, tags: ctx.customerTags });
+    if (!local) return null;
+    return { to_add: local.to_add || [], to_remove: local.to_remove || [] };
+  }
+  function applyOptimisticGifts(cart) {
+    if (!cart || !isCacheValid()) return cart;
+    var ctx = getContext();
+    var local = localEvaluate(_cachedConfig, cart, { id: ctx.customerId, tags: ctx.customerTags });
+    if (!local) return cart;
+    var toAdd = local.to_add || [];
+    if (toAdd.length === 0) return cart;
+    var items = (cart.items || []).slice();
+    for (var a2 = 0; a2 < toAdd.length; a2++) {
+      var g2 = toAdd[a2];
+      var vid = String(normalizeVariantId(g2.variant_id));
+      var offerId = g2.properties && g2.properties._offer_id;
+      var exists = items.some(function(it) {
+        return String(normalizeVariantId(it.variant_id)) === vid && it.properties && it.properties._offer_id === offerId;
+      });
+      if (exists) continue;
+      if (!g2.title) continue;
+      items.push(buildPendingGiftLine(g2.variant_id, g2.quantity, g2.properties, g2.title, g2.image, "pending_gift_"));
+    }
+    if (items.length === (cart.items || []).length) return cart;
+    var itemCount = 0;
+    for (var i2 = 0; i2 < items.length; i2++) itemCount += items[i2].quantity || 0;
+    return Object.assign({}, cart, { items, item_count: itemCount });
+  }
   function waitForEvaluate() {
     if (!_evaluating && _pendingActions.length === 0 && !_pendingCart) {
       return Promise.resolve();
@@ -1689,11 +1748,16 @@
       window.dispatchEvent(new CustomEvent("cartmax:eval-result", { detail: _lastResult }));
     }
   });
+  function ajaxStoreActive() {
+    return typeof window !== "undefined" && window.__cartxAjaxCartStoreActive === true;
+  }
   window.addEventListener("cartmax:cart-action", function(e2) {
+    if (ajaxStoreActive()) return;
     var detail = e2.detail || {};
     runEvaluate(detail.cart, detail.actions || detail.action);
   });
   window.addEventListener("cartmax:cart-changed", function(e2) {
+    if (ajaxStoreActive()) return;
     runEvaluate(e2.detail && e2.detail.cart);
   });
   fetchCart().then(function(cart) {
@@ -2125,6 +2189,266 @@
     setLocalCart(Object.assign({}, base, { discount_codes: codes }));
   }
 
+  // app/drawer-src/src/ajax-cart-store.js
+  var _state2 = {
+    serverCart: null,
+    // canonical (/cart.js shape) — last authoritative cart
+    localCart: null,
+    // optimistic overlay (/cart.js shape) — what the UI renders
+    loading: false,
+    ready: false
+  };
+  var _subs2 = [];
+  function subscribe2(fn) {
+    _subs2.push(fn);
+    return function unsubscribe() {
+      var i2 = _subs2.indexOf(fn);
+      if (i2 !== -1) _subs2.splice(i2, 1);
+    };
+  }
+  function notify2() {
+    for (var i2 = 0; i2 < _subs2.length; i2++) {
+      try {
+        _subs2[i2](_state2);
+      } catch (e2) {
+        console.error("[cartx] ajax-store subscriber error:", e2);
+      }
+    }
+  }
+  function isAjaxCartStoreEnabled(config) {
+    try {
+      if (typeof window !== "undefined" && window.__cartxAjaxCartStore === true) return true;
+      if (typeof localStorage !== "undefined" && localStorage.getItem("cartx:ajaxCartStore") === "1") return true;
+    } catch (_2) {
+    }
+    return !!(config && config.ajax_cart_store);
+  }
+  function getState2() {
+    return _state2;
+  }
+  function getOptimisticCart2() {
+    return _state2.localCart || _state2.serverCart;
+  }
+  try {
+    if (typeof window !== "undefined") {
+      window.__cartxAjaxStore = { getState: getState2, getOptimisticCart: getOptimisticCart2 };
+    }
+  } catch (_2) {
+  }
+  function init(serverCart) {
+    if (serverCart) {
+      _state2.serverCart = serverCart;
+      _state2.localCart = serverCart;
+    }
+    _state2.ready = true;
+    notify2();
+  }
+  function reconcileFromServer(serverCart) {
+    if (!serverCart) return;
+    _state2.serverCart = serverCart;
+    if (!_syncing2 && !_pendingResolve2) {
+      _state2.localCart = serverCart;
+    }
+    notify2();
+  }
+  var _syncing2 = false;
+  var _pendingResolve2 = null;
+  function queueSync2() {
+    return new Promise(function(resolve) {
+      if (!_syncing2) {
+        resolve();
+        return;
+      }
+      _pendingResolve2 = resolve;
+    });
+  }
+  function completeAndTriggerNext2() {
+    _syncing2 = false;
+    if (_pendingResolve2) {
+      var next = _pendingResolve2;
+      _pendingResolve2 = null;
+      next();
+      return true;
+    }
+    return false;
+  }
+  async function scheduleSync2() {
+    await queueSync2();
+    await runSync2();
+  }
+  function whenSettled2(timeoutMs) {
+    var deadline = timeoutMs || 4e3;
+    var start = typeof performance !== "undefined" && performance.now ? performance.now() : 0;
+    return new Promise(function(resolve) {
+      (function check() {
+        var elapsed = (typeof performance !== "undefined" && performance.now ? performance.now() : 0) - start;
+        if (!_syncing2 && !_pendingResolve2 || elapsed >= deadline) {
+          resolve();
+          return;
+        }
+        setTimeout(check, 50);
+      })();
+    });
+  }
+  function setLocalCart2(localCart) {
+    _state2.localCart = localCart;
+    notify2();
+    scheduleSync2();
+  }
+  function numericVariantId(merchandiseId) {
+    var s2 = String(merchandiseId);
+    return Number(s2.indexOf("gid://") === 0 ? s2.split("/").pop() : s2);
+  }
+  function propsFromAttributes(attributes) {
+    var out = {};
+    (attributes || []).forEach(function(a2) {
+      out[a2.key] = a2.value;
+    });
+    return out;
+  }
+  function appliedCodesOf(cart) {
+    var codes = [];
+    (cart && cart.cart_level_discount_applications || []).forEach(function(d2) {
+      if (d2.title) codes.push(d2.title);
+    });
+    (cart && cart.items || []).forEach(function(item) {
+      (item.line_level_discount_allocations || []).forEach(function(a2) {
+        if (a2.discount_application && a2.discount_application.title) codes.push(a2.discount_application.title);
+      });
+    });
+    return codes.filter(function(c2, i2, arr) {
+      return arr.indexOf(c2) === i2;
+    });
+  }
+  function desiredCodes(cart) {
+    if (cart && cart.discount_codes) return cart.discount_codes.map(function(d2) {
+      return d2.code;
+    });
+    return appliedCodesOf(cart);
+  }
+  async function runSync2() {
+    if (!_state2.localCart) return;
+    _syncing2 = true;
+    _state2.loading = true;
+    notify2();
+    try {
+      var serverMapped = _state2.serverCart;
+      if (!serverMapped) serverMapped = await fetchCart();
+      var diff = getCartDifference(serverMapped, _state2.localCart);
+      var lastCart = null;
+      var didAdd = false;
+      var updates = {};
+      diff.itemsToUpdate.forEach(function(u2) {
+        updates[u2.id] = u2.quantity;
+      });
+      diff.lineIdsToRemove.forEach(function(id) {
+        updates[id] = 0;
+      });
+      if (Object.keys(updates).length) {
+        lastCart = await cartUpdateAll({ updates });
+      }
+      if (diff.itemsToAdd.length) {
+        var items = diff.itemsToAdd.map(function(a2) {
+          return {
+            id: numericVariantId(a2.merchandiseId),
+            quantity: a2.quantity,
+            properties: propsFromAttributes(a2.attributes)
+          };
+        });
+        await internalFetch("/cart/add.js", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items })
+        });
+        didAdd = true;
+      }
+      var wantCodes = desiredCodes(_state2.localCart);
+      var haveCodes = appliedCodesOf(serverMapped);
+      var codesDiffer = wantCodes.length !== haveCodes.length || wantCodes.some(function(c2) {
+        return haveCodes.indexOf(c2) === -1;
+      });
+      if (codesDiffer) {
+        lastCart = await cartUpdateAll({ discount: wantCodes.join(",") });
+      }
+      _state2.serverCart = didAdd || !lastCart ? await fetchCart() : lastCart;
+      var hasMore = completeAndTriggerNext2();
+      if (!hasMore) {
+        _state2.localCart = _state2.serverCart;
+        _state2.loading = false;
+        notify2();
+      }
+    } catch (err) {
+      console.error("[cartx] ajax syncCart failed:", err);
+      _state2.loading = false;
+      completeAndTriggerNext2();
+      notify2();
+    }
+  }
+  function addLine2(variantId, quantity, properties, meta) {
+    var base = _state2.localCart || _state2.serverCart || { items: [] };
+    setLocalCart2(addItemToLocalCart(base, createOptimisticItem(variantId, quantity, properties, meta)));
+  }
+  function cartHasDiscounts(cart) {
+    if (!cart) return false;
+    if ((cart.total_discount || 0) > 0) return true;
+    if ((cart.cart_level_discount_applications || []).length) return true;
+    return (cart.items || []).some(function(it) {
+      return (it.final_line_price || 0) < (it.original_line_price || it.line_price || 0) || (it.line_level_discount_allocations || []).length > 0;
+    });
+  }
+  function preserveMoney(base, next) {
+    return Object.assign({}, next, {
+      total_price: base.total_price,
+      original_total_price: base.original_total_price,
+      total_discount: base.total_discount,
+      items_subtotal_price: base.items_subtotal_price,
+      items: (next.items || []).map(function(it) {
+        var b2 = (base.items || []).find(function(x2) {
+          return x2.key === it.key;
+        });
+        if (!b2) return it;
+        return Object.assign({}, it, {
+          line_price: b2.line_price,
+          final_line_price: b2.final_line_price,
+          original_line_price: b2.original_line_price
+        });
+      })
+    });
+  }
+  function changeQuantity2(key, quantity) {
+    var base = _state2.localCart || _state2.serverCart;
+    if (!base) return;
+    var next = setLineQuantity(base, key, quantity);
+    if (cartHasDiscounts(base)) next = preserveMoney(base, next);
+    setLocalCart2(next);
+  }
+  function removeLine2(key) {
+    changeQuantity2(key, 0);
+  }
+  function applyDiscountCode2(code) {
+    var base = _state2.localCart || _state2.serverCart;
+    if (!base || !code) return;
+    var codes = (base.discount_codes || appliedCodesOf(base).map(function(c2) {
+      return { code: c2, applicable: true };
+    })).slice();
+    if (codes.some(function(d2) {
+      return d2.code.toUpperCase() === code.toUpperCase();
+    })) return;
+    codes.push({ code, applicable: true });
+    setLocalCart2(Object.assign({}, base, { discount_codes: codes }));
+  }
+  function removeDiscountCode2(code) {
+    var base = _state2.localCart || _state2.serverCart;
+    if (!base) return;
+    var current = base.discount_codes || appliedCodesOf(base).map(function(c2) {
+      return { code: c2, applicable: true };
+    });
+    var codes = current.filter(function(d2) {
+      return d2.code.toUpperCase() !== code.toUpperCase();
+    });
+    setLocalCart2(Object.assign({}, base, { discount_codes: codes }));
+  }
+
   // app/drawer-src/src/analytics-events.js
   var ANALYTICS_EVENTS = {
     DRAWER_OPENED: "drawer_opened",
@@ -2407,6 +2731,16 @@
   function IconChevronRight() {
     return /* @__PURE__ */ k("svg", { width: "28", height: "28", viewBox: "0 0 28 28", fill: "none", xmlns: "http://www.w3.org/2000/svg" }, /* @__PURE__ */ k("path", { d: "M11.6665 20.1924L10.8408 19.3667L16.2075 14L10.8408 8.63333L11.6665 7.80762L17.8589 14L11.6665 20.1924Z", fill: "currentColor" }));
   }
+  function hasFreebieMarker(properties) {
+    if (!properties) return false;
+    for (var k2 in properties) {
+      if (!Object.prototype.hasOwnProperty.call(properties, k2)) continue;
+      if (k2.indexOf("_freebie") === -1) continue;
+      var v2 = properties[k2];
+      if (v2 === "true" || v2 === true) return true;
+    }
+    return false;
+  }
   var CartDrawer = class extends C {
     constructor() {
       super();
@@ -2472,6 +2806,7 @@
       this._layout = { drawer_position: "right", image_style: "rounded", qty_style: "bordered", show_vendor: false, show_variant_switcher: true, show_remove_btn: true, show_payment_icons: true, show_compare_price: true };
       this._variantCache = {};
       this._compareAtCache = {};
+      this._prefetchedHandles = {};
       this._cartReadSeq = 0;
       this._activeOps = /* @__PURE__ */ new Set();
       this._upsells = { card_layout: "horizontal", card_size: "medium", heading: "", btn_text: "ADD TO CART", show_compare_price: true };
@@ -2482,11 +2817,8 @@
       this._behavior = { auto_open_on_add: true, animation_style: "slide", close_on_overlay_click: true, close_on_esc: true };
     }
     componentDidMount() {
-      try {
-        console.log("[cx-diag]", (performance.now() | 0) + "ms", "drawer mount start");
-      } catch (_2) {
-      }
       this._graphqlCart = isGraphqlCartEnabled();
+      this._ajaxStore = !this._graphqlCart && isAjaxCartStoreEnabled();
       var rootEl = document.getElementById("cartmax-root");
       this._lastKnownItemCount = rootEl ? parseInt(rootEl.dataset.initialItemCount || "0", 10) : 0;
       if (rootEl && rootEl.dataset.initialCart) {
@@ -2518,12 +2850,20 @@
       }, 5e3);
       this._onCartChanged = (e2) => {
         if (this._graphqlCart) return;
-        if (e2.detail && e2.detail.cart) {
-          var cart = this._stabiliseOrder(e2.detail.cart);
-          try {
-            console.log("[cx-diag]", (performance.now() | 0) + "ms", "_onCartChanged count=", cart.item_count, "lastKnown=", this._lastKnownItemCount, "autoOpen=", this._behavior.auto_open_on_add, "willOpen=", !!(this._behavior.auto_open_on_add && cart.item_count > this._lastKnownItemCount), "src=", e2.detail.source);
-          } catch (_2) {
+        if (this._ajaxStore) {
+          if (e2.detail && e2.detail.cart) {
+            reconcileFromServer(e2.detail.cart);
+            if (this._behavior.auto_open_on_add && e2.detail.cart.item_count > this._lastKnownItemCount) {
+              this.openDrawer();
+            }
+            this._lastKnownItemCount = e2.detail.cart.item_count;
+          } else if (this._behavior.auto_open_on_add) {
+            this.openDrawer();
           }
+          return;
+        }
+        if (e2.detail && e2.detail.cart) {
+          var cart = applyOptimisticGifts(this._stabiliseOrder(e2.detail.cart));
           this._currency = cart.currency || this._currency;
           this._cartReadSeq++;
           this.setState({ cart, loading: false });
@@ -2551,6 +2891,7 @@
       };
       this._onInternalReload = (e2) => {
         if (this._graphqlCart) return;
+        if (this._ajaxStore) return;
         if (e2.detail && e2.detail.cart) {
           var newCart = this._stabiliseOrder(e2.detail.cart);
           if (this._isTransientEmpty(newCart)) return;
@@ -2591,8 +2932,9 @@
       };
       this._onOptimisticUpdate = (e2) => {
         if (this._graphqlCart) return;
+        if (this._ajaxStore) return;
         if (e2.detail && e2.detail.cart) {
-          var optimisticCart = this._stabiliseOrder(e2.detail.cart);
+          var optimisticCart = applyOptimisticGifts(this._stabiliseOrder(e2.detail.cart));
           if (this._isTransientEmpty(optimisticCart)) return;
           this._currency = optimisticCart.currency || this._currency;
           var keepPending = {};
@@ -2626,6 +2968,21 @@
         });
         this._installAtcTakeover();
       }
+      if (this._ajaxStore) {
+        try {
+          window.__cartxAjaxCartStoreActive = true;
+        } catch (_2) {
+        }
+        this._unsubAjax = subscribe2((state2) => {
+          var c2 = getOptimisticCart2();
+          if (c2) {
+            this.setState({ cart: c2, loading: false, cartSyncing: !!(state2 && state2.loading) });
+            updateCartCount(c2.item_count);
+            this._maybeRunAjaxPromo(c2);
+          }
+        });
+        init(this.state.cart);
+      }
       window.__cartmaxReady = true;
       var queued = (window.__cartmaxQueue || []).slice();
       window.__cartmaxQueue = [];
@@ -2635,10 +2992,6 @@
           lastWithCart = queued[qi];
           break;
         }
-      }
-      try {
-        console.log("[cx-diag]", (performance.now() | 0) + "ms", "flush: ready set, queued=", queued.length, "lastWithCartCount=", lastWithCart && lastWithCart.detail.cart.item_count, "openIntent=", window.__cartmaxOpenIntent);
-      } catch (_2) {
       }
       if (lastWithCart) {
         window.dispatchEvent(new CustomEvent("cartmax:cart-changed", { detail: lastWithCart.detail }));
@@ -2794,6 +3147,7 @@
     }
     componentWillUnmount() {
       if (this._unsubGql) this._unsubGql();
+      if (this._unsubAjax) this._unsubAjax();
       if (this._onAtcSubmit) document.removeEventListener("submit", this._onAtcSubmit, true);
       if (this._onPublicAdd) window.removeEventListener("cartx:add", this._onPublicAdd);
       if (this._openRevealTimer) clearTimeout(this._openRevealTimer);
@@ -3050,6 +3404,7 @@
     // ── Cart data ─────────────────────────────────────────────
     async loadCart() {
       if (this._graphqlCart) return;
+      if (this._ajaxStore) return;
       if (!this.state.cart) {
         this.setState({ loading: true });
       }
@@ -3103,13 +3458,16 @@
       items.forEach((item) => {
         if (!item.handle || seen[item.handle]) return;
         seen[item.handle] = true;
+        if (this._prefetchedHandles[item.handle]) return;
         var cached = this._variantCache[String(item.product_id)];
         if (cached && cached.length) {
+          this._prefetchedHandles[item.handle] = true;
           cached.forEach((v2) => {
             if (v2.compare_at_price) this._compareAtCache[String(v2.id)] = v2.compare_at_price;
           });
           return;
         }
+        this._prefetchedHandles[item.handle] = true;
         fetch("/products/" + item.handle + ".js").then((r2) => r2.json()).then((p2) => {
           if (!p2.variants) return;
           p2.variants.forEach((v2) => {
@@ -3229,6 +3587,11 @@
         if (shouldOpen) this.openDrawer();
         return whenSettled ? whenSettled() : Promise.resolve();
       }
+      if (this._ajaxStore) {
+        addLine2(id, qty, props, {});
+        if (shouldOpen) this.openDrawer();
+        return whenSettled2 ? whenSettled2() : Promise.resolve();
+      }
       return internalFetch("/cart/add.js", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3293,6 +3656,53 @@
         if (!present) addLine(vid, item.quantity || 1, item.properties || {}, {});
       });
     }
+    // On each store cart change: (1) reconcile auto-gift lines INSTANTLY from
+    // local eval (add newly-triggered gifts with their real title/image, pull
+    // gifts whose threshold is no longer met), then (2) run the server eval,
+    // debounced, purely for the bar/ribbon/coupons + the cartx marker. The gift
+    // add/remove no longer waits on the server round-trip (fixes the "gift not
+    // removed below threshold" bug + the "Free gift" skeleton).
+    _maybeRunAjaxPromo(cart) {
+      this._reconcileLocalGifts(cart);
+      var sig = this._cartSignature(cart);
+      if (sig === this._lastPromoSig) return;
+      this._lastPromoSig = sig;
+      if (this._ajaxPromoTimer) clearTimeout(this._ajaxPromoTimer);
+      this._ajaxPromoTimer = setTimeout(() => this._runAjaxPromo(), 250);
+    }
+    // Instant, local auto-gift reconcile through the store. Idempotent: only adds
+    // a gift not already present, only removes lines local eval flagged — so the
+    // subsequent store notify converges (no loop).
+    _reconcileLocalGifts(cart) {
+      var plan = localGiftDelta(cart);
+      if (!plan) return;
+      (plan.to_remove || []).forEach(function(key) {
+        removeLine2(key);
+      });
+      var items = cart && cart.items || [];
+      (plan.to_add || []).forEach(function(g2) {
+        var vid = String(normalizeVariantId(g2.variant_id));
+        var offerId = g2.properties && g2.properties._offer_id;
+        var present = items.some(function(it) {
+          return String(normalizeVariantId(it.variant_id)) === vid && it.properties && it.properties._offer_id === offerId;
+        });
+        if (!present) addLine2(vid, g2.quantity || 1, g2.properties || {}, { price: 0, title: g2.title, product_title: g2.title, image: g2.image });
+      });
+    }
+    async _runAjaxPromo() {
+      var cart = getOptimisticCart2();
+      if (!cart) return;
+      try {
+        var result = await callEvaluate(cart);
+        if (!result) return;
+        window.dispatchEvent(new CustomEvent("cartmax:eval-result", {
+          detail: Object.assign({}, result, { _server: true })
+        }));
+        ensureCartxAttribute(cart);
+      } catch (err) {
+        console.error("[cartx] ajax promo eval failed:", err);
+      }
+    }
     close() {
       if (this._focusCleanup) {
         this._focusCleanup();
@@ -3354,6 +3764,11 @@
         else changeQuantity(key, qty);
         return;
       }
+      if (this._ajaxStore) {
+        if (qty <= 0) removeLine2(key);
+        else changeQuantity2(key, qty);
+        return;
+      }
       var pendingQty = Object.assign({}, this.state.pendingQty);
       pendingQty[key] = qty;
       this.setState({ pendingQty });
@@ -3398,6 +3813,10 @@
       if (!cart || !cart.items) return;
       if (this._graphqlCart) {
         removeLine(key);
+        return;
+      }
+      if (this._ajaxStore) {
+        removeLine2(key);
         return;
       }
       var line = cart.items.find(function(i2) {
@@ -3624,6 +4043,20 @@
         this.setState({ variantOpen: nextOpen });
         return;
       }
+      if (this._graphqlCart || this._ajaxStore) {
+        var cached = this._variantCache[String(item.product_id)] || [];
+        var nv = cached.find((v2) => String(v2.id) === String(newVariantId)) || {};
+        var meta = { price: nv.price || 0, title: item.product_title, product_title: item.product_title, variant_title: nv.title || null, image: nv.featured_image && nv.featured_image.src || item.image, handle: item.handle, product_id: item.product_id };
+        if (this._graphqlCart) {
+          removeLine(key);
+          addLine(newVariantId, qty, item.properties || {}, meta);
+        } else {
+          removeLine2(key);
+          addLine2(newVariantId, qty, item.properties || {}, meta);
+        }
+        this.setState({ variantOpen: nextOpen });
+        return;
+      }
       var snapshot = this.state.cart;
       var cachedVariants = this._variantCache[String(item.product_id)] || [];
       var newVariant = cachedVariants.find((v2) => String(v2.id) === String(newVariantId));
@@ -3713,7 +4146,7 @@
       var displayQty = this.getDisplayQty(item);
       var isPending = this.state.pendingQty.hasOwnProperty(item.key);
       var curr = this._currency;
-      var isFreebie = item.properties && item.properties["_freebie"] === "true" && item.properties["_claimed"] !== "true";
+      var isFreebie = hasFreebieMarker(item.properties) && item.properties["_claimed"] !== "true";
       var isClaimed = item.properties && (item.properties["_claimed"] === "true" || item.properties["_cartmax_claim"] === "true");
       var isVariantOpen = this.state.variantOpen[item.key];
       var isVariantLoading = this.state.variantLoading[item.key];
@@ -3730,7 +4163,7 @@
           "aria-label": "Remove " + item.product_title
         },
         /* @__PURE__ */ k(IconTrash, null)
-      ) : null), /* @__PURE__ */ k("div", { class: "cartmax-line-price" }, isFreebie && item.final_line_price === 0 ? /* @__PURE__ */ k("span", { class: "cartmax-gift-badge" }, "FREE") : (() => {
+      ) : null), /* @__PURE__ */ k("div", { class: "cartmax-line-price" }, isFreebie || isClaimed ? /* @__PURE__ */ k("span", { class: "cartmax-gift-badge" }, "FREE") : (() => {
         var compareAtUnit = this._layout.show_compare_price ? this._compareAtCache[String(item.variant_id)] : null;
         var compareAtLine = compareAtUnit ? compareAtUnit * item.quantity : 0;
         var strikethrough = compareAtLine > item.final_line_price ? compareAtLine : item.original_line_price > item.final_line_price ? item.original_line_price : 0;
@@ -3740,7 +4173,7 @@
           strikethrough > 0 ? /* @__PURE__ */ k("span", { key: "orig", class: "cartmax-line-price-original" }, formatMoney(strikethrough, curr)) : null,
           !isClaimed && savingsPct > 0 ? /* @__PURE__ */ k("span", { key: "savings", class: "cartmax-line-savings-badge" }, /* @__PURE__ */ k(IconDiscountBadge, null), savingsPct, "% off") : null
         ];
-      })()), !isClaimed && !isFreebie && item.line_level_discount_allocations && item.line_level_discount_allocations.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-line-discounts" }, item.line_level_discount_allocations.map((d2) => /* @__PURE__ */ k("span", { class: "cartmax-line-discount-tag", key: d2.discount_application.title }, d2.discount_application.title))) : null, !isFreebie ? /* @__PURE__ */ k("div", { class: "cartmax-line-actions" }, showVariantSwitcher ? /* @__PURE__ */ k("div", { class: "cartmax-variant-wrap" }, /* @__PURE__ */ k(
+      })()), !isClaimed && !isFreebie && item.line_level_discount_allocations && item.line_level_discount_allocations.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-line-discounts" }, item.line_level_discount_allocations.map((d2) => /* @__PURE__ */ k("span", { class: "cartmax-line-discount-tag", key: d2.discount_application.title }, d2.discount_application.title))) : null, !isFreebie && !isClaimed ? /* @__PURE__ */ k("div", { class: "cartmax-line-actions" }, showVariantSwitcher ? /* @__PURE__ */ k("div", { class: "cartmax-variant-wrap" }, /* @__PURE__ */ k(
         "button",
         {
           class: "cartmax-variant-pill" + (isVariantOpen ? " cartmax-variant-pill--open" : ""),
@@ -3833,7 +4266,7 @@
         this.setState({ claimError: clear });
       }
     }
-    async handleClaimAdd(variantId, claimId) {
+    async handleClaimAdd(variantId, claimId, gift) {
       var key = "claim_" + variantId;
       if (this._graphqlCart) {
         this.setState({ claimed: Object.assign({}, this.state.claimed, { [key]: true }) });
@@ -3841,44 +4274,84 @@
         tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, { promotion_id: claimId, promotion_type: "claim-gift", variant_id: String(variantId) });
         return;
       }
+      if (this._ajaxStore) {
+        this.setState({ claimed: Object.assign({}, this.state.claimed, { [key]: true }) });
+        addLine2(
+          variantId,
+          1,
+          { _freebie: "true", _cartmax_claim: "true", _claimed: "true", _offer_id: claimId },
+          { price: 0, title: gift && gift.title, product_title: gift && gift.title, image: gift && gift.image }
+        );
+        tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, { promotion_id: claimId, promotion_type: "claim-gift", variant_id: String(variantId) });
+        return;
+      }
       this._clearClaimError(key);
+      var props = { _freebie: "true", _cartmax_claim: "true", _claimed: "true", _offer_id: claimId };
+      var pendingLine = buildPendingGiftLine(variantId, 1, props, gift && gift.title, gift && gift.image, "pending_claim_");
+      var base = this.state.cart || { items: [] };
+      var optimisticItems = (base.items || []).concat([pendingLine]);
+      var optimisticCount = 0;
+      for (var oi = 0; oi < optimisticItems.length; oi++) optimisticCount += optimisticItems[oi].quantity || 0;
+      this._cartReadSeq++;
       this.setState({
+        cart: Object.assign({}, base, { items: optimisticItems, item_count: optimisticCount }),
         claimed: Object.assign({}, this.state.claimed, { [key]: true }),
         updating: Object.assign({}, this.state.updating, { [key]: true })
       });
-      try {
-        await internalFetch("/cart/add.js", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id: Number(variantId),
-            quantity: 1,
-            properties: { _freebie: "true", _cartmax_claim: "true", _claimed: "true", _offer_id: claimId }
-          })
-        });
-        var cart = await fetchCart();
-        this._currency = cart.currency || this._currency;
-        this.setState({ cart });
-        updateCartCount(cart.item_count);
-        window.dispatchEvent(new CustomEvent("cartmax:cart-changed", { detail: { cart } }));
-        tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, {
-          promotion_id: claimId,
-          promotion_type: "claim-gift",
-          variant_id: String(variantId),
-          cart_total: cart.total_price,
-          item_count: cart.item_count
-        });
-      } catch (err) {
-        var nextClaimed = Object.assign({}, this.state.claimed);
-        delete nextClaimed[key];
-        this.setState({ claimed: nextClaimed });
-        this._showClaimError(key, "Out of stock");
-        console.error("[cartx] Claim add error:", err);
-      } finally {
+      updateCartCount(optimisticCount);
+      var op = (async () => {
+        var added = false;
+        try {
+          await internalFetch("/cart/add.js", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: Number(variantId), quantity: 1, properties: props })
+          });
+          added = true;
+        } catch (err) {
+          this._removePendingLine(pendingLine.key);
+          var nextClaimed = Object.assign({}, this.state.claimed);
+          delete nextClaimed[key];
+          this.setState({ claimed: nextClaimed });
+          this._showClaimError(key, "Out of stock");
+          console.error("[cartx] Claim add error:", err);
+        }
+        if (added) {
+          try {
+            var cart = await fetchCart();
+            this._currency = cart.currency || this._currency;
+            window.dispatchEvent(new CustomEvent("cartmax:cart-changed", { detail: { cart } }));
+            tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, {
+              promotion_id: claimId,
+              promotion_type: "claim-gift",
+              variant_id: String(variantId),
+              cart_total: cart.total_price,
+              item_count: cart.item_count
+            });
+          } catch (e2) {
+          }
+        }
         var newUpdating = Object.assign({}, this.state.updating);
         delete newUpdating[key];
         this.setState({ updating: newUpdating });
-      }
+      })();
+      this._trackOp(op);
+      await op;
+    }
+    // Remove an optimistic pending line (used to roll back a gift that the server
+    // rejected, e.g. out of stock).
+    _removePendingLine(pendingKey) {
+      var c2 = this.state.cart;
+      if (!c2 || !c2.items) return;
+      var filtered = c2.items.filter(function(it) {
+        return it.key !== pendingKey;
+      });
+      if (filtered.length === c2.items.length) return;
+      var cnt = 0;
+      for (var i2 = 0; i2 < filtered.length; i2++) cnt += filtered[i2].quantity || 0;
+      this._cartReadSeq++;
+      this.setState({ cart: Object.assign({}, c2, { items: filtered, item_count: cnt }) });
+      updateCartCount(cnt);
     }
     async handleClaimRemove(variantId) {
       var cart = this.state.cart;
@@ -3897,48 +4370,68 @@
     // Button-level optimistic (same pattern as handleClaimAdd) — the cart
     // line itself stays pessimistic to avoid blink-in/blink-out on
     // inventory rejection.
-    async handleOfferDisplayAdd(variantId, offerId, quantity) {
+    async handleOfferDisplayAdd(variantId, offerId, quantity, gift) {
       var key = "offer_" + variantId;
       if (this._graphqlCart) {
         this.setState({ claimed: Object.assign({}, this.state.claimed, { [key]: true }) });
         addLine(variantId, quantity || 1, { _freebie: "true", _offer_id: offerId, _acquired_on_page: window.location.pathname }, {});
         return;
       }
+      if (this._ajaxStore) {
+        this.setState({ claimed: Object.assign({}, this.state.claimed, { [key]: true }) });
+        addLine2(
+          variantId,
+          quantity || 1,
+          { _freebie: "true", _offer_id: offerId, _acquired_on_page: window.location.pathname },
+          { price: 0, title: gift && gift.title, product_title: gift && gift.title, image: gift && gift.image }
+        );
+        return;
+      }
       this._clearClaimError(key);
+      var props = { _freebie: "true", _offer_id: offerId, _acquired_on_page: window.location.pathname };
+      var pendingLine = buildPendingGiftLine(variantId, quantity || 1, props, gift && gift.title, gift && gift.image, "pending_offer_");
+      var base = this.state.cart || { items: [] };
+      var optimisticItems = (base.items || []).concat([pendingLine]);
+      var optimisticCount = 0;
+      for (var oi = 0; oi < optimisticItems.length; oi++) optimisticCount += optimisticItems[oi].quantity || 0;
+      this._cartReadSeq++;
       this.setState({
+        cart: Object.assign({}, base, { items: optimisticItems, item_count: optimisticCount }),
         claimed: Object.assign({}, this.state.claimed, { [key]: true }),
         updating: Object.assign({}, this.state.updating, { [key]: true })
       });
-      try {
-        await internalFetch("/cart/add.js", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id: Number(variantId),
-            quantity: quantity || 1,
-            properties: {
-              _freebie: "true",
-              _offer_id: offerId,
-              _acquired_on_page: window.location.pathname
-            }
-          })
-        });
-        var cart = await fetchCart();
-        this._currency = cart.currency || this._currency;
-        this.setState({ cart });
-        updateCartCount(cart.item_count);
-        window.dispatchEvent(new CustomEvent("cartmax:cart-changed", { detail: { cart } }));
-      } catch (err) {
-        var nextClaimed = Object.assign({}, this.state.claimed);
-        delete nextClaimed[key];
-        this.setState({ claimed: nextClaimed });
-        this._showClaimError(key, "Out of stock");
-        console.error("[cartx] Offer display add error:", err);
-      } finally {
+      updateCartCount(optimisticCount);
+      var op = (async () => {
+        var added = false;
+        try {
+          await internalFetch("/cart/add.js", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: Number(variantId), quantity: quantity || 1, properties: props })
+          });
+          added = true;
+        } catch (err) {
+          this._removePendingLine(pendingLine.key);
+          var nextClaimed = Object.assign({}, this.state.claimed);
+          delete nextClaimed[key];
+          this.setState({ claimed: nextClaimed });
+          this._showClaimError(key, "Out of stock");
+          console.error("[cartx] Offer display add error:", err);
+        }
+        if (added) {
+          try {
+            var cart = await fetchCart();
+            this._currency = cart.currency || this._currency;
+            window.dispatchEvent(new CustomEvent("cartmax:cart-changed", { detail: { cart } }));
+          } catch (e2) {
+          }
+        }
         var newUpdating = Object.assign({}, this.state.updating);
         delete newUpdating[key];
         this.setState({ updating: newUpdating });
-      }
+      })();
+      this._trackOp(op);
+      await op;
     }
     renderOfferDisplays() {
       var result = this.state.evalResult;
@@ -3947,6 +4440,13 @@
       if (groups.length === 0) return null;
       var self = this;
       var heading = this._text.offer_cards_heading || "Pick your free gift";
+      var cart = this.state.cart;
+      function isInCart(vid) {
+        if (!cart || !cart.items) return false;
+        return cart.items.some(function(item) {
+          return String(item.variant_id) === String(vid);
+        });
+      }
       return /* @__PURE__ */ k("div", { class: "cartmax-claims cartmax-offer-cards" }, /* @__PURE__ */ k("div", { class: "cartmax-claims-heading" }, heading), /* @__PURE__ */ k("div", { class: "cartmax-claims-scroll" }, groups.map(function(group) {
         return /* @__PURE__ */ k(
           "div",
@@ -3966,7 +4466,7 @@
             var isAdding = self.state.updating[btnKey];
             var isClaimedOptimistic = self.state.claimed[btnKey];
             var claimErr = self.state.claimError[btnKey];
-            var inCart = g2.in_cart;
+            var inCart = isInCart(vid);
             var showClaimedBtn = isClaimedOptimistic && !inCart;
             return /* @__PURE__ */ k("div", { class: "cartmax-claim-card" + (inCart ? " cartmax-claim-card--in-cart" : ""), key: group.offer_id + ":" + vid }, g2.image ? /* @__PURE__ */ k("img", { class: "cartmax-claim-img", src: resizeImage(g2.image, 96), alt: g2.title, loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-claim-img-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image")), /* @__PURE__ */ k("div", { class: "cartmax-claim-info" }, g2.title ? /* @__PURE__ */ k("div", { class: "cartmax-claim-title" }, g2.title) : null, inCart ? /* @__PURE__ */ k(
               "button",
@@ -3990,7 +4490,7 @@
               {
                 class: "cartmax-claim-btn cartmax-claim-btn--add",
                 onClick: function() {
-                  self.handleOfferDisplayAdd(vid, group.offer_id, group.quantity_per_variant);
+                  self.handleOfferDisplayAdd(vid, group.offer_id, group.quantity_per_variant, { title: g2.title, image: g2.image });
                 },
                 disabled: isAdding || !g2.available
               },
@@ -4045,7 +4545,7 @@
           var isClaiming = self.state.updating[btnKey];
           var isClaimedOptimistic = self.state.claimed[btnKey];
           var claimErr = self.state.claimError[btnKey];
-          var inCart = g2.in_cart || isInCart(vid);
+          var inCart = isInCart(vid);
           var showClaimedBtn = isClaimedOptimistic && !inCart;
           return /* @__PURE__ */ k("div", { class: "cartmax-claim-card" + (inCart ? " cartmax-claim-card--in-cart" : ""), key: vid }, g2.image ? /* @__PURE__ */ k("img", { class: "cartmax-claim-img", src: resizeImage(g2.image, 96), alt: g2.title, loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-claim-img-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image")), /* @__PURE__ */ k("div", { class: "cartmax-claim-info" }, g2.title ? /* @__PURE__ */ k("div", { class: "cartmax-claim-title" }, g2.title) : null, inCart ? /* @__PURE__ */ k(
             "button",
@@ -4069,7 +4569,7 @@
             {
               class: "cartmax-claim-btn cartmax-claim-btn--add",
               onClick: function() {
-                self.handleClaimAdd(vid, cg._rule_id);
+                self.handleClaimAdd(vid, cg._rule_id, { title: g2.title, image: g2.image });
               },
               disabled: isClaiming || !g2.available || limitReached
             },
@@ -4101,6 +4601,11 @@
       if (!code || !code.trim()) return;
       if (this._graphqlCart) {
         applyDiscountCode(code.trim());
+        this.setState({ couponInput: "", couponPanelOpen: false, couponError: null });
+        return;
+      }
+      if (this._ajaxStore) {
+        applyDiscountCode2(code.trim());
         this.setState({ couponInput: "", couponPanelOpen: false, couponError: null });
         return;
       }
@@ -4159,6 +4664,10 @@
     async handleCouponRemove(codeToRemove) {
       if (this._graphqlCart) {
         removeDiscountCode(codeToRemove);
+        return;
+      }
+      if (this._ajaxStore) {
+        removeDiscountCode2(codeToRemove);
         return;
       }
       var snapshot = this.state.cart;
@@ -4312,14 +4821,16 @@
     // Line-level optimistic add. Customer explicitly chose a paid item;
     // out-of-stock is an intuitive failure mode worth the line-blink risk.
     async handleUpsellAdd(variantId, productMeta) {
-      if (this._graphqlCart) {
-        addLine(variantId, 1, {}, {
+      if (this._graphqlCart || this._ajaxStore) {
+        var meta = {
           price: Math.round(Number(productMeta && productMeta.price || 0) * 100),
           title: productMeta && productMeta.title,
           product_title: productMeta && productMeta.title,
           variant_title: productMeta && productMeta.variant_title,
           image: productMeta && productMeta.image
-        });
+        };
+        if (this._graphqlCart) addLine(variantId, 1, {}, meta);
+        else addLine2(variantId, 1, {}, meta);
         tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, { promotion_type: "upsell", variant_id: String(variantId) });
         return;
       }
@@ -4426,7 +4937,7 @@
       var savings = Number(this.state.savings) || 0;
       var savingsParts = savings > 0 && this._text.savings_label ? this._text.savings_label.split("{amount}") : null;
       var trustMsg = this._text.checkout_trust_message || "";
-      return /* @__PURE__ */ k("div", { class: "cartmax-footer" }, savingsParts ? /* @__PURE__ */ k("div", { class: "cartmax-footer-savings" }, /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-icon" }, /* @__PURE__ */ k(IconSparkle, null)), /* @__PURE__ */ k("span", null, savingsParts[0]), /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-amount" }, formatMoney(savings, curr)), /* @__PURE__ */ k("span", null, savingsParts[1] || ""), /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-icon" }, /* @__PURE__ */ k(IconSparkle, null))) : null, /* @__PURE__ */ k("div", { class: "cartmax-footer-checkout" }, /* @__PURE__ */ k("div", { class: "cartmax-footer-price" }, /* @__PURE__ */ k("span", { class: "cartmax-footer-price-amount" }, formatMoney(cart.total_price, curr)), /* @__PURE__ */ k(
+      return /* @__PURE__ */ k("div", { class: "cartmax-footer" }, savingsParts ? /* @__PURE__ */ k("div", { class: "cartmax-footer-savings" }, /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-icon" }, /* @__PURE__ */ k(IconSparkle, null)), /* @__PURE__ */ k("span", null, savingsParts[0]), /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-amount" }, formatMoney(savings, curr)), /* @__PURE__ */ k("span", null, savingsParts[1] || ""), /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-icon" }, /* @__PURE__ */ k(IconSparkle, null))) : null, /* @__PURE__ */ k("div", { class: "cartmax-footer-checkout" }, /* @__PURE__ */ k("div", { class: "cartmax-footer-price" }, /* @__PURE__ */ k("span", { class: "cartmax-footer-price-amount" + (this.state.cartSyncing ? " cartmax-price-updating" : "") }, formatMoney(cart.total_price, curr)), /* @__PURE__ */ k(
         "button",
         {
           class: "cartmax-price-breakup-link",
@@ -4457,6 +4968,24 @@
                   }
                 } else if (url) {
                   window.location.href = url;
+                }
+              });
+              return;
+            }
+            if (this._ajaxStore) {
+              e2.preventDefault();
+              if (this.state.checkoutWaiting) return;
+              this.setState({ checkoutWaiting: true });
+              whenSettled2().then(() => {
+                this.setState({ checkoutWaiting: false });
+                if (checkoutJs) {
+                  try {
+                    new Function("button", checkoutJs)(buttonEl);
+                  } catch (_2) {
+                    window.location.href = "/checkout";
+                  }
+                } else {
+                  window.location.href = "/checkout";
                 }
               });
               return;
@@ -4500,8 +5029,24 @@
     renderPriceBreakup() {
       var cart = this.state.cart;
       var curr = this._currency;
-      var totalMRP = cart.items_subtotal_price;
-      var discountTotal = cart.total_discount || 0;
+      var self = this;
+      var totalMRP = 0;
+      (cart.items || []).forEach(function(it) {
+        var compareUnit = self._compareAtCache[String(it.variant_id)];
+        var unit = compareUnit && compareUnit > (it.original_price || 0) ? compareUnit : it.original_price || 0;
+        totalMRP += unit * (it.quantity || 0);
+      });
+      var couponDiscount = 0;
+      (cart.cart_level_discount_applications || []).forEach(function(d2) {
+        if (d2.type === "discount_code") couponDiscount += d2.total_allocated_amount || 0;
+      });
+      (cart.items || []).forEach(function(it) {
+        (it.line_level_discount_allocations || []).forEach(function(a2) {
+          if (a2.discount_application && a2.discount_application.type === "discount_code") couponDiscount += a2.amount || 0;
+        });
+      });
+      var totalAmount = cart.total_price || 0;
+      var discountOnMRP = Math.max(0, totalMRP - totalAmount - couponDiscount);
       return /* @__PURE__ */ k("div", { class: "cartmax-pb-backdrop", onClick: () => this.setState({ priceBreakupOpen: false }) }, /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-panel", onClick: (e2) => e2.stopPropagation() }, /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-header" }, /* @__PURE__ */ k("span", null, "Price Break Up"), /* @__PURE__ */ k(
         "button",
         {
@@ -4510,7 +5055,7 @@
           onClick: () => this.setState({ priceBreakupOpen: false })
         },
         /* @__PURE__ */ k(IconClose, null)
-      )), /* @__PURE__ */ k("div", { class: "cartmax-pb-divider" }), /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-rows" }, /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, "Total"), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount" }, formatMoney(totalMRP, curr))), discountTotal > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, "Coupon Discount"), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount cartmax-pb-discount" }, "-", formatMoney(discountTotal, curr))) : null, /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, "Delivery Fee"), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount" }, formatMoney(0, curr)))), /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-total" }, /* @__PURE__ */ k("span", null, "Total Amount"), /* @__PURE__ */ k("span", null, formatMoney(cart.total_price, curr)))));
+      )), /* @__PURE__ */ k("div", { class: "cartmax-pb-divider" }), /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-rows" }, /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, "Total MRP"), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount" }, formatMoney(totalMRP, curr))), discountOnMRP > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, "Discount on MRP"), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount cartmax-pb-discount" }, "-", formatMoney(discountOnMRP, curr))) : null, /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, "Coupon Discount"), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount cartmax-pb-discount" }, "-", formatMoney(couponDiscount, curr))), /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, "Shipping Fee"), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount cartmax-pb-shipping" }, "Calculated at checkout"))), /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-total" }, /* @__PURE__ */ k("span", null, "Total Amount"), /* @__PURE__ */ k("span", null, formatMoney(totalAmount, curr)))));
     }
     // ── Main render ───────────────────────────────────────────
     render(props, { visible, open, cart, loading, styled }) {

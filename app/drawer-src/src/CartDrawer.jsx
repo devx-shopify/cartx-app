@@ -2,9 +2,10 @@
 import { h, Component } from 'preact';
 import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, simulateCouponRemove, normalizeVariantId } from './helpers';
 import { fireConfetti, setConfettiLottieUrl } from './confetti';
-import { waitForEvaluate, callEvaluate } from './evaluate';
+import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLine, ensureCartxAttribute, localGiftDelta } from './evaluate';
 import { isGraphqlCartEnabled } from './storefront-cart';
 import { initStore as gqlInitStore, subscribe as gqlSubscribe, getOptimisticCart as gqlGetCart, changeQuantity as gqlChangeQuantity, removeLine as gqlRemoveLine, addLine as gqlAddLine, applyDiscountCode as gqlApplyCoupon, removeDiscountCode as gqlRemoveCoupon, whenSettled as gqlWhenSettled } from './cart-store';
+import { isAjaxCartStoreEnabled, subscribe as ajaxSubscribe, getOptimisticCart as ajaxGetCart, init as ajaxInit, reconcileFromServer as ajaxReconcile, addLine as ajaxAddLine, changeQuantity as ajaxChangeQty, removeLine as ajaxRemoveLine, applyDiscountCode as ajaxApplyCode, removeDiscountCode as ajaxRemoveCode, whenSettled as ajaxWhenSettled } from './ajax-cart-store';
 import { tracker } from './tracker';
 import { ANALYTICS_EVENTS } from './analytics-events';
 
@@ -167,6 +168,22 @@ var HARDCODED_COUPONS = [
   { code: 'FLAT200',     accent: '₹200 OFF', savings: 'Save ₹200 on this order' },
 ];
 
+// A line is a "free gift" if ANY of its properties is a freebie marker — cartx's
+// own `_freebie`, or a third-party one whose key contains `_freebie` (e.g.
+// GoKwik's `_gokwik_freebie`). Treating all of them as freebies hides the
+// quantity selector / remove / variant switcher and shows FREE, so a shopper
+// can't bump the quantity of a gift a partner app added.
+function hasFreebieMarker(properties) {
+  if (!properties) return false;
+  for (var k in properties) {
+    if (!Object.prototype.hasOwnProperty.call(properties, k)) continue;
+    if (k.indexOf('_freebie') === -1) continue;
+    var v = properties[k];
+    if (v === 'true' || v === true) return true;
+  }
+  return false;
+}
+
 // ── CartDrawer Component ────────────────────────────────────
 
 export default class CartDrawer extends Component {
@@ -223,6 +240,7 @@ export default class CartDrawer extends Component {
     this._layout = { drawer_position: 'right', image_style: 'rounded', qty_style: 'bordered', show_vendor: false, show_variant_switcher: true, show_remove_btn: true, show_payment_icons: true, show_compare_price: true };
     this._variantCache = {}; // product_id -> variants[]
     this._compareAtCache = {}; // variant_id (string) -> compare_at_price (cents, per unit)
+    this._prefetchedHandles = {}; // product handle -> true, so compare-at is fetched once per session
     // Monotonic token for cart reads. A /cart.js read issued before a mutation
     // can resolve after it; we drop any read older than the latest authoritative
     // update so the count bubble never flickers back to a stale value.
@@ -239,10 +257,13 @@ export default class CartDrawer extends Component {
   }
 
   componentDidMount() {
-    try { console.log('[cx-diag]', (performance.now()|0) + 'ms', 'drawer mount start'); } catch (_) {}
     // GraphQL cart path (Phase D) — gated; default off. When on, reads/writes
     // for qty + remove route through the optimistic store instead of AJAX.
     this._graphqlCart = isGraphqlCartEnabled();
+    // AJAX optimistic cart store — gated; default off. When on, ALL cart
+    // reads/writes route through the store (the standard local-cart + resync
+    // model, AJAX transport). Mutually exclusive with the GraphQL path.
+    this._ajaxStore = !this._graphqlCart && isAjaxCartStoreEnabled();
 
     var rootEl = document.getElementById('cartmax-root');
     this._lastKnownItemCount = rootEl
@@ -298,9 +319,26 @@ export default class CartDrawer extends Component {
       // GraphQL path owns cart state; ignore AJAX-pipeline cart updates so the
       // two don't fight over state.cart (the half-wired "item flashes" glitch).
       if (this._graphqlCart) return;
+      // AJAX store path: an external cart change (theme ATC, other app) is the
+      // authoritative server baseline — fold it into the store, which re-renders
+      // via its subscription. Keep the auto-open + lastKnown bookkeeping here.
+      if (this._ajaxStore) {
+        if (e.detail && e.detail.cart) {
+          ajaxReconcile(e.detail.cart);
+          if (this._behavior.auto_open_on_add && e.detail.cart.item_count > this._lastKnownItemCount) {
+            this.openDrawer();
+          }
+          this._lastKnownItemCount = e.detail.cart.item_count;
+        } else if (this._behavior.auto_open_on_add) {
+          this.openDrawer();
+        }
+        return;
+      }
       if (e.detail && e.detail.cart) {
-        var cart = this._stabiliseOrder(e.detail.cart);
-        try { console.log('[cx-diag]', (performance.now()|0) + 'ms', '_onCartChanged count=', cart.item_count, 'lastKnown=', this._lastKnownItemCount, 'autoOpen=', this._behavior.auto_open_on_add, 'willOpen=', !!(this._behavior.auto_open_on_add && cart.item_count > this._lastKnownItemCount), 'src=', e.detail.source); } catch (_) {}
+        // Merge in any optimistic gift the just-changed cart now qualifies for,
+        // so an auto-add gift shows the instant the threshold is crossed (in
+        // lockstep with the progress bar) rather than after the server add.
+        var cart = applyOptimisticGifts(this._stabiliseOrder(e.detail.cart));
         this._currency = cart.currency || this._currency;
         this._cartReadSeq++;   // authoritative cart — supersede any in-flight loadCart
         this.setState({ cart: cart, loading: false });
@@ -333,6 +371,7 @@ export default class CartDrawer extends Component {
 
     this._onInternalReload = (e) => {
       if (this._graphqlCart) return;   // GraphQL store owns cart state
+      if (this._ajaxStore) return;     // AJAX store owns cart state
       if (e.detail && e.detail.cart) {
         var newCart = this._stabiliseOrder(e.detail.cart);
 
@@ -393,8 +432,9 @@ export default class CartDrawer extends Component {
 
     this._onOptimisticUpdate = (e) => {
       if (this._graphqlCart) return;   // GraphQL store owns cart state
+      if (this._ajaxStore) return;     // AJAX store owns cart state
       if (e.detail && e.detail.cart) {
-        var optimisticCart = this._stabiliseOrder(e.detail.cart);
+        var optimisticCart = applyOptimisticGifts(this._stabiliseOrder(e.detail.cart));
         if (this._isTransientEmpty(optimisticCart)) return;
         this._currency = optimisticCart.currency || this._currency;
         // Keep any qty still buffered (debounce not yet flushed) so a fast
@@ -442,6 +482,26 @@ export default class CartDrawer extends Component {
       this._installAtcTakeover();
     }
 
+    // AJAX cart store: subscribe so the drawer renders the store's optimistic
+    // cart, and seed it from the cart we already hydrated. External mutations
+    // (theme ATC, other apps) fold in via _onCartChanged → ajaxReconcile.
+    if (this._ajaxStore) {
+      // Tell evaluate.js to stand down: the store drives eval + gift reconcile,
+      // so evaluate.js must NOT also apply gifts via its own /cart/* calls.
+      try { window.__cartxAjaxCartStoreActive = true; } catch (_) { /* noop */ }
+      this._unsubAjax = ajaxSubscribe((state) => {
+        var c = ajaxGetCart();
+        if (c) {
+          // cartSyncing dims the total while the single-flight sync settles, so
+          // the money reads as "updating" rather than laggy (Option 1).
+          this.setState({ cart: c, loading: false, cartSyncing: !!(state && state.loading) });
+          updateCartCount(c.item_count);
+          this._maybeRunAjaxPromo(c);
+        }
+      });
+      ajaxInit(this.state.cart);
+    }
+
     window.__cartmaxReady = true;
 
     // Flush cart changes the inline interceptor buffered before this bundle
@@ -458,7 +518,6 @@ export default class CartDrawer extends Component {
     for (var qi = queued.length - 1; qi >= 0; qi--) {
       if (queued[qi] && queued[qi].detail && queued[qi].detail.cart) { lastWithCart = queued[qi]; break; }
     }
-    try { console.log('[cx-diag]', (performance.now()|0) + 'ms', 'flush: ready set, queued=', queued.length, 'lastWithCartCount=', lastWithCart && lastWithCart.detail.cart.item_count, 'openIntent=', window.__cartmaxOpenIntent); } catch (_) {}
     if (lastWithCart) {
       window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: lastWithCart.detail }));
     } else if (queued.length > 0) {
@@ -657,6 +716,7 @@ export default class CartDrawer extends Component {
 
   componentWillUnmount() {
     if (this._unsubGql) this._unsubGql();
+    if (this._unsubAjax) this._unsubAjax();
     if (this._onAtcSubmit) document.removeEventListener('submit', this._onAtcSubmit, true);
     if (this._onPublicAdd) window.removeEventListener('cartx:add', this._onPublicAdd);
     if (this._openRevealTimer) clearTimeout(this._openRevealTimer);
@@ -944,6 +1004,8 @@ export default class CartDrawer extends Component {
     // cart), which would overwrite the store's cart with stale items and mix in
     // AJAX line keys. The store + its subscription are the source of truth.
     if (this._graphqlCart) return;
+    // AJAX store owns the cart the same way — reconcile happens inside the store.
+    if (this._ajaxStore) return;
     if (!this.state.cart) {
       this.setState({ loading: true });
     }
@@ -1004,13 +1066,19 @@ export default class CartDrawer extends Component {
     items.forEach((item) => {
       if (!item.handle || seen[item.handle]) return;
       seen[item.handle] = true;
+      // Already fetched this product this session — compare-at prices don't
+      // change mid-session, so never re-fetch /products/{handle}.js on every
+      // cart change (that was firing a request per line after each add/qty tick).
+      if (this._prefetchedHandles[item.handle]) return;
       var cached = this._variantCache[String(item.product_id)];
       if (cached && cached.length) {
+        this._prefetchedHandles[item.handle] = true;
         cached.forEach((v) => {
           if (v.compare_at_price) this._compareAtCache[String(v.id)] = v.compare_at_price;
         });
         return;
       }
+      this._prefetchedHandles[item.handle] = true;
       fetch('/products/' + item.handle + '.js')
         .then((r) => r.json())
         .then((p) => {
@@ -1143,6 +1211,11 @@ export default class CartDrawer extends Component {
       if (shouldOpen) this.openDrawer();
       return gqlWhenSettled ? gqlWhenSettled() : Promise.resolve();
     }
+    if (this._ajaxStore) {
+      ajaxAddLine(id, qty, props, {});
+      if (shouldOpen) this.openDrawer();
+      return ajaxWhenSettled ? ajaxWhenSettled() : Promise.resolve();
+    }
     return internalFetch('/cart/add.js', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1207,6 +1280,58 @@ export default class CartDrawer extends Component {
       });
       if (!present) gqlAddLine(vid, item.quantity || 1, item.properties || {}, {});
     });
+  }
+
+  // On each store cart change: (1) reconcile auto-gift lines INSTANTLY from
+  // local eval (add newly-triggered gifts with their real title/image, pull
+  // gifts whose threshold is no longer met), then (2) run the server eval,
+  // debounced, purely for the bar/ribbon/coupons + the cartx marker. The gift
+  // add/remove no longer waits on the server round-trip (fixes the "gift not
+  // removed below threshold" bug + the "Free gift" skeleton).
+  _maybeRunAjaxPromo(cart) {
+    this._reconcileLocalGifts(cart);
+    var sig = this._cartSignature(cart);
+    if (sig === this._lastPromoSig) return;
+    this._lastPromoSig = sig;
+    if (this._ajaxPromoTimer) clearTimeout(this._ajaxPromoTimer);
+    this._ajaxPromoTimer = setTimeout(() => this._runAjaxPromo(), 250);
+  }
+
+  // Instant, local auto-gift reconcile through the store. Idempotent: only adds
+  // a gift not already present, only removes lines local eval flagged — so the
+  // subsequent store notify converges (no loop).
+  _reconcileLocalGifts(cart) {
+    var plan = localGiftDelta(cart);
+    if (!plan) return;
+    (plan.to_remove || []).forEach(function (key) { ajaxRemoveLine(key); });
+    var items = (cart && cart.items) || [];
+    (plan.to_add || []).forEach(function (g) {
+      var vid = String(normalizeVariantId(g.variant_id));
+      var offerId = g.properties && g.properties._offer_id;
+      var present = items.some(function (it) {
+        return String(normalizeVariantId(it.variant_id)) === vid && it.properties && it.properties._offer_id === offerId;
+      });
+      if (!present) ajaxAddLine(vid, g.quantity || 1, g.properties || {}, { price: 0, title: g.title, product_title: g.title, image: g.image });
+    });
+  }
+
+  async _runAjaxPromo() {
+    var cart = ajaxGetCart();
+    if (!cart) return;
+    try {
+      var result = await callEvaluate(cart);
+      if (!result) return;
+      // Server drives the bar/ribbon/coupons only — gifts are reconciled locally
+      // in _reconcileLocalGifts, so we don't apply to_add/to_remove here.
+      window.dispatchEvent(new CustomEvent('cartmax:eval-result', {
+        detail: Object.assign({}, result, { _server: true }),
+      }));
+      // Mark the cart cartx-active so the volume-discount Function can apply.
+      // (Idempotent; only fires when the config actually has a volume offer.)
+      ensureCartxAttribute(cart);
+    } catch (err) {
+      console.error('[cartx] ajax promo eval failed:', err);
+    }
   }
 
   close() {
@@ -1278,6 +1403,10 @@ export default class CartDrawer extends Component {
       if (qty <= 0) gqlRemoveLine(key); else gqlChangeQuantity(key, qty);
       return;
     }
+    if (this._ajaxStore) {
+      if (qty <= 0) ajaxRemoveLine(key); else ajaxChangeQty(key, qty);
+      return;
+    }
     var pendingQty = Object.assign({}, this.state.pendingQty);
     pendingQty[key] = qty;
     this.setState({ pendingQty: pendingQty });
@@ -1323,6 +1452,7 @@ export default class CartDrawer extends Component {
 
     // GraphQL cart path: optimistic remove via the store (re-renders on sync).
     if (this._graphqlCart) { gqlRemoveLine(key); return; }
+    if (this._ajaxStore) { ajaxRemoveLine(key); return; }
 
     var line = cart.items.find(function (i) { return i.key === key; });
 
@@ -1622,6 +1752,18 @@ export default class CartDrawer extends Component {
       return;
     }
 
+    // Store paths: a variant switch is remove-old + add-new. The store applies
+    // both optimistically and reconciles in one single-flight sync.
+    if (this._graphqlCart || this._ajaxStore) {
+      var cached = this._variantCache[String(item.product_id)] || [];
+      var nv = cached.find((v) => String(v.id) === String(newVariantId)) || {};
+      var meta = { price: nv.price || 0, title: item.product_title, product_title: item.product_title, variant_title: nv.title || null, image: (nv.featured_image && nv.featured_image.src) || item.image, handle: item.handle, product_id: item.product_id };
+      if (this._graphqlCart) { gqlRemoveLine(key); gqlAddLine(newVariantId, qty, item.properties || {}, meta); }
+      else { ajaxRemoveLine(key); ajaxAddLine(newVariantId, qty, item.properties || {}, meta); }
+      this.setState({ variantOpen: nextOpen });
+      return;
+    }
+
     var snapshot = this.state.cart;
     var cachedVariants = this._variantCache[String(item.product_id)] || [];
     var newVariant = cachedVariants.find((v) => String(v.id) === String(newVariantId));
@@ -1720,7 +1862,9 @@ export default class CartDrawer extends Component {
     var displayQty = this.getDisplayQty(item);
     var isPending = this.state.pendingQty.hasOwnProperty(item.key);
     var curr = this._currency;
-    var isFreebie = item.properties && item.properties['_freebie'] === 'true' && item.properties['_claimed'] !== 'true';
+    // Any freebie marker (cartx `_freebie` or a partner's `*_freebie*`, e.g.
+    // GoKwik's `_gokwik_freebie`) makes it a gift line — no qty selector.
+    var isFreebie = hasFreebieMarker(item.properties) && item.properties['_claimed'] !== 'true';
     var isClaimed = item.properties && (item.properties['_claimed'] === 'true' || item.properties['_cartmax_claim'] === 'true');
     var isVariantOpen = this.state.variantOpen[item.key];
     var isVariantLoading = this.state.variantLoading[item.key];
@@ -1757,7 +1901,7 @@ export default class CartDrawer extends Component {
             }
           </div>
           <div class="cartmax-line-price">
-            {isFreebie && item.final_line_price === 0
+            {(isFreebie || isClaimed)
               ? <span class="cartmax-gift-badge">FREE</span>
               : (() => {
                   var compareAtUnit = this._layout.show_compare_price
@@ -1795,7 +1939,7 @@ export default class CartDrawer extends Component {
               </div>
             : null
           }
-          {!isFreebie
+          {!isFreebie && !isClaimed
             ? <div class="cartmax-line-actions">
                 {showVariantSwitcher
                   ? <div class="cartmax-variant-wrap">
@@ -1942,7 +2086,7 @@ export default class CartDrawer extends Component {
     }
   }
 
-  async handleClaimAdd(variantId, claimId) {
+  async handleClaimAdd(variantId, claimId, gift) {
     var key = 'claim_' + variantId;
 
     if (this._graphqlCart) {
@@ -1952,48 +2096,88 @@ export default class CartDrawer extends Component {
       return;
     }
 
-    // Button-level optimistic: card flips to "Claimed ✓" immediately.
-    // No optimistic line in the cart — the line materialises on reconcile.
+    if (this._ajaxStore) {
+      this.setState({ claimed: Object.assign({}, this.state.claimed, { [key]: true }) });
+      ajaxAddLine(variantId, 1, { _freebie: 'true', _cartmax_claim: 'true', _claimed: 'true', _offer_id: claimId },
+        { price: 0, title: gift && gift.title, product_title: gift && gift.title, image: gift && gift.image });
+      tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, { promotion_id: claimId, promotion_type: 'claim-gift', variant_id: String(variantId) });
+      return;
+    }
+
+    // Optimistically add the gift line NOW (instant), then run the real
+    // /cart/add in the background. _stabiliseOrder promotes this pending line to
+    // the real Shopify line on reconcile; on inventory rejection we roll it back
+    // out and surface the error.
     this._clearClaimError(key);
+    var props = { _freebie: 'true', _cartmax_claim: 'true', _claimed: 'true', _offer_id: claimId };
+    var pendingLine = buildPendingGiftLine(variantId, 1, props, gift && gift.title, gift && gift.image, 'pending_claim_');
+    var base = this.state.cart || { items: [] };
+    var optimisticItems = (base.items || []).concat([pendingLine]);
+    var optimisticCount = 0;
+    for (var oi = 0; oi < optimisticItems.length; oi++) optimisticCount += (optimisticItems[oi].quantity || 0);
+    this._cartReadSeq++;
     this.setState({
+      cart: Object.assign({}, base, { items: optimisticItems, item_count: optimisticCount }),
       claimed: Object.assign({}, this.state.claimed, { [key]: true }),
       updating: Object.assign({}, this.state.updating, { [key]: true }),
     });
+    updateCartCount(optimisticCount);
 
-    try {
-      await internalFetch('/cart/add.js', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: Number(variantId),
-          quantity: 1,
-          properties: { _freebie: 'true', _cartmax_claim: 'true', _claimed: 'true', _offer_id: claimId },
-        }),
-      });
-      var cart = await fetchCart();
-      this._currency = cart.currency || this._currency;
-      this.setState({ cart: cart });
-      updateCartCount(cart.item_count);
-      window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: { cart: cart } }));
-      tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, {
-        promotion_id: claimId,
-        promotion_type: 'claim-gift',
-        variant_id: String(variantId),
-        cart_total: cart.total_price,
-        item_count: cart.item_count,
-      });
-    } catch (err) {
-      // Rollback the button — claim state revert + inline error.
-      var nextClaimed = Object.assign({}, this.state.claimed);
-      delete nextClaimed[key];
-      this.setState({ claimed: nextClaimed });
-      this._showClaimError(key, 'Out of stock');
-      console.error('[cartx] Claim add error:', err);
-    } finally {
+    var op = (async () => {
+      var added = false;
+      try {
+        await internalFetch('/cart/add.js', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: Number(variantId), quantity: 1, properties: props }),
+        });
+        added = true;
+      } catch (err) {
+        // The ADD itself failed (e.g. out of stock) — roll the optimistic line
+        // back out and revert the button.
+        this._removePendingLine(pendingLine.key);
+        var nextClaimed = Object.assign({}, this.state.claimed);
+        delete nextClaimed[key];
+        this.setState({ claimed: nextClaimed });
+        this._showClaimError(key, 'Out of stock');
+        console.error('[cartx] Claim add error:', err);
+      }
+      // Post-add reconcile is best-effort: a failure here must NOT roll back a
+      // gift that was actually added (that was the spurious-revert bug).
+      if (added) {
+        try {
+          var cart = await fetchCart();
+          this._currency = cart.currency || this._currency;
+          window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: { cart: cart } }));
+          tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, {
+            promotion_id: claimId,
+            promotion_type: 'claim-gift',
+            variant_id: String(variantId),
+            cart_total: cart.total_price,
+            item_count: cart.item_count,
+          });
+        } catch (e) { /* add already succeeded; ignore reconcile error */ }
+      }
       var newUpdating = Object.assign({}, this.state.updating);
       delete newUpdating[key];
       this.setState({ updating: newUpdating });
-    }
+    })();
+    this._trackOp(op);
+    await op;
+  }
+
+  // Remove an optimistic pending line (used to roll back a gift that the server
+  // rejected, e.g. out of stock).
+  _removePendingLine(pendingKey) {
+    var c = this.state.cart;
+    if (!c || !c.items) return;
+    var filtered = c.items.filter(function (it) { return it.key !== pendingKey; });
+    if (filtered.length === c.items.length) return;
+    var cnt = 0;
+    for (var i = 0; i < filtered.length; i++) cnt += (filtered[i].quantity || 0);
+    this._cartReadSeq++;
+    this.setState({ cart: Object.assign({}, c, { items: filtered, item_count: cnt }) });
+    updateCartCount(cnt);
   }
 
   async handleClaimRemove(variantId) {
@@ -2016,7 +2200,7 @@ export default class CartDrawer extends Component {
   // Button-level optimistic (same pattern as handleClaimAdd) — the cart
   // line itself stays pessimistic to avoid blink-in/blink-out on
   // inventory rejection.
-  async handleOfferDisplayAdd(variantId, offerId, quantity) {
+  async handleOfferDisplayAdd(variantId, offerId, quantity, gift) {
     var key = 'offer_' + variantId;
 
     if (this._graphqlCart) {
@@ -2025,42 +2209,61 @@ export default class CartDrawer extends Component {
       return;
     }
 
+    if (this._ajaxStore) {
+      this.setState({ claimed: Object.assign({}, this.state.claimed, { [key]: true }) });
+      ajaxAddLine(variantId, quantity || 1, { _freebie: 'true', _offer_id: offerId, _acquired_on_page: window.location.pathname },
+        { price: 0, title: gift && gift.title, product_title: gift && gift.title, image: gift && gift.image });
+      return;
+    }
+
+    // Optimistically add the gift line NOW; the real /cart/add runs in the
+    // background and reconciles via _stabiliseOrder. Roll back on OOS.
     this._clearClaimError(key);
+    var props = { _freebie: 'true', _offer_id: offerId, _acquired_on_page: window.location.pathname };
+    var pendingLine = buildPendingGiftLine(variantId, quantity || 1, props, gift && gift.title, gift && gift.image, 'pending_offer_');
+    var base = this.state.cart || { items: [] };
+    var optimisticItems = (base.items || []).concat([pendingLine]);
+    var optimisticCount = 0;
+    for (var oi = 0; oi < optimisticItems.length; oi++) optimisticCount += (optimisticItems[oi].quantity || 0);
+    this._cartReadSeq++;
     this.setState({
+      cart: Object.assign({}, base, { items: optimisticItems, item_count: optimisticCount }),
       claimed: Object.assign({}, this.state.claimed, { [key]: true }),
       updating: Object.assign({}, this.state.updating, { [key]: true }),
     });
+    updateCartCount(optimisticCount);
 
-    try {
-      await internalFetch('/cart/add.js', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: Number(variantId),
-          quantity: quantity || 1,
-          properties: {
-            _freebie: 'true',
-            _offer_id: offerId,
-            _acquired_on_page: window.location.pathname,
-          },
-        }),
-      });
-      var cart = await fetchCart();
-      this._currency = cart.currency || this._currency;
-      this.setState({ cart: cart });
-      updateCartCount(cart.item_count);
-      window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: { cart: cart } }));
-    } catch (err) {
-      var nextClaimed = Object.assign({}, this.state.claimed);
-      delete nextClaimed[key];
-      this.setState({ claimed: nextClaimed });
-      this._showClaimError(key, 'Out of stock');
-      console.error('[cartx] Offer display add error:', err);
-    } finally {
+    var op = (async () => {
+      var added = false;
+      try {
+        await internalFetch('/cart/add.js', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: Number(variantId), quantity: quantity || 1, properties: props }),
+        });
+        added = true;
+      } catch (err) {
+        this._removePendingLine(pendingLine.key);
+        var nextClaimed = Object.assign({}, this.state.claimed);
+        delete nextClaimed[key];
+        this.setState({ claimed: nextClaimed });
+        this._showClaimError(key, 'Out of stock');
+        console.error('[cartx] Offer display add error:', err);
+      }
+      // Post-add reconcile is best-effort — never roll back a successful add.
+      if (added) {
+        try {
+          var cart = await fetchCart();
+          this._currency = cart.currency || this._currency;
+          window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: { cart: cart } }));
+        } catch (e) { /* add already succeeded; ignore reconcile error */ }
+      }
       var newUpdating = Object.assign({}, this.state.updating);
       delete newUpdating[key];
       this.setState({ updating: newUpdating });
-    }
+    })();
+    this._trackOp(op);
+    await op;
   }
 
   renderOfferDisplays() {
@@ -2071,6 +2274,13 @@ export default class CartDrawer extends Component {
 
     var self = this;
     var heading = this._text.offer_cards_heading || 'Pick your free gift';
+    var cart = this.state.cart;
+    function isInCart(vid) {
+      if (!cart || !cart.items) return false;
+      return cart.items.some(function (item) {
+        return String(item.variant_id) === String(vid);
+      });
+    }
 
     return (
       <div class="cartmax-claims cartmax-offer-cards">
@@ -2092,7 +2302,10 @@ export default class CartDrawer extends Component {
                   var isAdding = self.state.updating[btnKey];
                   var isClaimedOptimistic = self.state.claimed[btnKey];
                   var claimErr = self.state.claimError[btnKey];
-                  var inCart = g.in_cart;
+                  // Drive off the live cart, not the server's g.in_cart — the
+                  // latter lags a round-trip and left the "Remove" button stuck
+                  // after an instant optimistic removal.
+                  var inCart = isInCart(vid);
                   var showClaimedBtn = isClaimedOptimistic && !inCart;
                   return (
                     <div class={'cartmax-claim-card' + (inCart ? ' cartmax-claim-card--in-cart' : '')} key={group.offer_id + ':' + vid}>
@@ -2114,7 +2327,7 @@ export default class CartDrawer extends Component {
                               ><IconCheck /> Claimed</button>
                             : <button
                                 class="cartmax-claim-btn cartmax-claim-btn--add"
-                                onClick={function () { self.handleOfferDisplayAdd(vid, group.offer_id, group.quantity_per_variant); }}
+                                onClick={function () { self.handleOfferDisplayAdd(vid, group.offer_id, group.quantity_per_variant, { title: g.title, image: g.image }); }}
                                 disabled={isAdding || !g.available}
                               >{isAdding ? 'Adding...' : (!g.available ? 'Unavailable' : 'Add')}</button>
                         }
@@ -2180,7 +2393,9 @@ export default class CartDrawer extends Component {
             var isClaiming = self.state.updating[btnKey];
             var isClaimedOptimistic = self.state.claimed[btnKey];
             var claimErr = self.state.claimError[btnKey];
-            var inCart = g.in_cart || isInCart(vid);
+            // Live cart is the source of truth (see offer card note) — avoids a
+            // stale "Remove" button after an instant optimistic removal.
+            var inCart = isInCart(vid);
             var showClaimedBtn = isClaimedOptimistic && !inCart;
             return (
               <div class={'cartmax-claim-card' + (inCart ? ' cartmax-claim-card--in-cart' : '')} key={vid}>
@@ -2202,7 +2417,7 @@ export default class CartDrawer extends Component {
                         ><IconCheck /> Claimed</button>
                       : <button
                           class="cartmax-claim-btn cartmax-claim-btn--add"
-                          onClick={function () { self.handleClaimAdd(vid, cg._rule_id); }}
+                          onClick={function () { self.handleClaimAdd(vid, cg._rule_id, { title: g.title, image: g.image }); }}
                           disabled={isClaiming || !g.available || limitReached}
                         >{isClaiming ? 'Adding...' : (!g.available ? 'Unavailable' : (limitReached ? 'Limit reached' : 'Claim gift'))}</button>
                   }
@@ -2239,6 +2454,11 @@ export default class CartDrawer extends Component {
     if (!code || !code.trim()) return;
     if (this._graphqlCart) {
       gqlApplyCoupon(code.trim());
+      this.setState({ couponInput: '', couponPanelOpen: false, couponError: null });
+      return;
+    }
+    if (this._ajaxStore) {
+      ajaxApplyCode(code.trim());
       this.setState({ couponInput: '', couponPanelOpen: false, couponError: null });
       return;
     }
@@ -2301,6 +2521,10 @@ export default class CartDrawer extends Component {
   async handleCouponRemove(codeToRemove) {
     if (this._graphqlCart) {
       gqlRemoveCoupon(codeToRemove);
+      return;
+    }
+    if (this._ajaxStore) {
+      ajaxRemoveCode(codeToRemove);
       return;
     }
     var snapshot = this.state.cart;
@@ -2498,14 +2722,16 @@ export default class CartDrawer extends Component {
   // Line-level optimistic add. Customer explicitly chose a paid item;
   // out-of-stock is an intuitive failure mode worth the line-blink risk.
   async handleUpsellAdd(variantId, productMeta) {
-    if (this._graphqlCart) {
-      gqlAddLine(variantId, 1, {}, {
+    if (this._graphqlCart || this._ajaxStore) {
+      var meta = {
         price: Math.round(Number((productMeta && productMeta.price) || 0) * 100),
         title: productMeta && productMeta.title,
         product_title: productMeta && productMeta.title,
         variant_title: productMeta && productMeta.variant_title,
         image: productMeta && productMeta.image,
-      });
+      };
+      if (this._graphqlCart) gqlAddLine(variantId, 1, {}, meta);
+      else ajaxAddLine(variantId, 1, {}, meta);
       tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, { promotion_type: 'upsell', variant_id: String(variantId) });
       return;
     }
@@ -2660,7 +2886,7 @@ export default class CartDrawer extends Component {
         ) : null}
         <div class="cartmax-footer-checkout">
           <div class="cartmax-footer-price">
-            <span class="cartmax-footer-price-amount">{formatMoney(cart.total_price, curr)}</span>
+            <span class={'cartmax-footer-price-amount' + (this.state.cartSyncing ? ' cartmax-price-updating' : '')}>{formatMoney(cart.total_price, curr)}</span>
             <button
               class="cartmax-price-breakup-link"
               onClick={() => this.setState({ priceBreakupOpen: true })}
@@ -2687,6 +2913,22 @@ export default class CartDrawer extends Component {
                     try { new Function('button', checkoutJs)(buttonEl); } catch (_) { if (url) window.location.href = url; }
                   } else if (url) {
                     window.location.href = url;
+                  }
+                });
+                return;
+              }
+              // AJAX store path: wait for the store's single-flight sync to
+              // settle so /checkout sees the shopper's latest edits.
+              if (this._ajaxStore) {
+                e.preventDefault();
+                if (this.state.checkoutWaiting) return;
+                this.setState({ checkoutWaiting: true });
+                ajaxWhenSettled().then(() => {
+                  this.setState({ checkoutWaiting: false });
+                  if (checkoutJs) {
+                    try { new Function('button', checkoutJs)(buttonEl); } catch (_) { window.location.href = '/checkout'; }
+                  } else {
+                    window.location.href = '/checkout';
                   }
                 });
                 return;
@@ -2739,8 +2981,33 @@ export default class CartDrawer extends Component {
   renderPriceBreakup() {
     var cart = this.state.cart;
     var curr = this._currency;
-    var totalMRP = cart.items_subtotal_price;
-    var discountTotal = cart.total_discount || 0;
+    var self = this;
+
+    // Total MRP = full retail: compare-at price where we have it, else the
+    // line's own pre-discount price. Sum across lines.
+    var totalMRP = 0;
+    (cart.items || []).forEach(function (it) {
+      var compareUnit = self._compareAtCache[String(it.variant_id)];
+      var unit = (compareUnit && compareUnit > (it.original_price || 0)) ? compareUnit : (it.original_price || 0);
+      totalMRP += unit * (it.quantity || 0);
+    });
+
+    // Coupon discount = only discount-CODE allocations (not automatic/sale ones,
+    // which are folded into "Discount on MRP").
+    var couponDiscount = 0;
+    (cart.cart_level_discount_applications || []).forEach(function (d) {
+      if (d.type === 'discount_code') couponDiscount += (d.total_allocated_amount || 0);
+    });
+    (cart.items || []).forEach(function (it) {
+      (it.line_level_discount_allocations || []).forEach(function (a) {
+        if (a.discount_application && a.discount_application.type === 'discount_code') couponDiscount += (a.amount || 0);
+      });
+    });
+
+    var totalAmount = cart.total_price || 0;
+    // Everything between retail and what's paid, minus the coupon portion, is
+    // the "discount on MRP" (sale + automatic/volume discounts).
+    var discountOnMRP = Math.max(0, totalMRP - totalAmount - couponDiscount);
 
     return (
       <div class="cartmax-pb-backdrop" onClick={() => this.setState({ priceBreakupOpen: false })}>
@@ -2758,23 +3025,27 @@ export default class CartDrawer extends Component {
           <div class="cartmax-pb-divider" />
           <div class="cartmax-price-breakup-rows">
             <div class="cartmax-pb-row">
-              <span class="cartmax-pb-label">Total</span>
+              <span class="cartmax-pb-label">Total MRP</span>
               <span class="cartmax-pb-amount">{formatMoney(totalMRP, curr)}</span>
             </div>
-            {discountTotal > 0 ? (
+            {discountOnMRP > 0 ? (
               <div class="cartmax-pb-row">
-                <span class="cartmax-pb-label">Coupon Discount</span>
-                <span class="cartmax-pb-amount cartmax-pb-discount">{'-'}{formatMoney(discountTotal, curr)}</span>
+                <span class="cartmax-pb-label">Discount on MRP</span>
+                <span class="cartmax-pb-amount cartmax-pb-discount">{'-'}{formatMoney(discountOnMRP, curr)}</span>
               </div>
             ) : null}
             <div class="cartmax-pb-row">
-              <span class="cartmax-pb-label">Delivery Fee</span>
-              <span class="cartmax-pb-amount">{formatMoney(0, curr)}</span>
+              <span class="cartmax-pb-label">Coupon Discount</span>
+              <span class="cartmax-pb-amount cartmax-pb-discount">{'-'}{formatMoney(couponDiscount, curr)}</span>
+            </div>
+            <div class="cartmax-pb-row">
+              <span class="cartmax-pb-label">Shipping Fee</span>
+              <span class="cartmax-pb-amount cartmax-pb-shipping">Calculated at checkout</span>
             </div>
           </div>
           <div class="cartmax-price-breakup-total">
             <span>Total Amount</span>
-            <span>{formatMoney(cart.total_price, curr)}</span>
+            <span>{formatMoney(totalAmount, curr)}</span>
           </div>
         </div>
       </div>
