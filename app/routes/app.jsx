@@ -68,11 +68,19 @@ export const action = async ({ request }) => {
 
     const sourceConfig = await loadConfig(shopId, sourceThemeId);
     const targetConfig = await loadConfig(shopId, currentThemeId);
-    targetConfig.offers = structuredClone(sourceConfig.offers);
-    targetConfig.coupons = structuredClone(sourceConfig.coupons);
-    targetConfig.claim_gifts = structuredClone(sourceConfig.claim_gifts);
+    // Copy the FULL merchant configuration — promotions AND settings — so
+    // applying a theme is a one-click clone, not manual re-entry. Everything a
+    // merchant configures lives under these keys.
+    const COPY_KEYS = [
+      "offers", "coupons", "claim_gifts",
+      "drawer", "progress_bar", "upsells", "bottom_ribbon",
+      "cross_page_removal_behavior",
+    ];
+    for (const key of COPY_KEYS) {
+      if (sourceConfig[key] !== undefined) targetConfig[key] = structuredClone(sourceConfig[key]);
+    }
     await saveConfig(shopId, currentThemeId, targetConfig);
-    return { ok: true, toast: "Promotions copied" };
+    return { ok: true, toast: "Settings & promotions copied" };
   }
 
   if (body._action === "copy_drawer") {
@@ -268,13 +276,14 @@ export function ThemeSwitcher({ themes, activeThemeId, mainThemeId }) {
               onClick={() => { setShowCopy(true); setCopySource(otherThemes[0]?.id || ""); }}
               style={{ padding: "10px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500, color: "#2c6ecb" }}
             >
-              Copy promotions from another theme
+              Copy all settings & promotions from another theme
             </div>
           ) : (
             <s-box padding="300">
               <s-stack direction="block" gap="200">
                 <s-text color="subdued" style={{ fontSize: 12 }}>
-                  Copy all promotions into <strong>{activeTheme?.name}</strong> from:
+                  Copy all promotions + settings (design, progress bar, upsells,
+                  ribbon) into <strong>{activeTheme?.name}</strong> from:
                 </s-text>
                 <s-select label="" value={copySource} onChange={(e) => setCopySource(e.target.value)}>
                   {otherThemes.map((t) => (
@@ -284,11 +293,11 @@ export function ThemeSwitcher({ themes, activeThemeId, mainThemeId }) {
                   ))}
                 </s-select>
                 <s-banner tone="warning">
-                  This will replace all existing promotions on {activeTheme?.name}.
+                  This will replace all existing promotions and settings on {activeTheme?.name}.
                 </s-banner>
                 <s-stack gap="200">
                   <s-button variant="primary" onClick={handleCopy} {...(copying ? { loading: true, disabled: true } : {})} disabled={!copySource}>
-                    {copying ? "Copying..." : "Copy promotions"}
+                    {copying ? "Copying..." : "Copy everything"}
                   </s-button>
                   <s-button onClick={() => setShowCopy(false)}>Cancel</s-button>
                 </s-stack>
