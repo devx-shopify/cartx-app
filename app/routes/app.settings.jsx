@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useLoaderData, useFetcher } from "react-router";
+import { useLoaderData, useFetcher, useOutletContext } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
+import { ThemeCopyCard } from "./app.jsx";
 import useConfirm from "../components/useConfirm.jsx";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
@@ -433,6 +434,7 @@ function MilestoneForm({ onAdd, submitting }) {
 export default function Settings() {
   const data = useLoaderData();
   const fetcher = useFetcher();
+  const { themes, activeThemeId, mainThemeId } = useOutletContext();
   const shopify = useAppBridge();
   const submitting = fetcher.state !== "idle";
   const [confirmFn, confirmModal] = useConfirm();
@@ -812,6 +814,9 @@ export default function Settings() {
               <s-option value="modal">Show a confirmation modal</s-option>
             </s-select>
           </s-section>
+
+          {/* ── Copy from another theme ─────────────────── */}
+          <ThemeCopyCard themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
 
         </div>
         {confirmModal}

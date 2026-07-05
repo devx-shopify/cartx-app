@@ -113,18 +113,14 @@ export function ThemeSwitcher({ themes, activeThemeId, mainThemeId }) {
   const fetcher = useFetcher();
   const revalidator = useRevalidator();
   const [open, setOpen] = useState(false);
-  const [showCopy, setShowCopy] = useState(false);
-  const [copySource, setCopySource] = useState("");
   const ref = useRef(null);
 
   const busy = fetcher.state !== "idle" || revalidator.state === "loading";
-  const copying = busy && fetcher.formData;
 
   useEffect(() => {
     function handleClickOutside(e) {
       if (ref.current && !ref.current.contains(e.target)) {
         setOpen(false);
-        setShowCopy(false);
       }
     }
     if (open) document.addEventListener("mousedown", handleClickOutside);
@@ -134,7 +130,6 @@ export function ThemeSwitcher({ themes, activeThemeId, mainThemeId }) {
   useEffect(() => {
     if (fetcher.data?.toast) {
       setOpen(false);
-      setShowCopy(false);
       revalidator.revalidate();
     }
   }, [fetcher.data, revalidator]);
@@ -147,28 +142,18 @@ export function ThemeSwitcher({ themes, activeThemeId, mainThemeId }) {
     );
     setTimeout(() => revalidator.revalidate(), 300);
     setOpen(false);
-    setShowCopy(false);
-  }
-
-  function handleCopy() {
-    if (!copySource) return;
-    fetcher.submit(
-      JSON.stringify({ _action: "copy_promotions", source_theme_id: copySource }),
-      { method: "POST", encType: "application/json", action: "/app" }
-    );
   }
 
   if (themes.length <= 1) return null;
 
   const isMain = activeThemeId === mainThemeId;
   const activeTheme = themes.find((t) => t.id === activeThemeId);
-  const otherThemes = themes.filter((t) => t.id !== activeThemeId);
 
   return (
     <div style={{ position: "relative" }} ref={ref}>
       <button
         type="button"
-        onClick={() => { if (!busy) { setOpen(!open); setShowCopy(false); } }}
+        onClick={() => { if (!busy) setOpen(!open); }}
         disabled={busy}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -270,43 +255,67 @@ export function ThemeSwitcher({ themes, activeThemeId, mainThemeId }) {
             );
           })}
 
-          <s-divider />
-          {!showCopy ? (
-            <div
-              onClick={() => { setShowCopy(true); setCopySource(otherThemes[0]?.id || ""); }}
-              style={{ padding: "10px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500, color: "#2c6ecb" }}
-            >
-              Copy all settings & promotions from another theme
-            </div>
-          ) : (
-            <s-box padding="300">
-              <s-stack direction="block" gap="200">
-                <s-text color="subdued" style={{ fontSize: 12 }}>
-                  Copy all promotions + settings (design, progress bar, upsells,
-                  ribbon) into <strong>{activeTheme?.name}</strong> from:
-                </s-text>
-                <s-select label="" value={copySource} onChange={(e) => setCopySource(e.target.value)}>
-                  {otherThemes.map((t) => (
-                    <s-option key={t.id} value={t.id}>
-                      {t.name} ({t.id === mainThemeId ? "Live" : ROLE_LABELS[t.role] || t.role})
-                    </s-option>
-                  ))}
-                </s-select>
-                <s-banner tone="warning">
-                  This will replace all existing promotions and settings on {activeTheme?.name}.
-                </s-banner>
-                <s-stack gap="200">
-                  <s-button variant="primary" onClick={handleCopy} {...(copying ? { loading: true, disabled: true } : {})} disabled={!copySource}>
-                    {copying ? "Copying..." : "Copy everything"}
-                  </s-button>
-                  <s-button onClick={() => setShowCopy(false)}>Cancel</s-button>
-                </s-stack>
-              </s-stack>
-            </s-box>
-          )}
         </div>
       )}
     </div>
+  );
+}
+
+// Roomy "copy config from another theme" card — lives on the Settings page (the
+// theme dropdown was too cramped for it). Copies the full merchant config
+// (promotions + settings) into the theme currently being edited.
+export function ThemeCopyCard({ themes, activeThemeId, mainThemeId }) {
+  const fetcher = useFetcher();
+  const revalidator = useRevalidator();
+  const [copySource, setCopySource] = useState("");
+
+  const busy = fetcher.state !== "idle" || revalidator.state === "loading";
+  const copying = busy && fetcher.formData;
+
+  useEffect(() => {
+    if (fetcher.data?.toast) revalidator.revalidate();
+  }, [fetcher.data, revalidator]);
+
+  if (!themes || themes.length <= 1) return null;
+
+  const activeTheme = themes.find((t) => t.id === activeThemeId);
+  const otherThemes = themes.filter((t) => t.id !== activeThemeId);
+  const source = copySource || otherThemes[0]?.id || "";
+
+  function handleCopy() {
+    if (!source) return;
+    fetcher.submit(
+      JSON.stringify({ _action: "copy_promotions", source_theme_id: source }),
+      { method: "POST", encType: "application/json", action: "/app" }
+    );
+  }
+
+  return (
+    <s-section heading="Copy from another theme">
+      <s-stack direction="block" gap="300">
+        <s-text color="subdued">
+          Copy all promotions and settings — offers, coupons, gifts, drawer design,
+          progress bar, upsells, and ribbon — from another theme into the theme
+          you're currently editing (<strong>{activeTheme?.name || "current"}</strong>).
+          Switch the target theme from the theme selector on the Home page.
+        </s-text>
+        <s-select label="Copy from" value={source} onChange={(e) => setCopySource(e.target.value)}>
+          {otherThemes.map((t) => (
+            <s-option key={t.id} value={t.id}>
+              {t.name} ({t.id === mainThemeId ? "Live" : ROLE_LABELS[t.role] || t.role})
+            </s-option>
+          ))}
+        </s-select>
+        <s-banner tone="warning">
+          This replaces all existing promotions and settings on {activeTheme?.name || "the current theme"}.
+        </s-banner>
+        <div>
+          <s-button variant="primary" onClick={handleCopy} {...(copying ? { loading: true, disabled: true } : {})} disabled={!source}>
+            {copying ? "Copying…" : "Copy everything"}
+          </s-button>
+        </div>
+      </s-stack>
+    </s-section>
   );
 }
 
