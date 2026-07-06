@@ -151,6 +151,8 @@ function evaluateClaimRemovals(claimGifts, items, adjTotal, adjQty) {
     for (var r = 0; r < claimGifts.length; r++) {
       if (claimGifts[r].id === claimId) { rule = claimGifts[r]; break; }
     }
+    // No rule in cache = orphan case; leave it to the authoritative server eval
+    // (a cold/partial cache must never mass-strip claimed gifts).
     if (!rule || !rule.trigger) continue;
     var currentValue = rule.trigger.type === 'price' ? adjTotal : adjQty;
     if (currentValue < rule.trigger.threshold) {

@@ -1303,18 +1303,49 @@ export default class CartDrawer extends Component {
   // a gift not already present, only removes lines local eval flagged — so the
   // subsequent store notify converges (no loop).
   _reconcileLocalGifts(cart) {
+    // Re-entrancy guard: ajaxRemoveLine/ajaxAddLine notify subscribers
+    // SYNCHRONOUSLY, which re-enters this method mid-loop — causing duplicate
+    // removeLine calls and racing /cart/update.js syncs (the 422s). Apply the
+    // whole plan in one pass; the next (post-notify) reconcile converges.
+    if (this._reconcilingGifts) return;
     var plan = localGiftDelta(cart);
     if (!plan) return;
-    (plan.to_remove || []).forEach(function (key) { ajaxRemoveLine(key); });
+    var self = this;
     var items = (cart && cart.items) || [];
-    (plan.to_add || []).forEach(function (g) {
-      var vid = String(normalizeVariantId(g.variant_id));
-      var offerId = g.properties && g.properties._offer_id;
-      var present = items.some(function (it) {
-        return String(normalizeVariantId(it.variant_id)) === vid && it.properties && it.properties._offer_id === offerId;
+    this._reconcilingGifts = true;
+    try {
+      // Clear the optimistic "claimed" flag for any gift we auto-remove, so its
+      // claim card reverts to "Claim gift" instead of a stuck, disabled
+      // "Claimed" button once the shopper drops below (and later crosses back
+      // above) the threshold. Mirrors handleClaimRemove's cleanup for the auto
+      // removal path.
+      if (plan.to_remove && plan.to_remove.length) {
+        var nextClaimed = null;
+        plan.to_remove.forEach(function (key) {
+          var line = items.find(function (it) { return it.key === key; });
+          if (!line) return;
+          var vid = String(normalizeVariantId(line.variant_id));
+          var ck = 'claim_' + vid, ok = 'offer_' + vid;
+          if (self.state.claimed[ck] || self.state.claimed[ok]) {
+            if (!nextClaimed) nextClaimed = Object.assign({}, self.state.claimed);
+            delete nextClaimed[ck];
+            delete nextClaimed[ok];
+          }
+        });
+        if (nextClaimed) self.setState({ claimed: nextClaimed });
+      }
+      (plan.to_remove || []).forEach(function (key) { ajaxRemoveLine(key); });
+      (plan.to_add || []).forEach(function (g) {
+        var vid = String(normalizeVariantId(g.variant_id));
+        var offerId = g.properties && g.properties._offer_id;
+        var present = items.some(function (it) {
+          return String(normalizeVariantId(it.variant_id)) === vid && it.properties && it.properties._offer_id === offerId;
+        });
+        if (!present) ajaxAddLine(vid, g.quantity || 1, g.properties || {}, { price: 0, title: g.title, product_title: g.title, image: g.image });
       });
-      if (!present) ajaxAddLine(vid, g.quantity || 1, g.properties || {}, { price: 0, title: g.title, product_title: g.title, image: g.image });
-    });
+    } finally {
+      this._reconcilingGifts = false;
+    }
   }
 
   async _runAjaxPromo() {

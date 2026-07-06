@@ -3706,20 +3706,44 @@
     // a gift not already present, only removes lines local eval flagged — so the
     // subsequent store notify converges (no loop).
     _reconcileLocalGifts(cart) {
+      if (this._reconcilingGifts) return;
       var plan = localGiftDelta(cart);
       if (!plan) return;
-      (plan.to_remove || []).forEach(function(key) {
-        removeLine2(key);
-      });
+      var self = this;
       var items = cart && cart.items || [];
-      (plan.to_add || []).forEach(function(g2) {
-        var vid = String(normalizeVariantId(g2.variant_id));
-        var offerId = g2.properties && g2.properties._offer_id;
-        var present = items.some(function(it) {
-          return String(normalizeVariantId(it.variant_id)) === vid && it.properties && it.properties._offer_id === offerId;
+      this._reconcilingGifts = true;
+      try {
+        if (plan.to_remove && plan.to_remove.length) {
+          var nextClaimed = null;
+          plan.to_remove.forEach(function(key) {
+            var line = items.find(function(it) {
+              return it.key === key;
+            });
+            if (!line) return;
+            var vid = String(normalizeVariantId(line.variant_id));
+            var ck = "claim_" + vid, ok = "offer_" + vid;
+            if (self.state.claimed[ck] || self.state.claimed[ok]) {
+              if (!nextClaimed) nextClaimed = Object.assign({}, self.state.claimed);
+              delete nextClaimed[ck];
+              delete nextClaimed[ok];
+            }
+          });
+          if (nextClaimed) self.setState({ claimed: nextClaimed });
+        }
+        (plan.to_remove || []).forEach(function(key) {
+          removeLine2(key);
         });
-        if (!present) addLine2(vid, g2.quantity || 1, g2.properties || {}, { price: 0, title: g2.title, product_title: g2.title, image: g2.image });
-      });
+        (plan.to_add || []).forEach(function(g2) {
+          var vid = String(normalizeVariantId(g2.variant_id));
+          var offerId = g2.properties && g2.properties._offer_id;
+          var present = items.some(function(it) {
+            return String(normalizeVariantId(it.variant_id)) === vid && it.properties && it.properties._offer_id === offerId;
+          });
+          if (!present) addLine2(vid, g2.quantity || 1, g2.properties || {}, { price: 0, title: g2.title, product_title: g2.title, image: g2.image });
+        });
+      } finally {
+        this._reconcilingGifts = false;
+      }
     }
     async _runAjaxPromo() {
       var cart = getOptimisticCart2();
