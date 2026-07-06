@@ -834,8 +834,8 @@ function ContentTab({ s, update }) {
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 0" }}>
             <div>
-              <s-text>Allow multiple coupons</s-text>
-              <div style={{ fontSize: 12, color: "#6d7175", marginTop: 2 }}>When off, the coupon input hides after one code is applied.</div>
+              <s-text>Allow multiple coupons (stacking)</s-text>
+              <div style={{ fontSize: 12, color: "#6d7175", marginTop: 2 }}>On: shoppers can apply several codes at once. Off: applying a new code replaces the current one (single coupon per order).</div>
             </div>
             <s-switch
               label="Allow multiple coupons"

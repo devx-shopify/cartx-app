@@ -28,7 +28,20 @@ export function cartUpdateAll(payload) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-  }).then(function (r) { return r.json(); });
+  }).then(function (r) {
+    return r.json().then(function (data) {
+      // A non-2xx (e.g. 422 "updates parameter is invalid") returns an ERROR
+      // object, not a cart. It must never be mistaken for the cart — doing so
+      // blanks the drawer. Reject so callers' catch blocks keep the last good
+      // (optimistic) cart instead.
+      if (!r.ok || !data || !Array.isArray(data.items)) {
+        var err = new Error((data && (data.description || data.message)) || ('cart update failed: ' + r.status));
+        err.cartError = data;
+        throw err;
+      }
+      return data;
+    });
+  });
 }
 
 // ── Optimistic-update utilities ─────────────────────────────

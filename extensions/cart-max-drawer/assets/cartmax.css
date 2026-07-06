@@ -1462,60 +1462,72 @@ cart-notification-component [role="dialog"] {
 
 /* Applied coupon banner */
 
-.cartmax-applied-coupon-banner {
-  background: var(--cartmax-accent, #ff4b7e);
-  padding: 16px 20px;
+/* Applied coupons — compact chips shown under the "Apply Coupon" input */
+.cartmax-applied-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
 }
 
-.cartmax-applied-coupon-card {
-  display: flex;
+.cartmax-applied-chip {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 6px;
+  max-width: 100%;
+  padding: 6px 6px 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--cartmax-accent, #16a34a);
   background: var(--cartmax-bg, #ffffff);
-  border: 1px dashed var(--cartmax-text, #1a1a1a);
-  border-radius: 6px;
-  padding: 10px 12px;
 }
 
-.cartmax-applied-coupon-left {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 0 4px;
+.cartmax-applied-chip-check {
+  display: inline-flex;
+  align-items: center;
+  color: var(--cartmax-accent, #16a34a);
 }
 
-.cartmax-applied-label {
-  font-size: 10px;
-  font-weight: 400;
-  line-height: 14px;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: var(--cartmax-text-secondary, #6b7280);
+.cartmax-applied-chip-check svg {
+  width: 14px;
+  height: 14px;
 }
 
-.cartmax-applied-code {
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 20px;
+.cartmax-applied-chip-code {
+  font-size: 13px;
+  font-weight: 600;
   color: var(--cartmax-text, #1a1a1a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.cartmax-applied-remove {
+.cartmax-applied-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  background: var(--cartmax-accent, #ff4b7e);
-  color: var(--cartmax-bg, #ffffff);
+  width: 20px;
+  height: 20px;
+  padding: 0;
   border: none;
-  border-radius: 6px;
-  padding: 6px 8px;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 15px;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--cartmax-text-secondary, #6b7280);
   cursor: pointer;
-  transition: opacity 0.15s ease;
+  transition: color 0.15s ease, background 0.15s ease;
 }
 
-.cartmax-applied-remove:disabled {
+.cartmax-applied-chip-remove svg {
+  width: 12px;
+  height: 12px;
+}
+
+.cartmax-applied-chip-remove:hover {
+  color: var(--cartmax-text, #1a1a1a);
+  background: var(--cartmax-border, #f0f0f0);
+}
+
+.cartmax-applied-chip-remove:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -1552,7 +1564,8 @@ cart-notification-component [role="dialog"] {
   padding: 12px;
   border: none;
   outline: none;
-  font-size: 14px;
+  /* 16px minimum: iOS Safari zooms the viewport when a focused input is < 16px. */
+  font-size: 16px;
   font-family: inherit;
   background: transparent;
   color: var(--cartmax-text, #1a1a1a);

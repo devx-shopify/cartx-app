@@ -1,11 +1,11 @@
 /* eslint-disable */
 import { h, Component } from 'preact';
-import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, simulateCouponRemove, normalizeVariantId } from './helpers';
+import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId } from './helpers';
 import { fireConfetti, setConfettiLottieUrl } from './confetti';
 import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLine, ensureCartxAttribute, localGiftDelta } from './evaluate';
 import { isGraphqlCartEnabled } from './storefront-cart';
 import { initStore as gqlInitStore, subscribe as gqlSubscribe, getOptimisticCart as gqlGetCart, changeQuantity as gqlChangeQuantity, removeLine as gqlRemoveLine, addLine as gqlAddLine, applyDiscountCode as gqlApplyCoupon, removeDiscountCode as gqlRemoveCoupon, whenSettled as gqlWhenSettled } from './cart-store';
-import { isAjaxCartStoreEnabled, subscribe as ajaxSubscribe, getOptimisticCart as ajaxGetCart, init as ajaxInit, reconcileFromServer as ajaxReconcile, addLine as ajaxAddLine, changeQuantity as ajaxChangeQty, removeLine as ajaxRemoveLine, applyDiscountCode as ajaxApplyCode, removeDiscountCode as ajaxRemoveCode, whenSettled as ajaxWhenSettled } from './ajax-cart-store';
+import { isAjaxCartStoreEnabled, subscribe as ajaxSubscribe, getOptimisticCart as ajaxGetCart, init as ajaxInit, reconcileFromServer as ajaxReconcile, addLine as ajaxAddLine, changeQuantity as ajaxChangeQty, removeLine as ajaxRemoveLine, whenSettled as ajaxWhenSettled } from './ajax-cart-store';
 import { tracker } from './tracker';
 import { ANALYTICS_EVENTS } from './analytics-events';
 
@@ -502,6 +502,11 @@ export default class CartDrawer extends Component {
         }
       });
       ajaxInit(this.state.cart);
+      // The Liquid-embedded initial cart (data-initial-cart) lacks /cart.js-only
+      // fields — notably discount_codes — so an ALREADY-applied discount code
+      // wouldn't render as a chip until the first mutation forced a /cart.js.
+      // Pull a fresh /cart.js once on mount and reconcile the store with it.
+      fetchCart().then((c) => { if (c) ajaxReconcile(c); }).catch(function () { /* keep initial cart */ });
     }
 
     window.__cartmaxReady = true;
@@ -1239,9 +1244,19 @@ export default class CartDrawer extends Component {
   // debounced so rapid edits collapse into one proxy call.
   _cartSignature(cart) {
     var items = (cart && cart.items) || [];
-    return items.map(function (it) {
+    var lines = items.map(function (it) {
       return it.variant_id + ':' + (it.quantity || 0) + ':' + (it.properties ? (it.properties._offer_id || '') : '');
     }).sort().join('|');
+    // Include the applied discount codes: a coupon apply/remove leaves items and
+    // quantities untouched, so without this the signature is identical and the
+    // promo eval (which recomputes total_savings + coupon availability) is
+    // skipped — leaving the footer "you saved {amount}" stale until a qty change.
+    var codes = ((cart && cart.discount_codes) || [])
+      .filter(function (d) { return d.applicable; })
+      .map(function (d) { return d.code; })
+      .sort()
+      .join(',');
+    return lines + '#' + codes;
   }
 
   _maybeRunGqlPromo(cart) {
@@ -1907,6 +1922,13 @@ export default class CartDrawer extends Component {
     // Separate remove button: only when qty > 1 (at qty=1 trash is in the qty row)
     var showRemoveBtn = this._layout.show_remove_btn && displayQty > 1 && !isFreebie && !isClaimed;
 
+    // A claim gift can be configured at a price ("Customer pays"); it's stamped
+    // on the line as `_claim_price` (per-unit, minor units). Show that price
+    // rather than "FREE" when it's > 0.
+    var claimPriceUnit = (isClaimed && item.properties && item.properties._claim_price)
+      ? Number(item.properties._claim_price) : 0;
+    var claimPriceLine = claimPriceUnit * (item.quantity || 1);
+
     var cls = 'cartmax-line-item'
       + (isRemoving ? ' cartmax-line-removing' : '')
       + (isFreebie ? ' cartmax-line-freebie' : '');
@@ -1935,7 +1957,16 @@ export default class CartDrawer extends Component {
           </div>
           <div class="cartmax-line-price">
             {(isFreebie || isClaimed)
-              ? <span class="cartmax-gift-badge">FREE</span>
+              ? (claimPriceLine > 0
+                  ? [
+                      <span key="cp">{formatMoney(claimPriceLine, curr)}</span>,
+                      (item.original_line_price > claimPriceLine)
+                        ? <span key="orig" class="cartmax-line-price-original">{formatMoney(item.original_line_price, curr)}</span>
+                        : null,
+                      // Keep the freebie identity even at a nominal price.
+                      <span key="giftbadge" class="cartmax-gift-badge">GIFT</span>,
+                    ]
+                  : <span class="cartmax-gift-badge">FREE</span>)
               : (() => {
                   var compareAtUnit = this._layout.show_compare_price
                     ? this._compareAtCache[String(item.variant_id)]
@@ -2122,16 +2153,25 @@ export default class CartDrawer extends Component {
   async handleClaimAdd(variantId, claimId, gift) {
     var key = 'claim_' + variantId;
 
+    // What the shopper pays for this claimed item, in the store's minor units
+    // (0 = free). Stamped onto the line as `_claim_price` (underscore = hidden at
+    // checkout) so the line can display the real price instead of always "FREE"
+    // — the freebie Function applies the actual discount at checkout, so the cart
+    // line's own price stays full until then.
+    var claimPriceCents = Math.round((Number(gift && gift.claim_price) || 0) * 100);
+    var props = { _freebie: 'true', _cartmax_claim: 'true', _claimed: 'true', _offer_id: claimId };
+    if (claimPriceCents > 0) props._claim_price = String(claimPriceCents);
+
     if (this._graphqlCart) {
       this.setState({ claimed: Object.assign({}, this.state.claimed, { [key]: true }) });
-      gqlAddLine(variantId, 1, { _freebie: 'true', _cartmax_claim: 'true', _claimed: 'true', _offer_id: claimId }, {});
+      gqlAddLine(variantId, 1, props, {});
       tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, { promotion_id: claimId, promotion_type: 'claim-gift', variant_id: String(variantId) });
       return;
     }
 
     if (this._ajaxStore) {
       this.setState({ claimed: Object.assign({}, this.state.claimed, { [key]: true }) });
-      ajaxAddLine(variantId, 1, { _freebie: 'true', _cartmax_claim: 'true', _claimed: 'true', _offer_id: claimId },
+      ajaxAddLine(variantId, 1, props,
         { price: 0, title: gift && gift.title, product_title: gift && gift.title, image: gift && gift.image });
       tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, { promotion_id: claimId, promotion_type: 'claim-gift', variant_id: String(variantId) });
       return;
@@ -2142,7 +2182,6 @@ export default class CartDrawer extends Component {
     // the real Shopify line on reconcile; on inventory rejection we roll it back
     // out and surface the error.
     this._clearClaimError(key);
-    var props = { _freebie: 'true', _cartmax_claim: 'true', _claimed: 'true', _offer_id: claimId };
     var pendingLine = buildPendingGiftLine(variantId, 1, props, gift && gift.title, gift && gift.image, 'pending_claim_');
     var base = this.state.cart || { items: [] };
     var optimisticItems = (base.items || []).concat([pendingLine]);
@@ -2450,7 +2489,7 @@ export default class CartDrawer extends Component {
                         ><IconCheck /> Claimed</button>
                       : <button
                           class="cartmax-claim-btn cartmax-claim-btn--add"
-                          onClick={function () { self.handleClaimAdd(vid, cg._rule_id, { title: g.title, image: g.image }); }}
+                          onClick={function () { self.handleClaimAdd(vid, cg._rule_id, { title: g.title, image: g.image, claim_price: cg.claim_price }); }}
                           disabled={isClaiming || !g.available || limitReached}
                         >{isClaiming ? 'Adding...' : (!g.available ? 'Unavailable' : (limitReached ? 'Limit reached' : 'Claim gift'))}</button>
                   }
@@ -2466,87 +2505,146 @@ export default class CartDrawer extends Component {
 
   // ── Coupons ────────────────────────────────────────────────
 
+  // The codes Shopify has actually ACCEPTED. Authoritative source is
+  // cart.discount_codes[].applicable (present on /cart.js + /cart/update.js),
+  // which covers cart-level AND line-level codes and excludes rejected ones.
+  // Falls back to reading discount applications for older cart shapes.
   getAppliedCodes() {
     var cart = this.state.cart;
     if (!cart) return [];
+    // discount_codes is the authoritative list of CODES the shopper entered
+    // (always present on /cart.js; may be empty). An EMPTY array means no codes —
+    // we must return [] here and NOT fall through to reading discount-application
+    // titles, which also include AUTOMATIC / Shopify Function discounts (e.g. the
+    // freebie discount titled "Claimed Gift") that would be mistaken for coupons.
+    if (cart.discount_codes) {
+      return cart.discount_codes
+        .filter(function (d) { return d.applicable; })
+        .map(function (d) { return d.code; });
+    }
+    // Fallback only for a cart shape lacking discount_codes: discount-CODE
+    // applications ONLY (never automatic ones).
     var codes = [];
     (cart.cart_level_discount_applications || []).forEach(function (d) {
-      if (d.title) codes.push(d.title);
+      if (d.title && d.type === 'discount_code') codes.push(d.title);
     });
     (cart.items || []).forEach(function (item) {
       (item.line_level_discount_allocations || []).forEach(function (a) {
-        if (a.discount_application && a.discount_application.title) {
-          codes.push(a.discount_application.title);
-        }
+        var da = a.discount_application;
+        if (da && da.title && da.type === 'discount_code') codes.push(da.title);
       });
     });
     return codes.filter(function (c, i, arr) { return arr.indexOf(c) === i; });
   }
 
+  // Did `code` actually get applied to `cart`? Authoritative signal is
+  // /cart.js discount_codes[].applicable; fall back to the real discount
+  // applications. Used to reject invalid/inapplicable codes instead of silently
+  // banking them.
+  _couponApplied(cart, code) {
+    if (!cart || !code) return false;
+    var up = code.toUpperCase();
+    var dc = cart.discount_codes || [];
+    for (var i = 0; i < dc.length; i++) {
+      if (dc[i].code && dc[i].code.toUpperCase() === up) return !!dc[i].applicable;
+    }
+    var atCart = (cart.cart_level_discount_applications || []).some(function (d) {
+      return d.title && d.title.toUpperCase() === up;
+    });
+    if (atCart) return true;
+    return (cart.items || []).some(function (item) {
+      return (item.line_level_discount_allocations || []).some(function (a) {
+        return a.discount_application && a.discount_application.title &&
+          a.discount_application.title.toUpperCase() === up;
+      });
+    });
+  }
+
+  // Feed an authoritative /cart.js cart (from a direct coupon update.js call)
+  // back into the live cart system, so the drawer + store stay in sync WITHOUT
+  // any optimistic discount overlay.
+  // Show a coupon error that auto-dismisses (same hold as other inline errors),
+  // so a stale "Invalid or inapplicable code" doesn't linger on screen.
+  _flashCouponError(message) {
+    if (this._couponErrTimer) clearTimeout(this._couponErrTimer);
+    this.setState({ couponError: message });
+    this._couponErrTimer = setTimeout(() => {
+      this._couponErrTimer = null;
+      this.setState({ couponError: null });
+    }, INLINE_ERROR_HOLD_MS);
+  }
+
+  _clearCouponError() {
+    if (this._couponErrTimer) { clearTimeout(this._couponErrTimer); this._couponErrTimer = null; }
+    if (this.state.couponError) this.setState({ couponError: null });
+  }
+
+  _applyCouponCart(cart) {
+    if (this._ajaxStore) ajaxReconcile(cart, true);
+    // Update the footer "you saved {amount}" instantly from the authoritative
+    // cart (same formula as the server's computeTotalSavings), rather than
+    // waiting on the debounced promo eval.
+    var savings = Math.max(0, (cart.original_total_price || 0) - (cart.total_price || 0));
+    this.setState({ cart: cart, savings: savings });
+    updateCartCount(cart.item_count);
+    window.dispatchEvent(new CustomEvent('cartmax:cart-action', { detail: { cart: cart } }));
+  }
+
   async handleCouponApply(code) {
     if (!code || !code.trim()) return;
+    var newCode = code.trim();
     if (this._graphqlCart) {
-      gqlApplyCoupon(code.trim());
+      gqlApplyCoupon(newCode);
       this.setState({ couponInput: '', couponPanelOpen: false, couponError: null });
       return;
     }
-    if (this._ajaxStore) {
-      ajaxApplyCode(code.trim());
+    // Coupons are NEVER optimistic (AJAX store + legacy). A real, validated
+    // /cart/update.js call: send only the currently-APPLIED codes plus the new
+    // one. If Shopify doesn't actually apply the new code, reset the set to the
+    // applied codes so a rejected code is never banked (which is what caused
+    // random codes to pile up in the discount payload).
+    if (this.getAppliedCodes().some(function (c) { return c.toUpperCase() === newCode.toUpperCase(); })) {
       this.setState({ couponInput: '', couponPanelOpen: false, couponError: null });
       return;
     }
     this.setState({ couponLoading: true, couponError: null });
     try {
-      var currentCodes = this.getAppliedCodes();
-      var newCode = code.trim();
-      if (!currentCodes.some(function (c) { return c.toUpperCase() === newCode.toUpperCase(); })) {
-        currentCodes.push(newCode);
-      }
-      var discountPayload = currentCodes.join(',');
-
-      await cartUpdateAll({ discount: discountPayload });
+      var allowMultiple = this._sections.allow_multiple_coupons;
+      var applied = this.getAppliedCodes();
+      // Multi-coupon mode APPENDS to the applied set; single-coupon mode REPLACES
+      // (base = none). Computing the target set up front means a successful apply
+      // is ONE /cart/update.js + ONE /cart.js — no extra "replace" round-trip.
+      var base = allowMultiple ? applied : [];
+      var sendStr = base.concat([newCode]).join(',');
+      await cartUpdateAll({ discount: sendStr });
+      // /cart/update.js response omits settled discount allocations; /cart.js has
+      // them (needed for the price breakup), so read it back once.
       var cart = await fetchCart();
-
-      var codeUpper = newCode.toUpperCase();
-      var applied = (cart.cart_level_discount_applications || []).some(function (d) {
-        return d.title && d.title.toUpperCase() === codeUpper;
-      });
-      if (!applied) {
-        applied = (cart.items || []).some(function (item) {
-          return (item.line_level_discount_allocations || []).some(function (a) {
-            return a.discount_application && a.discount_application.title &&
-              a.discount_application.title.toUpperCase() === codeUpper;
-          });
-        });
+      var didApply = this._couponApplied(cart, newCode);
+      if (!didApply) {
+        // Rejected → restore the previously-applied set; never bank a bad code.
+        await cartUpdateAll({ discount: applied.join(',') });
+        cart = await fetchCart();
       }
-
       this._currency = cart.currency || this._currency;
+      this._applyCouponCart(cart);
       this.setState({
-        cart: cart,
         couponLoading: false,
-        couponError: applied ? null : 'Invalid or inapplicable code',
-        couponInput: applied ? '' : this.state.couponInput,
-        couponPanelOpen: applied ? false : this.state.couponPanelOpen,
+        couponInput: '',
+        couponPanelOpen: didApply ? false : this.state.couponPanelOpen,
       });
-      updateCartCount(cart.item_count);
-      if (applied) window.dispatchEvent(new CustomEvent('cartmax:cart-action', { detail: { cart: cart } }));
-
+      if (didApply) this._clearCouponError();
+      else this._flashCouponError('Invalid or inapplicable code');
       tracker.track(
-        applied ? ANALYTICS_EVENTS.COUPON_APPLIED : ANALYTICS_EVENTS.COUPON_REJECTED,
-        {
-          promotion_type: 'coupon',
-          code: newCode,
-          reason: applied ? null : 'not_applicable',
-          cart_total: cart.total_price,
-          item_count: cart.item_count,
-        },
+        didApply ? ANALYTICS_EVENTS.COUPON_APPLIED : ANALYTICS_EVENTS.COUPON_REJECTED,
+        { promotion_type: 'coupon', code: newCode, reason: didApply ? null : 'not_applicable',
+          cart_total: cart.total_price, item_count: cart.item_count },
       );
     } catch (err) {
-      this.setState({ couponLoading: false, couponError: 'Failed to apply coupon' });
+      this.setState({ couponLoading: false });
+      this._flashCouponError('Failed to apply coupon');
       tracker.track(ANALYTICS_EVENTS.COUPON_REJECTED, {
-        promotion_type: 'coupon',
-        code: (code || '').trim(),
-        reason: 'request_failed',
+        promotion_type: 'coupon', code: newCode, reason: 'request_failed',
       });
     }
   }
@@ -2556,42 +2654,38 @@ export default class CartDrawer extends Component {
       gqlRemoveCoupon(codeToRemove);
       return;
     }
-    if (this._ajaxStore) {
-      ajaxRemoveCode(codeToRemove);
-      return;
-    }
-    var snapshot = this.state.cart;
+    // Non-optimistic: re-send the remaining applied codes via a real
+    // /cart/update.js call, then reconcile from the authoritative result.
     this.setState({ couponLoading: true });
-
-    // Optimistic: drop the chip from cart_level_discount_applications.
-    // Totals stay where they are until reconcile — re-running the merchant's
-    // discount engine client-side isn't possible. Acceptable: the chip
-    // disappearing is the visible feedback.
-    if (snapshot) dispatchOptimistic(simulateCouponRemove(snapshot, codeToRemove));
-
     try {
-      var currentCodes = this.getAppliedCodes();
       var removeUpper = (codeToRemove || '').toUpperCase();
-      var remaining = currentCodes.filter(function (c) { return c.toUpperCase() !== removeUpper; });
-      var discountPayload = remaining.length > 0 ? remaining.join(',') : '';
-
-      await cartUpdateAll({ discount: discountPayload });
-      var cart = await fetchCart();
-
+      var remaining = this.getAppliedCodes().filter(function (c) { return c.toUpperCase() !== removeUpper; });
+      await cartUpdateAll({ discount: remaining.join(',') });
+      var cart = await fetchCart();   // fresh /cart.js — complete discount allocations
       this._currency = cart.currency || this._currency;
-      this.setState({ cart: cart, couponLoading: false });
-      updateCartCount(cart.item_count);
-      window.dispatchEvent(new CustomEvent('cartmax:cart-action', { detail: { cart: cart } }));
+      this._applyCouponCart(cart);
+      this.setState({ couponLoading: false, couponError: null });
     } catch (err) {
-      // Rollback the chip.
-      if (snapshot) dispatchOptimistic(snapshot);
       this.setState({ couponLoading: false });
     }
   }
 
+  // Applied coupon chips. Driven by cart.discount_codes (applicable === true) so
+  // a code that applies at the LINE level — not just cart level — still shows a
+  // chip. Amounts (when the code produces a cart-level allocation) are looked up
+  // by title. Falls back to cart-level discount_code applications.
   getAppliedDiscounts() {
     var cart = this.state.cart;
     if (!cart) return [];
+    var amounts = {};
+    (cart.cart_level_discount_applications || []).forEach(function (d) {
+      if (d.title) amounts[d.title.toUpperCase()] = d.total_allocated_amount || 0;
+    });
+    if (cart.discount_codes && cart.discount_codes.length) {
+      return cart.discount_codes
+        .filter(function (d) { return d.applicable; })
+        .map(function (d) { return { code: d.code, amount: amounts[(d.code || '').toUpperCase()] || 0 }; });
+    }
     var codes = [];
     (cart.cart_level_discount_applications || []).forEach(function (d) {
       if (d.title && d.type === 'discount_code') {
@@ -2601,20 +2695,16 @@ export default class CartDrawer extends Component {
     return codes;
   }
 
-  renderCoupons() {
-    var self = this;
-    var isLoading = this.state.couponLoading;
-    var appliedDiscounts = this.getAppliedDiscounts();
-    var showPanel = this.state.couponPanelOpen;
+  // Coupons eligible to SHOW (not yet applied, cart meets min qty/price). Shared
+  // by the in-body block and the slide-in panel.
+  _availableCoupons() {
     var cart = this.state.cart;
     var cartQty = cart ? (cart.item_count || 0) : 0;
     var cartTotal = cart ? (cart.total_price || 0) / 100 : 0;
     var evalResult = this.state.evalResult;
-    var allowMultiple = this._sections.allow_multiple_coupons;
-    var singleCouponApplied = !allowMultiple && appliedDiscounts.length > 0;
+    var appliedCodes = this.getAppliedDiscounts().map(function (d) { return d.code; });
     var allCoupons = (evalResult && evalResult.available_coupons) ? evalResult.available_coupons : [];
-    var appliedCodes = appliedDiscounts.map(function (d) { return d.code; });
-    var coupons = allCoupons.filter(function (c) {
+    return allCoupons.filter(function (c) {
       if (appliedCodes.indexOf(c.code) !== -1) return false;
       var minQty = Number(c.trigger_qty) || 0;
       var minPrice = Number(c.trigger_price) || 0;
@@ -2622,121 +2712,139 @@ export default class CartDrawer extends Component {
       if (minPrice > 0 && cartTotal < minPrice) return false;
       return true;
     });
+  }
 
+  renderCoupons() {
+    var self = this;
+    var isLoading = this.state.couponLoading;
+    var appliedDiscounts = this.getAppliedDiscounts();
+    var coupons = this._availableCoupons();
+
+    // Input row + "View All" stay visible even when a coupon is applied, so the
+    // shopper can always open the coupon drawer (or apply another where allowed).
+    // Applied coupons render as compact chips with a remove (✕).
     return (
       <div class="cartmax-coupons">
-
-        {/* Applied coupon banners — one per applied code, stacked above block */}
-        {appliedDiscounts.map(function (d) {
-          return (
-            <div class="cartmax-applied-coupon-banner" key={d.code}>
-              <div class="cartmax-applied-coupon-card">
-                <div class="cartmax-applied-coupon-left">
-                  <span class="cartmax-applied-label">Applied Coupon</span>
-                  <span class="cartmax-applied-code">{d.code}</span>
-                </div>
-                <button
-                  class="cartmax-applied-remove"
-                  onClick={function () { self.handleCouponRemove(d.code); }}
-                  disabled={isLoading}
-                  aria-label={'Remove ' + d.code}
-                >REMOVE</button>
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Discount block — hidden when single-coupon mode and a coupon is already applied */}
-        {!singleCouponApplied ? (
-          <div class="cartmax-discount-block">
-            <div class="cartmax-discount-input-row">
-              <input
-                class="cartmax-discount-input"
-                type="text"
-                placeholder="Apply Coupon"
-                value={self.state.couponInput || ''}
-                onInput={function (e) { self.setState({ couponInput: e.target.value, couponError: null }); }}
-                onKeyDown={function (e) { if (e.key === 'Enter') self.handleCouponApply(self.state.couponInput); }}
-                disabled={isLoading}
-              />
-              <button
-                class="cartmax-discount-submit"
-                onClick={function () { self.handleCouponApply(self.state.couponInput); }}
-                disabled={isLoading || !(self.state.couponInput || '').trim()}
-                aria-label="Apply coupon"
-              ><IconChevronRight /></button>
-              <span class="cartmax-discount-divider" />
-              <button
-                class="cartmax-discount-viewall"
-                onClick={function () { self.setState({ couponPanelOpen: true }); }}
-              >View All</button>
-            </div>
-            {self.state.couponError
-              ? <div class="cartmax-coupon-error">{self.state.couponError}</div>
-              : null
-            }
-            {coupons.length > 0 ? (
-              <div class="cartmax-discount-cards">
-                {coupons.map(function (c) {
-                  return (
-                    <div class="cartmax-discount-card" key={c.code}>
-                      <div class="cartmax-discount-card-accent">
-                        <span>{c.accent}</span>
-                      </div>
-                      <div class="cartmax-discount-card-info">
-                        <span class="cartmax-discount-card-code">{c.code}</span>
-                        <span class="cartmax-discount-card-savings">{c.display_message}</span>
-                      </div>
-                      <button
-                        class="cartmax-discount-card-btn"
-                        onClick={function () { self.handleCouponApply(c.code); }}
-                        disabled={isLoading}
-                      >Apply</button>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {/* Offers & Coupons panel — slides in from right */}
-        <div class={'cartmax-offers-panel' + (showPanel ? ' cartmax-offers-panel--open' : '')}>
-          <div class="cartmax-offers-panel-header">
+        <div class="cartmax-discount-block">
+          <div class="cartmax-discount-input-row">
+            <input
+              class="cartmax-discount-input"
+              type="text"
+              placeholder="Apply Coupon"
+              value={self.state.couponInput || ''}
+              onInput={function (e) { self.setState({ couponInput: e.target.value, couponError: null }); }}
+              onKeyDown={function (e) { if (e.key === 'Enter') self.handleCouponApply(self.state.couponInput); }}
+              disabled={isLoading}
+            />
             <button
-              class="cartmax-offers-back"
-              onClick={function () { self.setState({ couponPanelOpen: false }); }}
-              aria-label="Back to cart"
-            ><IconChevronLeft /></button>
-            <span class="cartmax-offers-title">Offers & Coupons</span>
+              class="cartmax-discount-submit"
+              onClick={function () { self.handleCouponApply(self.state.couponInput); }}
+              disabled={isLoading || !(self.state.couponInput || '').trim()}
+              aria-label="Apply coupon"
+            ><IconChevronRight /></button>
+            <span class="cartmax-discount-divider" />
+            <button
+              class="cartmax-discount-viewall"
+              onClick={function () { self.setState({ couponPanelOpen: true }); }}
+            >View All</button>
           </div>
-          <div class="cartmax-offers-body">
-            <span class="cartmax-offers-label">Available Coupons</span>
-            {coupons.length > 0 ? (
-              <div class="cartmax-offers-cards">
-                {coupons.map(function (c) {
-                  return (
-                    <div class="cartmax-offers-card" key={c.code}>
-                      <div class="cartmax-offers-card-accent">
-                        <span>{c.accent}</span>
-                      </div>
-                      <div class="cartmax-offers-card-info">
-                        <span class="cartmax-offers-card-code">{c.code}</span>
-                        <span class="cartmax-offers-card-savings">{c.display_message}</span>
-                      </div>
-                      <button
-                        class="cartmax-offers-card-btn"
-                        onClick={function () { self.handleCouponApply(c.code); }}
-                        disabled={isLoading}
-                      >Apply</button>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
-        </div>
+          {self.state.couponError
+            ? <div class="cartmax-coupon-error">{self.state.couponError}</div>
+            : null
+          }
 
+          {/* Applied coupons — compact chips with a remove (✕) */}
+          {appliedDiscounts.length > 0 ? (
+            <div class="cartmax-applied-chips">
+              {appliedDiscounts.map(function (d) {
+                return (
+                  <div class="cartmax-applied-chip" key={d.code}>
+                    <span class="cartmax-applied-chip-check"><IconCheck /></span>
+                    <span class="cartmax-applied-chip-code">{d.code}</span>
+                    <button
+                      class="cartmax-applied-chip-remove"
+                      onClick={function () { self.handleCouponRemove(d.code); }}
+                      disabled={isLoading}
+                      aria-label={'Remove ' + d.code}
+                    ><IconClose /></button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {coupons.length > 0 ? (
+            <div class="cartmax-discount-cards">
+              {coupons.map(function (c) {
+                return (
+                  <div class="cartmax-discount-card" key={c.code}>
+                    <div class="cartmax-discount-card-accent">
+                      <span>{c.accent}</span>
+                    </div>
+                    <div class="cartmax-discount-card-info">
+                      <span class="cartmax-discount-card-code">{c.code}</span>
+                      <span class="cartmax-discount-card-savings">{c.display_message}</span>
+                    </div>
+                    <button
+                      class="cartmax-discount-card-btn"
+                      onClick={function () { self.handleCouponApply(c.code); }}
+                      disabled={isLoading}
+                    >Apply</button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  // The slide-in "Offers & Coupons" panel. Rendered as a direct child of the
+  // drawer root (NOT inside the scrollable body) so its absolute inset:0 overlays
+  // the whole drawer — including the header — regardless of body scroll position.
+  // (Nesting it in the scrolled body was pushing its header/back button up under
+  // the cart header on mobile.)
+  renderCouponsPanel() {
+    var self = this;
+    var isLoading = this.state.couponLoading;
+    var showPanel = this.state.couponPanelOpen;
+    var coupons = this._availableCoupons();
+    return (
+      <div class={'cartmax-offers-panel' + (showPanel ? ' cartmax-offers-panel--open' : '')}>
+        <div class="cartmax-offers-panel-header">
+          <button
+            class="cartmax-offers-back"
+            onClick={function () { self.setState({ couponPanelOpen: false }); }}
+            aria-label="Back to cart"
+          ><IconChevronLeft /></button>
+          <span class="cartmax-offers-title">Offers & Coupons</span>
+        </div>
+        <div class="cartmax-offers-body">
+          <span class="cartmax-offers-label">Available Coupons</span>
+          {coupons.length > 0 ? (
+            <div class="cartmax-offers-cards">
+              {coupons.map(function (c) {
+                return (
+                  <div class="cartmax-offers-card" key={c.code}>
+                    <div class="cartmax-offers-card-accent">
+                      <span>{c.accent}</span>
+                    </div>
+                    <div class="cartmax-offers-card-info">
+                      <span class="cartmax-offers-card-code">{c.code}</span>
+                      <span class="cartmax-offers-card-savings">{c.display_message}</span>
+                    </div>
+                    <button
+                      class="cartmax-offers-card-btn"
+                      onClick={function () { self.handleCouponApply(c.code); }}
+                      disabled={isLoading}
+                    >Apply</button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
       </div>
     );
   }
@@ -3074,15 +3182,25 @@ export default class CartDrawer extends Component {
       totalMRP += unit * (it.quantity || 0);
     });
 
-    // Coupon discount = only discount-CODE allocations (not automatic/sale ones,
-    // which are folded into "Discount on MRP").
+    // Coupon discount = the amount attributable to the APPLIED coupon codes
+    // (automatic/sale discounts are folded into "Discount on MRP"). Match by the
+    // real applied code titles rather than a `type` flag, which isn't reliable
+    // across coupon kinds. For each code, prefer its line-level allocations
+    // (order-level codes spread across items); fall back to the cart-level
+    // allocation — never both, so it can't double-count.
     var couponDiscount = 0;
-    (cart.cart_level_discount_applications || []).forEach(function (d) {
-      if (d.type === 'discount_code') couponDiscount += (d.total_allocated_amount || 0);
-    });
-    (cart.items || []).forEach(function (it) {
-      (it.line_level_discount_allocations || []).forEach(function (a) {
-        if (a.discount_application && a.discount_application.type === 'discount_code') couponDiscount += (a.amount || 0);
+    this.getAppliedCodes().forEach(function (code) {
+      var up = (code || '').toUpperCase();
+      var lineSum = 0;
+      (cart.items || []).forEach(function (it) {
+        (it.line_level_discount_allocations || []).forEach(function (a) {
+          var da = a.discount_application || {};
+          if (da.title && da.title.toUpperCase() === up) lineSum += (a.amount || 0);
+        });
+      });
+      if (lineSum > 0) { couponDiscount += lineSum; return; }
+      (cart.cart_level_discount_applications || []).forEach(function (d) {
+        if (d.title && d.title.toUpperCase() === up) couponDiscount += (d.total_allocated_amount || 0);
       });
     });
 
@@ -3238,6 +3356,10 @@ export default class CartDrawer extends Component {
 
             {/* Footer */}
             {hasItems ? this.renderFooter() : null}
+
+            {/* Offers & Coupons panel — overlays the whole drawer (root-level so
+                body scroll can't push it under the header) */}
+            {sec.show_coupons ? this.renderCouponsPanel() : null}
 
             {/* Price Breakup Panel — slides up over drawer content */}
             {this.state.priceBreakupOpen ? this.renderPriceBreakup() : null}

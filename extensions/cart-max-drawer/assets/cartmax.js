@@ -279,7 +279,14 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     }).then(function(r2) {
-      return r2.json();
+      return r2.json().then(function(data) {
+        if (!r2.ok || !data || !Array.isArray(data.items)) {
+          var err = new Error(data && (data.description || data.message) || "cart update failed: " + r2.status);
+          err.cartError = data;
+          throw err;
+        }
+        return data;
+      });
     });
   }
   function dispatchOptimistic(cart) {
@@ -341,14 +348,6 @@
       items.push(optimisticItem);
     }
     return recomputeCartTotals(cart, items);
-  }
-  function simulateCouponRemove(cart, code) {
-    if (!cart || !code) return cart;
-    var upper = String(code).toUpperCase();
-    var apps = (cart.cart_level_discount_applications || []).filter(function(d2) {
-      return !(d2.title && d2.title.toUpperCase() === upper);
-    });
-    return Object.assign({}, cart, { cart_level_discount_applications: apps });
   }
   function formatMoney(cents, currency) {
     var amount = (cents / 100).toFixed(2);
@@ -2273,10 +2272,10 @@
     _state2.ready = true;
     notify2();
   }
-  function reconcileFromServer(serverCart) {
+  function reconcileFromServer(serverCart, force) {
     if (!serverCart) return;
     _state2.serverCart = serverCart;
-    if (!_syncing2 && !_pendingResolve2) {
+    if (force || !_syncing2 && !_pendingResolve2) {
       _state2.localCart = serverCart;
     }
     notify2();
@@ -2286,6 +2285,7 @@
   function queueSync2() {
     return new Promise(function(resolve) {
       if (!_syncing2) {
+        _syncing2 = true;
         resolve();
         return;
       }
@@ -2293,13 +2293,13 @@
     });
   }
   function completeAndTriggerNext2() {
-    _syncing2 = false;
     if (_pendingResolve2) {
       var next = _pendingResolve2;
       _pendingResolve2 = null;
       next();
       return true;
     }
+    _syncing2 = false;
     return false;
   }
   async function scheduleSync2() {
@@ -2336,29 +2336,11 @@
     });
     return out;
   }
-  function appliedCodesOf(cart) {
-    var codes = [];
-    (cart && cart.cart_level_discount_applications || []).forEach(function(d2) {
-      if (d2.title) codes.push(d2.title);
-    });
-    (cart && cart.items || []).forEach(function(item) {
-      (item.line_level_discount_allocations || []).forEach(function(a2) {
-        if (a2.discount_application && a2.discount_application.title) codes.push(a2.discount_application.title);
-      });
-    });
-    return codes.filter(function(c2, i2, arr) {
-      return arr.indexOf(c2) === i2;
-    });
-  }
-  function desiredCodes(cart) {
-    if (cart && cart.discount_codes) return cart.discount_codes.map(function(d2) {
-      return d2.code;
-    });
-    return appliedCodesOf(cart);
-  }
   async function runSync2() {
-    if (!_state2.localCart) return;
-    _syncing2 = true;
+    if (!_state2.localCart) {
+      completeAndTriggerNext2();
+      return;
+    }
     _state2.loading = true;
     notify2();
     try {
@@ -2391,14 +2373,6 @@
           body: JSON.stringify({ items })
         });
         didAdd = true;
-      }
-      var wantCodes = desiredCodes(_state2.localCart);
-      var haveCodes = appliedCodesOf(serverMapped);
-      var codesDiffer = wantCodes.length !== haveCodes.length || wantCodes.some(function(c2) {
-        return haveCodes.indexOf(c2) === -1;
-      });
-      if (codesDiffer) {
-        lastCart = await cartUpdateAll({ discount: wantCodes.join(",") });
       }
       _state2.serverCart = didAdd || !lastCart ? await fetchCart() : lastCart;
       var hasMore = completeAndTriggerNext2();
@@ -2454,29 +2428,6 @@
   }
   function removeLine2(key) {
     changeQuantity2(key, 0);
-  }
-  function applyDiscountCode2(code) {
-    var base = _state2.localCart || _state2.serverCart;
-    if (!base || !code) return;
-    var codes = (base.discount_codes || appliedCodesOf(base).map(function(c2) {
-      return { code: c2, applicable: true };
-    })).slice();
-    if (codes.some(function(d2) {
-      return d2.code.toUpperCase() === code.toUpperCase();
-    })) return;
-    codes.push({ code, applicable: true });
-    setLocalCart2(Object.assign({}, base, { discount_codes: codes }));
-  }
-  function removeDiscountCode2(code) {
-    var base = _state2.localCart || _state2.serverCart;
-    if (!base) return;
-    var current = base.discount_codes || appliedCodesOf(base).map(function(c2) {
-      return { code: c2, applicable: true };
-    });
-    var codes = current.filter(function(d2) {
-      return d2.code.toUpperCase() !== code.toUpperCase();
-    });
-    setLocalCart2(Object.assign({}, base, { discount_codes: codes }));
   }
 
   // app/drawer-src/src/analytics-events.js
@@ -3014,6 +2965,10 @@
           }
         });
         init(this.state.cart);
+        fetchCart().then((c2) => {
+          if (c2) reconcileFromServer(c2);
+        }).catch(function() {
+        });
       }
       window.__cartmaxReady = true;
       var queued = (window.__cartmaxQueue || []).slice();
@@ -3646,9 +3601,15 @@
     // debounced so rapid edits collapse into one proxy call.
     _cartSignature(cart) {
       var items = cart && cart.items || [];
-      return items.map(function(it) {
+      var lines = items.map(function(it) {
         return it.variant_id + ":" + (it.quantity || 0) + ":" + (it.properties ? it.properties._offer_id || "" : "");
       }).sort().join("|");
+      var codes = (cart && cart.discount_codes || []).filter(function(d2) {
+        return d2.applicable;
+      }).map(function(d2) {
+        return d2.code;
+      }).sort().join(",");
+      return lines + "#" + codes;
     }
     _maybeRunGqlPromo(cart) {
       var sig = this._cartSignature(cart);
@@ -4209,6 +4170,8 @@
       var cachedVariants = this._variantCache[String(item.product_id)] || [];
       var showVariantSwitcher = this._layout.show_variant_switcher && item.variant_title && !isFreebie && !isClaimed;
       var showRemoveBtn = this._layout.show_remove_btn && displayQty > 1 && !isFreebie && !isClaimed;
+      var claimPriceUnit = isClaimed && item.properties && item.properties._claim_price ? Number(item.properties._claim_price) : 0;
+      var claimPriceLine = claimPriceUnit * (item.quantity || 1);
       var cls = "cartmax-line-item" + (isRemoving ? " cartmax-line-removing" : "") + (isFreebie ? " cartmax-line-freebie" : "");
       return /* @__PURE__ */ k("div", { class: cls, key: item.key }, /* @__PURE__ */ k("div", { class: "cartmax-line-image" }, item.image ? /* @__PURE__ */ k("img", { src: resizeImage(item.image, 96), alt: item.title, width: "64", height: "64", loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-line-image-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image"))), /* @__PURE__ */ k("div", { class: "cartmax-line-details" }, this._layout.show_vendor && item.vendor ? /* @__PURE__ */ k("div", { class: "cartmax-line-vendor" }, item.vendor) : null, /* @__PURE__ */ k("div", { class: "cartmax-line-title-row" }, /* @__PURE__ */ k("div", { class: "cartmax-line-title" }, item.product_title), showRemoveBtn ? /* @__PURE__ */ k(
         "button",
@@ -4219,7 +4182,12 @@
           "aria-label": "Remove " + item.product_title
         },
         /* @__PURE__ */ k(IconTrash, null)
-      ) : null), /* @__PURE__ */ k("div", { class: "cartmax-line-price" }, isFreebie || isClaimed ? /* @__PURE__ */ k("span", { class: "cartmax-gift-badge" }, "FREE") : (() => {
+      ) : null), /* @__PURE__ */ k("div", { class: "cartmax-line-price" }, isFreebie || isClaimed ? claimPriceLine > 0 ? [
+        /* @__PURE__ */ k("span", { key: "cp" }, formatMoney(claimPriceLine, curr)),
+        item.original_line_price > claimPriceLine ? /* @__PURE__ */ k("span", { key: "orig", class: "cartmax-line-price-original" }, formatMoney(item.original_line_price, curr)) : null,
+        // Keep the freebie identity even at a nominal price.
+        /* @__PURE__ */ k("span", { key: "giftbadge", class: "cartmax-gift-badge" }, "GIFT")
+      ] : /* @__PURE__ */ k("span", { class: "cartmax-gift-badge" }, "FREE") : (() => {
         var compareAtUnit = this._layout.show_compare_price ? this._compareAtCache[String(item.variant_id)] : null;
         var compareAtLine = compareAtUnit ? compareAtUnit * item.quantity : 0;
         var strikethrough = compareAtLine > item.final_line_price ? compareAtLine : item.original_line_price > item.final_line_price ? item.original_line_price : 0;
@@ -4324,9 +4292,12 @@
     }
     async handleClaimAdd(variantId, claimId, gift) {
       var key = "claim_" + variantId;
+      var claimPriceCents = Math.round((Number(gift && gift.claim_price) || 0) * 100);
+      var props = { _freebie: "true", _cartmax_claim: "true", _claimed: "true", _offer_id: claimId };
+      if (claimPriceCents > 0) props._claim_price = String(claimPriceCents);
       if (this._graphqlCart) {
         this.setState({ claimed: Object.assign({}, this.state.claimed, { [key]: true }) });
-        addLine(variantId, 1, { _freebie: "true", _cartmax_claim: "true", _claimed: "true", _offer_id: claimId }, {});
+        addLine(variantId, 1, props, {});
         tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, { promotion_id: claimId, promotion_type: "claim-gift", variant_id: String(variantId) });
         return;
       }
@@ -4335,14 +4306,13 @@
         addLine2(
           variantId,
           1,
-          { _freebie: "true", _cartmax_claim: "true", _claimed: "true", _offer_id: claimId },
+          props,
           { price: 0, title: gift && gift.title, product_title: gift && gift.title, image: gift && gift.image }
         );
         tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, { promotion_id: claimId, promotion_type: "claim-gift", variant_id: String(variantId) });
         return;
       }
       this._clearClaimError(key);
-      var props = { _freebie: "true", _cartmax_claim: "true", _claimed: "true", _offer_id: claimId };
       var pendingLine = buildPendingGiftLine(variantId, 1, props, gift && gift.title, gift && gift.image, "pending_claim_");
       var base = this.state.cart || { items: [] };
       var optimisticItems = (base.items || []).concat([pendingLine]);
@@ -4625,7 +4595,7 @@
             {
               class: "cartmax-claim-btn cartmax-claim-btn--add",
               onClick: function() {
-                self.handleClaimAdd(vid, cg._rule_id, { title: g2.title, image: g2.image });
+                self.handleClaimAdd(vid, cg._rule_id, { title: g2.title, image: g2.image, claim_price: cg.claim_price });
               },
               disabled: isClaiming || !g2.available || limitReached
             },
@@ -4635,84 +4605,134 @@
       );
     }
     // ── Coupons ────────────────────────────────────────────────
+    // The codes Shopify has actually ACCEPTED. Authoritative source is
+    // cart.discount_codes[].applicable (present on /cart.js + /cart/update.js),
+    // which covers cart-level AND line-level codes and excludes rejected ones.
+    // Falls back to reading discount applications for older cart shapes.
     getAppliedCodes() {
       var cart = this.state.cart;
       if (!cart) return [];
+      if (cart.discount_codes) {
+        return cart.discount_codes.filter(function(d2) {
+          return d2.applicable;
+        }).map(function(d2) {
+          return d2.code;
+        });
+      }
       var codes = [];
       (cart.cart_level_discount_applications || []).forEach(function(d2) {
-        if (d2.title) codes.push(d2.title);
+        if (d2.title && d2.type === "discount_code") codes.push(d2.title);
       });
       (cart.items || []).forEach(function(item) {
         (item.line_level_discount_allocations || []).forEach(function(a2) {
-          if (a2.discount_application && a2.discount_application.title) {
-            codes.push(a2.discount_application.title);
-          }
+          var da = a2.discount_application;
+          if (da && da.title && da.type === "discount_code") codes.push(da.title);
         });
       });
       return codes.filter(function(c2, i2, arr) {
         return arr.indexOf(c2) === i2;
       });
     }
+    // Did `code` actually get applied to `cart`? Authoritative signal is
+    // /cart.js discount_codes[].applicable; fall back to the real discount
+    // applications. Used to reject invalid/inapplicable codes instead of silently
+    // banking them.
+    _couponApplied(cart, code) {
+      if (!cart || !code) return false;
+      var up = code.toUpperCase();
+      var dc = cart.discount_codes || [];
+      for (var i2 = 0; i2 < dc.length; i2++) {
+        if (dc[i2].code && dc[i2].code.toUpperCase() === up) return !!dc[i2].applicable;
+      }
+      var atCart = (cart.cart_level_discount_applications || []).some(function(d2) {
+        return d2.title && d2.title.toUpperCase() === up;
+      });
+      if (atCart) return true;
+      return (cart.items || []).some(function(item) {
+        return (item.line_level_discount_allocations || []).some(function(a2) {
+          return a2.discount_application && a2.discount_application.title && a2.discount_application.title.toUpperCase() === up;
+        });
+      });
+    }
+    // Feed an authoritative /cart.js cart (from a direct coupon update.js call)
+    // back into the live cart system, so the drawer + store stay in sync WITHOUT
+    // any optimistic discount overlay.
+    // Show a coupon error that auto-dismisses (same hold as other inline errors),
+    // so a stale "Invalid or inapplicable code" doesn't linger on screen.
+    _flashCouponError(message) {
+      if (this._couponErrTimer) clearTimeout(this._couponErrTimer);
+      this.setState({ couponError: message });
+      this._couponErrTimer = setTimeout(() => {
+        this._couponErrTimer = null;
+        this.setState({ couponError: null });
+      }, INLINE_ERROR_HOLD_MS);
+    }
+    _clearCouponError() {
+      if (this._couponErrTimer) {
+        clearTimeout(this._couponErrTimer);
+        this._couponErrTimer = null;
+      }
+      if (this.state.couponError) this.setState({ couponError: null });
+    }
+    _applyCouponCart(cart) {
+      if (this._ajaxStore) reconcileFromServer(cart, true);
+      var savings = Math.max(0, (cart.original_total_price || 0) - (cart.total_price || 0));
+      this.setState({ cart, savings });
+      updateCartCount(cart.item_count);
+      window.dispatchEvent(new CustomEvent("cartmax:cart-action", { detail: { cart } }));
+    }
     async handleCouponApply(code) {
       if (!code || !code.trim()) return;
+      var newCode = code.trim();
       if (this._graphqlCart) {
-        applyDiscountCode(code.trim());
+        applyDiscountCode(newCode);
         this.setState({ couponInput: "", couponPanelOpen: false, couponError: null });
         return;
       }
-      if (this._ajaxStore) {
-        applyDiscountCode2(code.trim());
+      if (this.getAppliedCodes().some(function(c2) {
+        return c2.toUpperCase() === newCode.toUpperCase();
+      })) {
         this.setState({ couponInput: "", couponPanelOpen: false, couponError: null });
         return;
       }
       this.setState({ couponLoading: true, couponError: null });
       try {
-        var currentCodes = this.getAppliedCodes();
-        var newCode = code.trim();
-        if (!currentCodes.some(function(c2) {
-          return c2.toUpperCase() === newCode.toUpperCase();
-        })) {
-          currentCodes.push(newCode);
-        }
-        var discountPayload = currentCodes.join(",");
-        await cartUpdateAll({ discount: discountPayload });
+        var allowMultiple = this._sections.allow_multiple_coupons;
+        var applied = this.getAppliedCodes();
+        var base = allowMultiple ? applied : [];
+        var sendStr = base.concat([newCode]).join(",");
+        await cartUpdateAll({ discount: sendStr });
         var cart = await fetchCart();
-        var codeUpper = newCode.toUpperCase();
-        var applied = (cart.cart_level_discount_applications || []).some(function(d2) {
-          return d2.title && d2.title.toUpperCase() === codeUpper;
-        });
-        if (!applied) {
-          applied = (cart.items || []).some(function(item) {
-            return (item.line_level_discount_allocations || []).some(function(a2) {
-              return a2.discount_application && a2.discount_application.title && a2.discount_application.title.toUpperCase() === codeUpper;
-            });
-          });
+        var didApply = this._couponApplied(cart, newCode);
+        if (!didApply) {
+          await cartUpdateAll({ discount: applied.join(",") });
+          cart = await fetchCart();
         }
         this._currency = cart.currency || this._currency;
+        this._applyCouponCart(cart);
         this.setState({
-          cart,
           couponLoading: false,
-          couponError: applied ? null : "Invalid or inapplicable code",
-          couponInput: applied ? "" : this.state.couponInput,
-          couponPanelOpen: applied ? false : this.state.couponPanelOpen
+          couponInput: "",
+          couponPanelOpen: didApply ? false : this.state.couponPanelOpen
         });
-        updateCartCount(cart.item_count);
-        if (applied) window.dispatchEvent(new CustomEvent("cartmax:cart-action", { detail: { cart } }));
+        if (didApply) this._clearCouponError();
+        else this._flashCouponError("Invalid or inapplicable code");
         tracker.track(
-          applied ? ANALYTICS_EVENTS.COUPON_APPLIED : ANALYTICS_EVENTS.COUPON_REJECTED,
+          didApply ? ANALYTICS_EVENTS.COUPON_APPLIED : ANALYTICS_EVENTS.COUPON_REJECTED,
           {
             promotion_type: "coupon",
             code: newCode,
-            reason: applied ? null : "not_applicable",
+            reason: didApply ? null : "not_applicable",
             cart_total: cart.total_price,
             item_count: cart.item_count
           }
         );
       } catch (err) {
-        this.setState({ couponLoading: false, couponError: "Failed to apply coupon" });
+        this.setState({ couponLoading: false });
+        this._flashCouponError("Failed to apply coupon");
         tracker.track(ANALYTICS_EVENTS.COUPON_REJECTED, {
           promotion_type: "coupon",
-          code: (code || "").trim(),
+          code: newCode,
           reason: "request_failed"
         });
       }
@@ -4722,34 +4742,39 @@
         removeDiscountCode(codeToRemove);
         return;
       }
-      if (this._ajaxStore) {
-        removeDiscountCode2(codeToRemove);
-        return;
-      }
-      var snapshot = this.state.cart;
       this.setState({ couponLoading: true });
-      if (snapshot) dispatchOptimistic(simulateCouponRemove(snapshot, codeToRemove));
       try {
-        var currentCodes = this.getAppliedCodes();
         var removeUpper = (codeToRemove || "").toUpperCase();
-        var remaining = currentCodes.filter(function(c2) {
+        var remaining = this.getAppliedCodes().filter(function(c2) {
           return c2.toUpperCase() !== removeUpper;
         });
-        var discountPayload = remaining.length > 0 ? remaining.join(",") : "";
-        await cartUpdateAll({ discount: discountPayload });
+        await cartUpdateAll({ discount: remaining.join(",") });
         var cart = await fetchCart();
         this._currency = cart.currency || this._currency;
-        this.setState({ cart, couponLoading: false });
-        updateCartCount(cart.item_count);
-        window.dispatchEvent(new CustomEvent("cartmax:cart-action", { detail: { cart } }));
+        this._applyCouponCart(cart);
+        this.setState({ couponLoading: false, couponError: null });
       } catch (err) {
-        if (snapshot) dispatchOptimistic(snapshot);
         this.setState({ couponLoading: false });
       }
     }
+    // Applied coupon chips. Driven by cart.discount_codes (applicable === true) so
+    // a code that applies at the LINE level — not just cart level — still shows a
+    // chip. Amounts (when the code produces a cart-level allocation) are looked up
+    // by title. Falls back to cart-level discount_code applications.
     getAppliedDiscounts() {
       var cart = this.state.cart;
       if (!cart) return [];
+      var amounts = {};
+      (cart.cart_level_discount_applications || []).forEach(function(d2) {
+        if (d2.title) amounts[d2.title.toUpperCase()] = d2.total_allocated_amount || 0;
+      });
+      if (cart.discount_codes && cart.discount_codes.length) {
+        return cart.discount_codes.filter(function(d2) {
+          return d2.applicable;
+        }).map(function(d2) {
+          return { code: d2.code, amount: amounts[(d2.code || "").toUpperCase()] || 0 };
+        });
+      }
       var codes = [];
       (cart.cart_level_discount_applications || []).forEach(function(d2) {
         if (d2.title && d2.type === "discount_code") {
@@ -4758,22 +4783,18 @@
       });
       return codes;
     }
-    renderCoupons() {
-      var self = this;
-      var isLoading = this.state.couponLoading;
-      var appliedDiscounts = this.getAppliedDiscounts();
-      var showPanel = this.state.couponPanelOpen;
+    // Coupons eligible to SHOW (not yet applied, cart meets min qty/price). Shared
+    // by the in-body block and the slide-in panel.
+    _availableCoupons() {
       var cart = this.state.cart;
       var cartQty = cart ? cart.item_count || 0 : 0;
       var cartTotal = cart ? (cart.total_price || 0) / 100 : 0;
       var evalResult = this.state.evalResult;
-      var allowMultiple = this._sections.allow_multiple_coupons;
-      var singleCouponApplied = !allowMultiple && appliedDiscounts.length > 0;
-      var allCoupons = evalResult && evalResult.available_coupons ? evalResult.available_coupons : [];
-      var appliedCodes = appliedDiscounts.map(function(d2) {
+      var appliedCodes = this.getAppliedDiscounts().map(function(d2) {
         return d2.code;
       });
-      var coupons = allCoupons.filter(function(c2) {
+      var allCoupons = evalResult && evalResult.available_coupons ? evalResult.available_coupons : [];
+      return allCoupons.filter(function(c2) {
         if (appliedCodes.indexOf(c2.code) !== -1) return false;
         var minQty = Number(c2.trigger_qty) || 0;
         var minPrice = Number(c2.trigger_price) || 0;
@@ -4781,20 +4802,13 @@
         if (minPrice > 0 && cartTotal < minPrice) return false;
         return true;
       });
-      return /* @__PURE__ */ k("div", { class: "cartmax-coupons" }, appliedDiscounts.map(function(d2) {
-        return /* @__PURE__ */ k("div", { class: "cartmax-applied-coupon-banner", key: d2.code }, /* @__PURE__ */ k("div", { class: "cartmax-applied-coupon-card" }, /* @__PURE__ */ k("div", { class: "cartmax-applied-coupon-left" }, /* @__PURE__ */ k("span", { class: "cartmax-applied-label" }, "Applied Coupon"), /* @__PURE__ */ k("span", { class: "cartmax-applied-code" }, d2.code)), /* @__PURE__ */ k(
-          "button",
-          {
-            class: "cartmax-applied-remove",
-            onClick: function() {
-              self.handleCouponRemove(d2.code);
-            },
-            disabled: isLoading,
-            "aria-label": "Remove " + d2.code
-          },
-          "REMOVE"
-        )));
-      }), !singleCouponApplied ? /* @__PURE__ */ k("div", { class: "cartmax-discount-block" }, /* @__PURE__ */ k("div", { class: "cartmax-discount-input-row" }, /* @__PURE__ */ k(
+    }
+    renderCoupons() {
+      var self = this;
+      var isLoading = this.state.couponLoading;
+      var appliedDiscounts = this.getAppliedDiscounts();
+      var coupons = this._availableCoupons();
+      return /* @__PURE__ */ k("div", { class: "cartmax-coupons" }, /* @__PURE__ */ k("div", { class: "cartmax-discount-block" }, /* @__PURE__ */ k("div", { class: "cartmax-discount-input-row" }, /* @__PURE__ */ k(
         "input",
         {
           class: "cartmax-discount-input",
@@ -4829,7 +4843,20 @@
           }
         },
         "View All"
-      )), self.state.couponError ? /* @__PURE__ */ k("div", { class: "cartmax-coupon-error" }, self.state.couponError) : null, coupons.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-discount-cards" }, coupons.map(function(c2) {
+      )), self.state.couponError ? /* @__PURE__ */ k("div", { class: "cartmax-coupon-error" }, self.state.couponError) : null, appliedDiscounts.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-applied-chips" }, appliedDiscounts.map(function(d2) {
+        return /* @__PURE__ */ k("div", { class: "cartmax-applied-chip", key: d2.code }, /* @__PURE__ */ k("span", { class: "cartmax-applied-chip-check" }, /* @__PURE__ */ k(IconCheck, null)), /* @__PURE__ */ k("span", { class: "cartmax-applied-chip-code" }, d2.code), /* @__PURE__ */ k(
+          "button",
+          {
+            class: "cartmax-applied-chip-remove",
+            onClick: function() {
+              self.handleCouponRemove(d2.code);
+            },
+            disabled: isLoading,
+            "aria-label": "Remove " + d2.code
+          },
+          /* @__PURE__ */ k(IconClose, null)
+        ));
+      })) : null, coupons.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-discount-cards" }, coupons.map(function(c2) {
         return /* @__PURE__ */ k("div", { class: "cartmax-discount-card", key: c2.code }, /* @__PURE__ */ k("div", { class: "cartmax-discount-card-accent" }, /* @__PURE__ */ k("span", null, c2.accent)), /* @__PURE__ */ k("div", { class: "cartmax-discount-card-info" }, /* @__PURE__ */ k("span", { class: "cartmax-discount-card-code" }, c2.code), /* @__PURE__ */ k("span", { class: "cartmax-discount-card-savings" }, c2.display_message)), /* @__PURE__ */ k(
           "button",
           {
@@ -4841,7 +4868,19 @@
           },
           "Apply"
         ));
-      })) : null) : null, /* @__PURE__ */ k("div", { class: "cartmax-offers-panel" + (showPanel ? " cartmax-offers-panel--open" : "") }, /* @__PURE__ */ k("div", { class: "cartmax-offers-panel-header" }, /* @__PURE__ */ k(
+      })) : null));
+    }
+    // The slide-in "Offers & Coupons" panel. Rendered as a direct child of the
+    // drawer root (NOT inside the scrollable body) so its absolute inset:0 overlays
+    // the whole drawer — including the header — regardless of body scroll position.
+    // (Nesting it in the scrolled body was pushing its header/back button up under
+    // the cart header on mobile.)
+    renderCouponsPanel() {
+      var self = this;
+      var isLoading = this.state.couponLoading;
+      var showPanel = this.state.couponPanelOpen;
+      var coupons = this._availableCoupons();
+      return /* @__PURE__ */ k("div", { class: "cartmax-offers-panel" + (showPanel ? " cartmax-offers-panel--open" : "") }, /* @__PURE__ */ k("div", { class: "cartmax-offers-panel-header" }, /* @__PURE__ */ k(
         "button",
         {
           class: "cartmax-offers-back",
@@ -4863,7 +4902,7 @@
           },
           "Apply"
         ));
-      })) : null)));
+      })) : null));
     }
     // ── Render: Upsells ────────────────────────────────────────
     _showUpsellError(message) {
@@ -5133,12 +5172,21 @@
         totalMRP += unit * (it.quantity || 0);
       });
       var couponDiscount = 0;
-      (cart.cart_level_discount_applications || []).forEach(function(d2) {
-        if (d2.type === "discount_code") couponDiscount += d2.total_allocated_amount || 0;
-      });
-      (cart.items || []).forEach(function(it) {
-        (it.line_level_discount_allocations || []).forEach(function(a2) {
-          if (a2.discount_application && a2.discount_application.type === "discount_code") couponDiscount += a2.amount || 0;
+      this.getAppliedCodes().forEach(function(code) {
+        var up = (code || "").toUpperCase();
+        var lineSum = 0;
+        (cart.items || []).forEach(function(it) {
+          (it.line_level_discount_allocations || []).forEach(function(a2) {
+            var da = a2.discount_application || {};
+            if (da.title && da.title.toUpperCase() === up) lineSum += a2.amount || 0;
+          });
+        });
+        if (lineSum > 0) {
+          couponDiscount += lineSum;
+          return;
+        }
+        (cart.cart_level_discount_applications || []).forEach(function(d2) {
+          if (d2.title && d2.title.toUpperCase() === up) couponDiscount += d2.total_allocated_amount || 0;
         });
       });
       var totalAmount = cart.total_price || 0;
@@ -5207,6 +5255,7 @@
           hasItems && sec.show_ribbon ? this.renderRibbon() : null,
           isEmpty && sec.show_upsells ? this.renderUpsells() : null,
           hasItems ? this.renderFooter() : null,
+          sec.show_coupons ? this.renderCouponsPanel() : null,
           this.state.priceBreakupOpen ? this.renderPriceBreakup() : null
         )
       ));

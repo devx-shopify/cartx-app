@@ -91,10 +91,13 @@ export function init(serverCart) {
 // server baseline. We only snap the UI to it when we're idle (no in-flight or
 // queued local edits) — otherwise a pending optimistic edit would be clobbered;
 // the next sync reconciles local against this fresh baseline instead.
-export function reconcileFromServer(serverCart) {
+export function reconcileFromServer(serverCart, force) {
   if (!serverCart) return;
   _state.serverCart = serverCart;
-  if (!_syncing && !_pendingResolve) {
+  // Snap the UI when idle, or when the caller has an authoritative cart it wants
+  // reflected immediately (e.g. a coupon apply/remove, which is a direct awaited
+  // update.js call — its result IS the truth, so it must show without waiting).
+  if (force || (!_syncing && !_pendingResolve)) {
     _state.localCart = serverCart;
   }
   notify();
@@ -106,20 +109,27 @@ var _pendingResolve = null;
 
 function queueSync() {
   return new Promise(function (resolve) {
-    if (!_syncing) { resolve(); return; }
+    // Claim the slot SYNCHRONOUSLY. If we deferred `_syncing = true` to runSync
+    // (after this promise's await), a burst of setLocalCart calls in the same
+    // tick — e.g. a product removal plus each gift the reconcile pulls — would
+    // ALL pass this check and run concurrent syncs, each diffing against the
+    // same stale server cart and re-sending already-removed line keys (→ 422
+    // "updates parameter is invalid"). Claiming here serialises them.
+    if (!_syncing) { _syncing = true; resolve(); return; }
     _pendingResolve = resolve;   // run after the current sync completes
   });
 }
 
 // Returns true if another sync was queued (so the caller should not snap yet).
+// Hands the slot to the queued sync (keeps _syncing = true) or releases it.
 function completeAndTriggerNext() {
-  _syncing = false;
   if (_pendingResolve) {
     var next = _pendingResolve;
     _pendingResolve = null;
-    next();
+    next();   // queued sync takes over the slot — leave _syncing = true
     return true;
   }
+  _syncing = false;
   return false;
 }
 
@@ -161,32 +171,9 @@ function propsFromAttributes(attributes) {
   return out;
 }
 
-// Codes currently applied to a /cart.js cart. Mirrors CartDrawer.getAppliedCodes:
-// read from cart- and line-level discount APPLICATIONS (what Shopify actually
-// applied), deduped — not the raw requested list.
-function appliedCodesOf(cart) {
-  var codes = [];
-  ((cart && cart.cart_level_discount_applications) || []).forEach(function (d) {
-    if (d.title) codes.push(d.title);
-  });
-  ((cart && cart.items) || []).forEach(function (item) {
-    (item.line_level_discount_allocations || []).forEach(function (a) {
-      if (a.discount_application && a.discount_application.title) codes.push(a.discount_application.title);
-    });
-  });
-  return codes.filter(function (c, i, arr) { return arr.indexOf(c) === i; });
-}
-
-// The codes the shopper WANTS applied (the optimistic overlay). Falls back to
-// whatever the server currently has applied.
-function desiredCodes(cart) {
-  if (cart && cart.discount_codes) return cart.discount_codes.map(function (d) { return d.code; });
-  return appliedCodesOf(cart);
-}
-
 async function runSync() {
-  if (!_state.localCart) return;
-  _syncing = true;
+  // _syncing is already claimed by queueSync(); release/hand-off on early return.
+  if (!_state.localCart) { completeAndTriggerNext(); return; }
   _state.loading = true; notify();
 
   try {
@@ -230,16 +217,13 @@ async function runSync() {
       didAdd = true;
     }
 
-    // Discount codes: the AJAX cart applies the FULL desired set in one
-    // /cart/update.js { discount: "A,B" } call (Shopify replaces the set). Only
-    // call when the desired set differs from what's actually applied.
-    var wantCodes = desiredCodes(_state.localCart);
-    var haveCodes = appliedCodesOf(serverMapped);
-    var codesDiffer = wantCodes.length !== haveCodes.length ||
-      wantCodes.some(function (c) { return haveCodes.indexOf(c) === -1; });
-    if (codesDiffer) {
-      lastCart = await cartUpdateAll({ discount: wantCodes.join(',') });
-    }
+    // NOTE: discount codes are NOT reconciled here. The drawer is the single
+    // owner of coupons — it applies/removes them with direct, validated
+    // /cart/update.js { discount } calls. Shopify preserves the applied codes
+    // across quantity/add/remove `updates` calls, so they survive this sync
+    // untouched. (Previously the store ALSO reconciled codes from its own
+    // discount_codes view, which — when that view was incomplete — sent a
+    // reduced set and silently DROPPED a previously-applied coupon.)
 
     // Authoritative result — the next sync diffs against this. Reuse the last
     // mutation's returned cart when we can (qty/remove/discount all return it);
@@ -319,32 +303,19 @@ export function removeLine(key) {
   changeQuantity(key, 0);
 }
 
-// Discount codes. The optimistic overlay adds/removes the chip immediately; the
-// sync applies the full desired set via /cart/update.js { discount } and the
-// /cart.js refresh brings back the real totals. (AJAX cart supports discount
-// codes natively via the `discount` param — same as the GraphQL path's codes.)
-export function applyDiscountCode(code) {
-  var base = _state.localCart || _state.serverCart;
-  if (!base || !code) return;
-  var codes = (base.discount_codes || appliedCodesOf(base).map(function (c) { return { code: c, applicable: true }; })).slice();
-  if (codes.some(function (d) { return d.code.toUpperCase() === code.toUpperCase(); })) return;
-  codes.push({ code: code, applicable: true });
-  setLocalCart(Object.assign({}, base, { discount_codes: codes }));
-}
-
-export function removeDiscountCode(code) {
-  var base = _state.localCart || _state.serverCart;
-  if (!base) return;
-  var current = base.discount_codes || appliedCodesOf(base).map(function (c) { return { code: c, applicable: true }; });
-  var codes = current.filter(function (d) { return d.code.toUpperCase() !== code.toUpperCase(); });
-  setLocalCart(Object.assign({}, base, { discount_codes: codes }));
-}
+// Discount codes are intentionally NOT managed by this store — the drawer owns
+// them via direct, validated /cart/update.js { discount } calls (see
+// CartDrawer.handleCouponApply/Remove). Keeping a second owner here caused
+// coupons to be dropped, so the optimistic apply/remove helpers were removed.
 
 // Cart-level attributes (e.g. the `_cartx` marker for the volume-discount
 // Function). Applied directly — attributes aren't part of the line diff.
 export async function setAttributes(attributes) {
   try {
-    var res = await cartUpdateAll({ attributes: attributes });
+    await cartUpdateAll({ attributes: attributes });
+    // Read back /cart.js so discount allocations stay complete — the update.js
+    // response can drop them, which blanks the price-breakup coupon line.
+    var res = await fetchCart();
     if (res) { _state.serverCart = res; _state.localCart = res; notify(); }
   } catch (e) {
     console.error('[cartx] ajax setAttributes failed:', e);
