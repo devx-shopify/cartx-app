@@ -172,6 +172,14 @@ export const action = async ({ request }) => {
       page_handles: o.page_handles,
       bar: o.bar,
     })),
+    // Minimal claim-gift data (id + trigger) so the drawer's local eval can pull
+    // a claimed freebie the instant the cart drops below its threshold — same as
+    // it does for offer gifts. Without this the client cache has no claim rules
+    // and a stranded claim gift can leave a zero-total cart.
+    claim_gifts: (config.claim_gifts || []).filter((g) => g.enabled).map((g) => ({
+      id: g.id,
+      trigger: g.trigger,
+    })),
     progress_bar: config.progress_bar,
     money_format: moneyFormat || '',
     // Storefront GraphQL cart (Phase A): public token (app-minted) + pinned API

@@ -129,6 +129,37 @@ function evaluateOffers(offers, cart, adjTotal, adjQty, page, customer) {
   return { to_add: toAdd, to_remove: toRemove };
 }
 
+// Claimed gifts whose threshold is no longer met must be pulled too — mirrors
+// the server's claim-removal (proxy.evaluate-cart.jsx). Offer-gift removal above
+// skips claimed items, so without this a claimed freebie strands in the cart
+// when the shopper drops below its threshold (e.g. removes a paid item),
+// leaving a zero-total cart. Conservative on purpose: only removes when the
+// rule is FOUND in the cached config and the cart is below its threshold. The
+// "rule missing / orphaned" case is left to the authoritative server eval, so a
+// cold/partial config cache can never mass-strip claimed gifts.
+function evaluateClaimRemovals(claimGifts, items, adjTotal, adjQty) {
+  var removals = [];
+  if (!claimGifts || !claimGifts.length) return removals;
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    var p = item.properties;
+    if (!p) continue;
+    if (p['_claimed'] !== 'true' && p['_cartmax_claim'] !== 'true') continue;
+    var claimId = p['_offer_id'];
+    if (!claimId) continue;
+    var rule = null;
+    for (var r = 0; r < claimGifts.length; r++) {
+      if (claimGifts[r].id === claimId) { rule = claimGifts[r]; break; }
+    }
+    if (!rule || !rule.trigger) continue;
+    var currentValue = rule.trigger.type === 'price' ? adjTotal : adjQty;
+    if (currentValue < rule.trigger.threshold) {
+      removals.push(item.key);
+    }
+  }
+  return removals;
+}
+
 // ── Build progress bar (simplified client-side) ───────────
 
 function buildBar(config, adjTotal, adjQty, page, moneyFormat, customer) {
@@ -218,6 +249,10 @@ export function localEvaluate(cachedConfig, cart, customer) {
   var page = window.location.pathname;
 
   var offerResult = evaluateOffers(cachedConfig.offers || [], cart, adjTotal, adjQty, page, customer);
+  var claimRemovals = evaluateClaimRemovals(cachedConfig.claim_gifts || [], items, adjTotal, adjQty);
+  if (claimRemovals.length) {
+    offerResult.to_remove = (offerResult.to_remove || []).concat(claimRemovals);
+  }
   var bar = buildBar(cachedConfig, adjTotal, adjQty, page, cachedConfig.money_format || '', customer);
 
   // Ribbon from next locked tier

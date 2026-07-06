@@ -779,6 +779,31 @@
     }
     return { to_add: toAdd, to_remove: toRemove };
   }
+  function evaluateClaimRemovals(claimGifts, items, adjTotal, adjQty) {
+    var removals = [];
+    if (!claimGifts || !claimGifts.length) return removals;
+    for (var i2 = 0; i2 < items.length; i2++) {
+      var item = items[i2];
+      var p2 = item.properties;
+      if (!p2) continue;
+      if (p2["_claimed"] !== "true" && p2["_cartmax_claim"] !== "true") continue;
+      var claimId = p2["_offer_id"];
+      if (!claimId) continue;
+      var rule = null;
+      for (var r2 = 0; r2 < claimGifts.length; r2++) {
+        if (claimGifts[r2].id === claimId) {
+          rule = claimGifts[r2];
+          break;
+        }
+      }
+      if (!rule || !rule.trigger) continue;
+      var currentValue = rule.trigger.type === "price" ? adjTotal : adjQty;
+      if (currentValue < rule.trigger.threshold) {
+        removals.push(item.key);
+      }
+    }
+    return removals;
+  }
   function buildBar(config, adjTotal, adjQty, page, moneyFormat, customer) {
     if (!config.progress_bar || !config.progress_bar.enabled) return null;
     var entries = [];
@@ -855,6 +880,10 @@
     var adjQty = adjustedQty(items);
     var page = window.location.pathname;
     var offerResult = evaluateOffers(cachedConfig.offers || [], cart, adjTotal, adjQty, page, customer);
+    var claimRemovals = evaluateClaimRemovals(cachedConfig.claim_gifts || [], items, adjTotal, adjQty);
+    if (claimRemovals.length) {
+      offerResult.to_remove = (offerResult.to_remove || []).concat(claimRemovals);
+    }
     var bar = buildBar(cachedConfig, adjTotal, adjQty, page, cachedConfig.money_format || "", customer);
     var ribbonMessage = null;
     if (bar && bar.tiers) {
@@ -4958,6 +4987,15 @@
         )));
       })));
     }
+    // ── Checkout validation ───────────────────────────────────
+    // On checkout we reconcile the cart (pull any gift whose threshold is no
+    // longer met — offer AND claim gifts) and wait for the sync to settle, so a
+    // stale gift can never ride through to checkout. This predicate is the final
+    // gate: a cart with no payable value is not checkout-able (e.g. only a free
+    // gift remains). See _reconcileLocalGifts, which now also pulls claim gifts.
+    _isZeroTotal(c2) {
+      return !c2 || !c2.items || c2.items.length === 0 || !(Number(c2.total_price) > 0);
+    }
     // ── Render: Footer (totals + checkout) ────────────────────
     renderFooter() {
       var cart = this.state.cart;
@@ -4986,8 +5024,10 @@
               if (this.state.checkoutWaiting) return;
               this.setState({ checkoutWaiting: true });
               whenSettled().then(() => {
-                var url = getOptimisticCart() && getOptimisticCart().checkout_url || cart.checkout_url;
+                var fresh = getOptimisticCart() || cart;
                 this.setState({ checkoutWaiting: false });
+                if (this._isZeroTotal(fresh)) return;
+                var url = fresh && fresh.checkout_url || cart.checkout_url;
                 if (checkoutJs) {
                   try {
                     new Function("button", checkoutJs)(buttonEl);
@@ -5004,8 +5044,11 @@
               e2.preventDefault();
               if (this.state.checkoutWaiting) return;
               this.setState({ checkoutWaiting: true });
+              this._reconcileLocalGifts(this.state.cart);
               whenSettled2().then(() => {
+                var fresh = getOptimisticCart2() || this.state.cart;
                 this.setState({ checkoutWaiting: false });
+                if (this._isZeroTotal(fresh)) return;
                 if (checkoutJs) {
                   try {
                     new Function("button", checkoutJs)(buttonEl);
@@ -5025,6 +5068,7 @@
               this.setState({ checkoutWaiting: true });
               this.whenCartIdle().then(() => waitForEvaluate()).then(() => {
                 this.setState({ checkoutWaiting: false });
+                if (this._isZeroTotal(this.state.cart)) return;
                 if (checkoutJs) {
                   try {
                     new Function("button", checkoutJs)(buttonEl);

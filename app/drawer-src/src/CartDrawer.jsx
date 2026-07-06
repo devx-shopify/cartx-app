@@ -2894,6 +2894,17 @@ export default class CartDrawer extends Component {
     );
   }
 
+  // ── Checkout validation ───────────────────────────────────
+  // On checkout we reconcile the cart (pull any gift whose threshold is no
+  // longer met — offer AND claim gifts) and wait for the sync to settle, so a
+  // stale gift can never ride through to checkout. This predicate is the final
+  // gate: a cart with no payable value is not checkout-able (e.g. only a free
+  // gift remains). See _reconcileLocalGifts, which now also pulls claim gifts.
+
+  _isZeroTotal(c) {
+    return !c || !c.items || c.items.length === 0 || !(Number(c.total_price) > 0);
+  }
+
   // ── Render: Footer (totals + checkout) ────────────────────
 
   renderFooter() {
@@ -2939,8 +2950,10 @@ export default class CartDrawer extends Component {
                 if (this.state.checkoutWaiting) return;
                 this.setState({ checkoutWaiting: true });
                 gqlWhenSettled().then(() => {
-                  var url = (gqlGetCart() && gqlGetCart().checkout_url) || cart.checkout_url;
+                  var fresh = gqlGetCart() || cart;
                   this.setState({ checkoutWaiting: false });
+                  if (this._isZeroTotal(fresh)) return;
+                  var url = (fresh && fresh.checkout_url) || cart.checkout_url;
                   if (checkoutJs) {
                     try { new Function('button', checkoutJs)(buttonEl); } catch (_) { if (url) window.location.href = url; }
                   } else if (url) {
@@ -2949,14 +2962,19 @@ export default class CartDrawer extends Component {
                 });
                 return;
               }
-              // AJAX store path: wait for the store's single-flight sync to
-              // settle so /checkout sees the shopper's latest edits.
+              // AJAX store path: validate before leaving — reconcile the cart
+              // (pull any offer/claim gift whose threshold is no longer met),
+              // then wait for the single-flight sync to commit, so /checkout only
+              // ever sees a correct, non-zero cart.
               if (this._ajaxStore) {
                 e.preventDefault();
                 if (this.state.checkoutWaiting) return;
                 this.setState({ checkoutWaiting: true });
+                this._reconcileLocalGifts(this.state.cart);
                 ajaxWhenSettled().then(() => {
+                  var fresh = ajaxGetCart() || this.state.cart;
                   this.setState({ checkoutWaiting: false });
+                  if (this._isZeroTotal(fresh)) return;
                   if (checkoutJs) {
                     try { new Function('button', checkoutJs)(buttonEl); } catch (_) { window.location.href = '/checkout'; }
                   } else {
@@ -2975,6 +2993,7 @@ export default class CartDrawer extends Component {
                 // server cart we check out reflects the latest edit.
                 this.whenCartIdle().then(() => waitForEvaluate()).then(() => {
                   this.setState({ checkoutWaiting: false });
+                  if (this._isZeroTotal(this.state.cart)) return;
                   if (checkoutJs) {
                     try { new Function('button', checkoutJs)(buttonEl); } catch (_) { window.location.href = '/checkout'; }
                   } else {
