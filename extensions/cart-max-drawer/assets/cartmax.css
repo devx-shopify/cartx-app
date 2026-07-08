@@ -155,6 +155,22 @@ cart-notification-component [role="dialog"] {
   transform: translateX(0);
 }
 
+/* Keep the whole drawer visible under a third-party checkout overlay (e.g.
+   GoKwik). Its overlay hides our default (z-index:auto) sections while the
+   progress-bar milestone (z-index:1) stays visible; giving every top-level
+   drawer section the same positioned z-index makes the entire cart readable
+   behind the checkout modal (which is what merchants expect). Kept at 1 — below
+   the offers/price-breakup panels (z-index:10) so those still overlay correctly. */
+.cartmax-overlay .cartmax-announcement,
+.cartmax-header,
+.cartmax-gift-unavailable,
+.cartmax-body,
+.cartmax-ribbon,
+.cartmax-footer {
+  position: relative;
+  z-index: 1;
+}
+
 /* --- Header --- */
 
 .cartmax-header {
@@ -229,12 +245,6 @@ cart-notification-component [role="dialog"] {
   -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
-  /* EXPERIMENT (glitch 2): the progress-bar milestone (z-index:1) stays visible
-     under GoKwik's checkout overlay while the rest of the drawer doesn't. Testing
-     whether giving the body content the same positioned z-index makes it visible
-     too. To review after deploy; revert if it has no effect. */
-  position: relative;
-  z-index: 1;
 }
 
 .cartmax-body {

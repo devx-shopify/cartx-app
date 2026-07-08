@@ -2,7 +2,7 @@
 import { h, Component } from 'preact';
 import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId } from './helpers';
 import { fireConfetti, setConfettiLottieUrl } from './confetti';
-import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLine, ensureCartxAttribute, localGiftDelta } from './evaluate';
+import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLine, ensureCartxAttribute, ensureDrawerAttribute, localGiftDelta } from './evaluate';
 import { isGraphqlCartEnabled } from './storefront-cart';
 import { initStore as gqlInitStore, subscribe as gqlSubscribe, getOptimisticCart as gqlGetCart, changeQuantity as gqlChangeQuantity, removeLine as gqlRemoveLine, addLine as gqlAddLine, applyDiscountCode as gqlApplyCoupon, removeDiscountCode as gqlRemoveCoupon, whenSettled as gqlWhenSettled } from './cart-store';
 import { isAjaxCartStoreEnabled, subscribe as ajaxSubscribe, getOptimisticCart as ajaxGetCart, init as ajaxInit, reconcileFromServer as ajaxReconcile, addLine as ajaxAddLine, changeQuantity as ajaxChangeQty, removeLine as ajaxRemoveLine, whenSettled as ajaxWhenSettled } from './ajax-cart-store';
@@ -498,6 +498,13 @@ export default class CartDrawer extends Component {
           // the money reads as "updating" rather than laggy (Option 1).
           this.setState({ cart: c, loading: false, cartSyncing: !!(state && state.loading) });
           updateCartCount(c.item_count);
+          // Prefetch compare-at (strike-through) prices for the current lines —
+          // /cart.js doesn't carry compare_at_price, so without this a
+          // just-added product shows its plain price until the variant switcher
+          // happens to fetch the product. Deferred + deduped per handle/session,
+          // so it never blocks and fires at most one /products/{handle}.js per
+          // product regardless of how often the store notifies.
+          this._deferPrefetchCompareAt(c.items || []);
           this._maybeRunAjaxPromo(c);
         }
       });
@@ -1377,6 +1384,9 @@ export default class CartDrawer extends Component {
       // Mark the cart cartx-active so the volume-discount Function can apply.
       // (Idempotent; only fires when the config actually has a volume offer.)
       ensureCartxAttribute(cart);
+      // Mark the cart as checked-out-via-the-cartx-drawer (once, when it has
+      // items) so the resulting order is attributable to cartx in the A/B split.
+      if (cart.item_count > 0) ensureDrawerAttribute(cart);
     } catch (err) {
       console.error('[cartx] ajax promo eval failed:', err);
     }

@@ -102,6 +102,25 @@ export async function ensureCartxAttribute(cart) {
   }
 }
 
+var _drawerAttrEnsured = false;
+
+// Stamp a `_cartx_drawer` note-attribute on any cart the cartx drawer manages,
+// so the resulting order is identifiable as "checked out via the cartx drawer"
+// (needed to measure the cartx-vs-other-drawer A/B split — orders WITH it are
+// cartx's). Once per session, idempotent, and the `_` prefix hides it from the
+// customer's order page while keeping it in the admin order + Order API / Flow.
+export async function ensureDrawerAttribute(cart) {
+  if (_drawerAttrEnsured) return;
+  var attrs = (cart && cart.attributes) || {};
+  if (attrs._cartx_drawer === '1') { _drawerAttrEnsured = true; return; }
+  try {
+    await cartUpdateAll({ attributes: { _cartx_drawer: '1' } });
+    _drawerAttrEnsured = true;
+  } catch (e) {
+    console.error('[cartx] failed to set _cartx_drawer cart attribute:', e);
+  }
+}
+
 // ── Helpers ───────────────────────────────────────────────
 
 function simulateCart(cart, actions) {
@@ -598,6 +617,8 @@ async function runEvaluate(cart, action) {
       // Mark the cart as cartx-active so the volume-discount Function may apply.
       // Sequenced after applyResult to avoid concurrent /cart/update.js writes.
       await ensureCartxAttribute(updatedCart || cart);
+      var _drawerCart = updatedCart || cart;
+      if (_drawerCart && _drawerCart.item_count > 0) await ensureDrawerAttribute(_drawerCart);
     }
   } catch (err) {
     console.error('[cartx] Evaluate error:', err);
@@ -654,6 +675,8 @@ async function runEvaluateBatch(cart, actions) {
         }));
       }
       await ensureCartxAttribute(updatedCart || cart);
+      var _drawerCart = updatedCart || cart;
+      if (_drawerCart && _drawerCart.item_count > 0) await ensureDrawerAttribute(_drawerCart);
     }
   } catch (err) {
     console.error('[cartx] Evaluate error:', err);

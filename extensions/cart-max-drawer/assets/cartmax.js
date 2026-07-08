@@ -1336,6 +1336,21 @@
       console.error("[cartx] failed to set _cartx cart attribute:", e2);
     }
   }
+  var _drawerAttrEnsured = false;
+  async function ensureDrawerAttribute(cart) {
+    if (_drawerAttrEnsured) return;
+    var attrs = cart && cart.attributes || {};
+    if (attrs._cartx_drawer === "1") {
+      _drawerAttrEnsured = true;
+      return;
+    }
+    try {
+      await cartUpdateAll({ attributes: { _cartx_drawer: "1" } });
+      _drawerAttrEnsured = true;
+    } catch (e2) {
+      console.error("[cartx] failed to set _cartx_drawer cart attribute:", e2);
+    }
+  }
   function simulateCart(cart, actions) {
     if (!actions || actions.length === 0 || !cart || !cart.items) return cart;
     var actionMap = {};
@@ -1707,6 +1722,8 @@
           }));
         }
         await ensureCartxAttribute(updatedCart || cart);
+        var _drawerCart = updatedCart || cart;
+        if (_drawerCart && _drawerCart.item_count > 0) await ensureDrawerAttribute(_drawerCart);
       }
     } catch (err) {
       console.error("[cartx] Evaluate error:", err);
@@ -1755,6 +1772,8 @@
           }));
         }
         await ensureCartxAttribute(updatedCart || cart);
+        var _drawerCart = updatedCart || cart;
+        if (_drawerCart && _drawerCart.item_count > 0) await ensureDrawerAttribute(_drawerCart);
       }
     } catch (err) {
       console.error("[cartx] Evaluate error:", err);
@@ -2961,6 +2980,7 @@
           if (c2) {
             this.setState({ cart: c2, loading: false, cartSyncing: !!(state2 && state2.loading) });
             updateCartCount(c2.item_count);
+            this._deferPrefetchCompareAt(c2.items || []);
             this._maybeRunAjaxPromo(c2);
           }
         });
@@ -3716,6 +3736,7 @@
           detail: Object.assign({}, result, { _server: true })
         }));
         ensureCartxAttribute(cart);
+        if (cart.item_count > 0) ensureDrawerAttribute(cart);
       } catch (err) {
         console.error("[cartx] ajax promo eval failed:", err);
       }
