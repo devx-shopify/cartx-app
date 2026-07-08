@@ -3149,7 +3149,7 @@ export default class CartDrawer extends Component {
               }
             }}
           >
-            <span>{this.state.checkoutWaiting ? 'Preparing...' : this._text.checkout_button}</span>
+            <span class="cartmax-checkout-label">{this.state.checkoutWaiting ? 'Preparing...' : this._text.checkout_button}</span>
             {this._layout.show_payment_icons && !this.state.checkoutWaiting ? (
               <span class="cartmax-payment-methods"><IconPaymentMethods /></span>
             ) : null}

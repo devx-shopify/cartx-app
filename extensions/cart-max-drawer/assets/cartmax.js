@@ -5156,7 +5156,7 @@
             }
           }
         },
-        /* @__PURE__ */ k("span", null, this.state.checkoutWaiting ? "Preparing..." : this._text.checkout_button),
+        /* @__PURE__ */ k("span", { class: "cartmax-checkout-label" }, this.state.checkoutWaiting ? "Preparing..." : this._text.checkout_button),
         this._layout.show_payment_icons && !this.state.checkoutWaiting ? /* @__PURE__ */ k("span", { class: "cartmax-payment-methods" }, /* @__PURE__ */ k(IconPaymentMethods, null)) : null
       )), trustMsg ? /* @__PURE__ */ k("div", { class: "cartmax-footer-trust" }, /* @__PURE__ */ k(IconLock, null), /* @__PURE__ */ k("span", null, trustMsg), /* @__PURE__ */ k(IconLock, null)) : null);
     }

@@ -229,6 +229,12 @@ cart-notification-component [role="dialog"] {
   -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
+  /* EXPERIMENT (glitch 2): the progress-bar milestone (z-index:1) stays visible
+     under GoKwik's checkout overlay while the rest of the drawer doesn't. Testing
+     whether giving the body content the same positioned z-index makes it visible
+     too. To review after deploy; revert if it has no effect. */
+  position: relative;
+  z-index: 1;
 }
 
 .cartmax-body {
@@ -784,6 +790,10 @@ cart-notification-component [role="dialog"] {
   flex-shrink: 0;
   padding: 12px 15px;
   height: 48px;
+  /* Positioning context so a third-party checkout loader (e.g. GoKwik injects an
+     absolute #btn-loader into this button) aligns to and covers the button
+     instead of escaping to the viewport. */
+  position: relative;
   background: var(--cartmax-primary, #1a1a1a);
   color: var(--cartmax-primary-text, #ffffff);
   text-align: center;
@@ -805,6 +815,17 @@ cart-notification-component [role="dialog"] {
   align-items: center;
   flex-shrink: 0;
   line-height: 0;
+}
+
+/* Own the checkout label's visibility. Third-party checkout scripts (GoKwik)
+   set this span to inline `display:none` as their loading state, which then
+   sticks (we don't manage that inline style) and leaves the button with no
+   label. `!important` beats their non-important inline style, so the label is
+   never permanently hidden; their loader overlay (which sits on top of this
+   positioned button) covers it while active and reveals it again when removed. */
+.cartmax-checkout-btn .cartmax-checkout-label {
+  display: inline-flex !important;
+  align-items: center;
 }
 
 .cartmax-footer-trust {
