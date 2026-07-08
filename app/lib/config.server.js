@@ -226,3 +226,13 @@ export async function patchConfig(shopId, themeId, path, value) {
   await saveConfig(shopId, themeId, config)
   return config
 }
+
+/** Theme IDs that have a saved config for this shop (excludes the preference
+ *  sentinel). Used by webhook product-sync to walk every theme's config. */
+export async function listConfigThemeIds(shopId) {
+  const rows = await prisma.themeConfig.findMany({
+    where: { shopId },
+    select: { themeId: true },
+  })
+  return rows.map((r) => r.themeId).filter((t) => t !== PREFERENCE_KEY)
+}

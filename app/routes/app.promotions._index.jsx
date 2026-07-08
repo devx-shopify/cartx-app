@@ -24,13 +24,13 @@ export const loader = async ({ request }) => {
 
   const promotions = [];
   for (const offer of config.offers) {
-    promotions.push({ id: offer.id, type: "offer", name: offer.name, enabled: offer.enabled, trigger: triggerSummary(offer) });
+    promotions.push({ id: offer.id, type: "offer", name: offer.name, enabled: offer.enabled, trigger: triggerSummary(offer), needsAttention: offer._needs_attention || null });
   }
   for (const coupon of config.coupons) {
-    promotions.push({ id: coupon.id, type: "coupon", name: coupon.is_automatic ? coupon.title : coupon.code, enabled: coupon.enabled, trigger: coupon.display_message || coupon.type_label || "Discount" });
+    promotions.push({ id: coupon.id, type: "coupon", name: coupon.is_automatic ? coupon.title : coupon.code, enabled: coupon.enabled, trigger: coupon.display_message || coupon.type_label || "Discount", needsAttention: null });
   }
   for (const gift of config.claim_gifts) {
-    promotions.push({ id: gift.id, type: "claim-gift", name: gift.name, enabled: gift.enabled, trigger: gift.trigger ? (gift.trigger.type === "price" ? `Rs.${gift.trigger.threshold} cart total` : `${gift.trigger.threshold} items`) : "No trigger" });
+    promotions.push({ id: gift.id, type: "claim-gift", name: gift.name, enabled: gift.enabled, trigger: gift.trigger ? (gift.trigger.type === "price" ? `Rs.${gift.trigger.threshold} cart total` : `${gift.trigger.threshold} items`) : "No trigger", needsAttention: gift._needs_attention || null });
   }
 
   return { promotions };
@@ -236,6 +236,21 @@ export default function PromotionsIndex() {
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
         <ThemeSwitcher themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
       </div>
+
+      {/* Auto-drafted promotions (a product they used was deleted) */}
+      {promotions.some((p) => p.needsAttention) && (
+        <s-banner tone="warning" heading="Some promotions were turned off automatically">
+          <s-stack direction="block" gap="100">
+            <s-text>
+              A product used by these promotions was deleted, so they were moved to draft to
+              avoid a broken cart. Re-select a product and re-enable them:
+            </s-text>
+            {promotions.filter((p) => p.needsAttention).map((p) => (
+              <s-text key={p.id}>• {p.name || p.type}</s-text>
+            ))}
+          </s-stack>
+        </s-banner>
+      )}
 
       {/* Full-page empty state when no promotions exist */}
       {promotions.length === 0 && (
