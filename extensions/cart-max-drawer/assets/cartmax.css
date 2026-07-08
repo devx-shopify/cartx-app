@@ -747,6 +747,11 @@ cart-notification-component [role="dialog"] {
   justify-content: space-between;
   gap: 12px;
   padding: 16px 20px;
+  /* Same GoKwik-overlay visibility fix as the other drawer sections: the
+     footer has z-index:1 but this child row (price + checkout button) needs its
+     own so it isn't left under GoKwik's overlay. */
+  position: relative;
+  z-index: 1;
 }
 
 .cartmax-footer-price {
