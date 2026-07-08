@@ -155,22 +155,6 @@ cart-notification-component [role="dialog"] {
   transform: translateX(0);
 }
 
-/* Keep the whole drawer visible under a third-party checkout overlay (e.g.
-   GoKwik). Its overlay hides our default (z-index:auto) sections while the
-   progress-bar milestone (z-index:1) stays visible; giving every top-level
-   drawer section the same positioned z-index makes the entire cart readable
-   behind the checkout modal (which is what merchants expect). Kept at 1 — below
-   the offers/price-breakup panels (z-index:10) so those still overlay correctly. */
-.cartmax-overlay .cartmax-announcement,
-.cartmax-header,
-.cartmax-gift-unavailable,
-.cartmax-body,
-.cartmax-ribbon,
-.cartmax-footer {
-  position: relative;
-  z-index: 1;
-}
-
 /* --- Header --- */
 
 .cartmax-header {
@@ -747,11 +731,6 @@ cart-notification-component [role="dialog"] {
   justify-content: space-between;
   gap: 12px;
   padding: 16px 20px;
-  /* Same GoKwik-overlay visibility fix as the other drawer sections: the
-     footer has z-index:1 but this child row (price + checkout button) needs its
-     own so it isn't left under GoKwik's overlay. */
-  position: relative;
-  z-index: 1;
 }
 
 .cartmax-footer-price {
@@ -819,6 +798,11 @@ cart-notification-component [role="dialog"] {
     transform 0.1s ease;
   letter-spacing: 0.7px;
   text-transform: uppercase;
+  /* Positioning context for GoKwik's grafted #btn-loader (see the loading-state
+     rules below) so it can never escape to the footer/drawer. overflow clips it
+     (and our own spinner) to the pill. */
+  position: relative;
+  overflow: hidden;
 }
 
 .cartmax-payment-methods {
@@ -832,12 +816,47 @@ cart-notification-component [role="dialog"] {
    set this span to inline `display:none` as their loading state, which then
    sticks (we don't manage that inline style) and leaves the button with no
    label. `!important` beats their non-important inline style, so the label is
-   never permanently hidden. (We intentionally do NOT make the button
-   position:relative — that would trap GoKwik's absolute #btn-loader inside the
-   button and blank it out.) */
+   never permanently hidden. */
 .cartmax-checkout-btn .cartmax-checkout-label {
   display: inline-flex !important;
   align-items: center;
+}
+
+/* GoKwik checkout loading state.
+   When GoKwik initialises its checkout modal it grafts id="btn-loader" onto our
+   checkout label and restyles it (position:absolute; background:#fff) as a
+   full-cover loader. That box is sized for GoKwik's own wide button, so on our
+   compact pill it rendered as a broken sliver (and, sized to whatever ancestor
+   was positioned, previously whited-out the whole footer). We detect that exact
+   window via :has(#btn-loader) and instead show a clean centered spinner that
+   matches GoKwik's native button-loading look. GoKwik removes #btn-loader once
+   the modal is ready, so the button snaps back to normal on its own. */
+.cartmax-checkout-btn:has(#btn-loader) > * {
+  visibility: hidden !important;
+}
+/* Keep the (now-absolute) label reserving its space so the button doesn't
+   collapse to icon-width while loading. */
+.cartmax-checkout-btn:has(#btn-loader) .cartmax-checkout-label {
+  position: static !important;
+  inset: auto !important;
+  width: auto !important;
+  height: auto !important;
+}
+.cartmax-checkout-btn:has(#btn-loader)::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border: 3px solid rgba(255, 255, 255, 0.35);
+  border-top-color: var(--cartmax-primary-text, #ffffff);
+  border-radius: 50%;
+  animation: cartxCheckoutSpin 0.7s linear infinite;
+}
+@keyframes cartxCheckoutSpin {
+  to { transform: rotate(360deg); }
 }
 
 .cartmax-footer-trust {
