@@ -790,10 +790,6 @@ cart-notification-component [role="dialog"] {
   flex-shrink: 0;
   padding: 12px 15px;
   height: 48px;
-  /* Positioning context so a third-party checkout loader (e.g. GoKwik injects an
-     absolute #btn-loader into this button) aligns to and covers the button
-     instead of escaping to the viewport. */
-  position: relative;
   background: var(--cartmax-primary, #1a1a1a);
   color: var(--cartmax-primary-text, #ffffff);
   text-align: center;
@@ -821,8 +817,9 @@ cart-notification-component [role="dialog"] {
    set this span to inline `display:none` as their loading state, which then
    sticks (we don't manage that inline style) and leaves the button with no
    label. `!important` beats their non-important inline style, so the label is
-   never permanently hidden; their loader overlay (which sits on top of this
-   positioned button) covers it while active and reveals it again when removed. */
+   never permanently hidden. (We intentionally do NOT make the button
+   position:relative — that would trap GoKwik's absolute #btn-loader inside the
+   button and blank it out.) */
 .cartmax-checkout-btn .cartmax-checkout-label {
   display: inline-flex !important;
   align-items: center;
