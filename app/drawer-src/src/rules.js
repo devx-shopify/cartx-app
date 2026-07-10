@@ -11,11 +11,29 @@ function isDiscountedItem(item) {
     (item.properties && item.properties['_cartmax_claim'] === 'true');
 }
 
+// cartx's own discounts ("cartx free gift" / "cartx volume discount") are the
+// REWARD, not a reduction in qualifying spend, so they must not lower a
+// threshold. Any OTHER discount (e.g. a merchant Buy X Get Y) reduces what the
+// customer pays and SHOULD count. Mirror of helpers.server.js.
+var CARTX_DISCOUNT_TITLES = ['cartx free gift', 'cartx volume discount'];
+
+function externalDiscountCents(item) {
+  var allocs = item.line_level_discount_allocations || [];
+  var cents = 0;
+  for (var i = 0; i < allocs.length; i++) {
+    var app = allocs[i].discount_application || {};
+    var title = String(app.title || allocs[i].title || '').toLowerCase();
+    if (CARTX_DISCOUNT_TITLES.indexOf(title) === -1) cents += (allocs[i].amount || 0);
+  }
+  return cents;
+}
+
 function adjustedTotal(items) {
   var cents = 0;
   for (var i = 0; i < items.length; i++) {
     if (isDiscountedItem(items[i])) continue;
-    cents += items[i].original_line_price || items[i].line_price || 0;
+    var gross = items[i].original_line_price || items[i].line_price || 0;
+    cents += Math.max(0, gross - externalDiscountCents(items[i]));
   }
   return cents / 100;
 }

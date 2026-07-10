@@ -678,11 +678,23 @@
   function isDiscountedItem(item) {
     return item.properties && item.properties["_freebie"] === "true" || item.properties && item.properties["_cartmax_claim"] === "true";
   }
+  var CARTX_DISCOUNT_TITLES = ["cartx free gift", "cartx volume discount"];
+  function externalDiscountCents(item) {
+    var allocs = item.line_level_discount_allocations || [];
+    var cents = 0;
+    for (var i2 = 0; i2 < allocs.length; i2++) {
+      var app = allocs[i2].discount_application || {};
+      var title = String(app.title || allocs[i2].title || "").toLowerCase();
+      if (CARTX_DISCOUNT_TITLES.indexOf(title) === -1) cents += allocs[i2].amount || 0;
+    }
+    return cents;
+  }
   function adjustedTotal(items) {
     var cents = 0;
     for (var i2 = 0; i2 < items.length; i2++) {
       if (isDiscountedItem(items[i2])) continue;
-      cents += items[i2].original_line_price || items[i2].line_price || 0;
+      var gross = items[i2].original_line_price || items[i2].line_price || 0;
+      cents += Math.max(0, gross - externalDiscountCents(items[i2]));
     }
     return cents / 100;
   }
