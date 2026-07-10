@@ -1,4 +1,5 @@
 import db from '../db.server.js'
+import { loadPromotionMeta } from './promotion-meta.server.js'
 import {
   ANALYTICS_EVENTS,
   ANALYTICS_SOURCES,
@@ -257,6 +258,10 @@ export async function attributeOrder(shopId, order) {
     occurredAt,
   })
 
+  // Snapshot the promotion display name so attributed-order rows stay labeled
+  // even if the promotion is later deleted (see Issue 3).
+  const promoMeta = await loadPromotionMeta(shopId)
+
   for (const [offerId, bucket] of groups.entries()) {
     // GWP / claim-gift: matched lines are all freebies → credit promotion
     // with the order subtotal (= non-freebie spend, since subtotal_price
@@ -270,6 +275,7 @@ export async function attributeOrder(shopId, order) {
       source: ANALYTICS_SOURCES.SERVER,
       promotionId: offerId,
       promotionType: bucket.claim ? 'claim-gift' : 'offer',
+      promotionName: promoMeta.get(offerId)?.name ?? null,
       customerId,
       cartTotal: totalCents,
       revenue: attribution,

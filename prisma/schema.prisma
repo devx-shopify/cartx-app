@@ -98,6 +98,7 @@ model AnalyticsEvent {
   source        String   // drawer | web_pixel | server
   promotionId   String?
   promotionType String?  // offer | coupon | claim-gift | upsell
+  promotionName String?  // snapshot of the promotion's display name at write time
   customerId    String?
   sessionId     String?
   cartTotal     Int?
@@ -117,6 +118,8 @@ model DailyStats {
   shopId        String
   date          String   // YYYY-MM-DD, shop-local
   promotionId   String
+  promotionName String?  // snapshot of the promotion's display name (durable label; survives config deletion)
+  promotionType String?  // offer | coupon | claim-gift | upsell (snapshot; survives config deletion)
   impressions   Int      @default(0)
   claims        Int      @default(0)
   removals      Int      @default(0)

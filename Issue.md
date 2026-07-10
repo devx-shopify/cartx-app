@@ -178,12 +178,51 @@ Two rows show a raw UUID instead of a name, with Type `—`:
 - These are impression-only (0 orders/claims/revenue), which fits "viewed in the
   drawer but not a named/attributable offer."
 
-**Proposed fix (to confirm)**
-- Extend the name/type resolution to also read `__volume_discount__` offers, and
-  fall back to a friendly label (e.g. "Deleted promotion" or the promo type)
-  instead of a bare UUID. Optionally hide impression-only unknown ids.
+**Confirmed RCA**
+- Analytics never persisted a promotion's name/type — both were resolved *at
+  read time* from the current `ThemeConfig` (`analytics.server.js` name lookup).
+- Promotion ids are `crypto.randomUUID()` (`helpers.server.js:107`), so the two
+  UUIDs are real former promotion ids. When a promotion is **deleted or
+  recreated** (delete filters it out of config; recreate mints a new UUID) the
+  old id leaves config but immutable `AnalyticsEvent`/`DailyStats` rows keep it →
+  lookup misses → raw UUID printed.
+- The Type shows "—" specifically because the live store renders via the
+  **DailyStats fast path**, and `DailyStats` had **no name/type columns** — type
+  was backfilled only from current config, which the orphan isn't in.
+- Not reproducible in dev: dev has no delete/recreate history AND (with little
+  DailyStats coverage) uses the live path, which reads type straight off the
+  event. Pure data-history condition, not an env/code difference.
 
-**Status:** open — needs a DB lookup for this store to confirm which case
+**Resolution (done — durable, Option A: snapshot at write time)**
+Name + type are now captured server-side when the event is written (promotion is
+guaranteed to still exist in config at that moment), so labels are immutable and
+independent of the config lifecycle:
+- **Schema + migration** (`20260710190247_analytics_promotion_name_type_snapshot`):
+  `AnalyticsEvent.promotionName`; `DailyStats.promotionName` + `promotionType`
+  (all nullable — zero-downtime). Applied to local dev DB.
+- **New resolver** `app/lib/promotion-meta.server.js` — cached
+  `id → {name,type}` map from `ThemeConfig` (volume-discount offers share the
+  same id as their `config.offers` entry, so no special-casing).
+- **Ingestion** (`analytics.server.js` `stampPromotionMeta`, called from
+  `recordEvent`/`recordEventBatch`) stamps name/type from live config.
+- **Order attribution** (`attribution.server.js`) stamps the name on
+  `order_attributed` rows.
+- **Rollup** (`rollup.server.js`) carries name/type into the new `DailyStats`
+  columns (`MAX()` per bucket; update only overwrites with a non-null label so a
+  later deleted-promo window can't erase a good name).
+- **Read side** (both `getDashboardData` paths): resolve name/type by priority
+  **snapshot → current config → "Deleted promotion (<short id>)"**. Raw UUIDs are
+  never shown again, and the fast-path "—" type is fixed (type now stored).
+- Verified end-to-end on dev DB: (a) live path — snapshot survives config
+  deletion, orphan → "Deleted promotion (…)"; (b) fast path — rollup persists and
+  reads back `name`/`type` from `DailyStats`. `npm test` green (13/13), lint 0.
+- **Existing orphans** (the two live-store UUIDs): their real names were never
+  persisted anywhere, so they'll show "Deleted promotion (<short id>)". Every
+  promotion from now on is labeled durably, including future deletions.
+- **Deploy note:** prod needs `prisma migrate deploy` (runs via the existing
+  `npm run setup`). No `shopify app deploy` performed; no drawer rebuild needed.
+
+**Status:** done
 
 ---
 

@@ -1,4 +1,5 @@
 import db from '../db.server.js'
+import { loadPromotionMeta } from './promotion-meta.server.js'
 import {
   ANALYTICS_BOUNDS,
   ANALYTICS_EVENTS as EVENTS,
@@ -70,6 +71,7 @@ function shapeEvent(shopId, source, raw) {
       source,
       promotionId: raw.promotion_id ?? raw.promotionId ?? null,
       promotionType: raw.promotion_type ?? raw.promotionType ?? null,
+      promotionName: raw.promotion_name ?? raw.promotionName ?? null,
       customerId: raw.customer_id ?? raw.customerId ?? null,
       sessionId: raw.session_id ?? raw.sessionId ?? null,
       cartTotal: clampInt(raw.cart_total ?? raw.cartTotal, ANALYTICS_BOUNDS.MAX_CART_CENTS),
@@ -82,6 +84,32 @@ function shapeEvent(shopId, source, raw) {
   }
 }
 
+// Snapshot the promotion display name/type onto promotion-scoped rows from the
+// shop's live config, so historical rows stay labeled even if the promotion is
+// later deleted/recreated. Best-effort: a config-read failure leaves rows as-is.
+async function stampPromotionMeta(shopId, rows) {
+  const needs = rows.some(
+    (r) => r.promotionId &&
+      r.promotionId !== SHOP_WIDE_PROMOTION_ID &&
+      (!r.promotionName || !r.promotionType),
+  )
+  if (!needs) return
+  let map
+  try {
+    map = await loadPromotionMeta(shopId)
+  } catch (err) {
+    console.error('[cartx][analytics] stampPromotionMeta failed:', err)
+    return
+  }
+  for (const r of rows) {
+    if (!r.promotionId || r.promotionId === SHOP_WIDE_PROMOTION_ID) continue
+    const meta = map.get(r.promotionId)
+    if (!meta) continue
+    if (!r.promotionName && meta.name) r.promotionName = meta.name
+    if (!r.promotionType && meta.type) r.promotionType = meta.type
+  }
+}
+
 /**
  * Persist a single event. Returns the created row, or null if validation failed.
  */
@@ -89,6 +117,7 @@ export async function recordEvent(shopId, source, payload) {
   if (!shopId) return null
   const { row } = shapeEvent(shopId, source, payload)
   if (!row) return null
+  await stampPromotionMeta(shopId, [row])
   try {
     return await db.analyticsEvent.create({ data: row })
   } catch (err) {
@@ -119,6 +148,8 @@ export async function recordEventBatch(shopId, source, payloads) {
   }
 
   if (rows.length === 0) return result
+
+  await stampPromotionMeta(shopId, rows)
 
   try {
     const created = await db.analyticsEvent.createMany({ data: rows })
@@ -176,6 +207,14 @@ export async function queryDailyStats(shopId, { from, to, promotionId } = {}) {
 function toIsoDate(d) {
   const date = d instanceof Date ? d : new Date(d)
   return date.toISOString().slice(0, 10)
+}
+
+// Friendly label for a promotion id that can't be resolved to a name (deleted
+// or recreated — its config entry is gone). A short id suffix keeps rows
+// distinguishable without exposing a full UUID.
+function unknownPromotionLabel(id) {
+  const short = typeof id === 'string' ? id.slice(0, 8) : ''
+  return short ? `Deleted promotion (${short})` : 'Deleted promotion'
 }
 
 const RANGE_DEFAULT_DAYS = 30
@@ -439,23 +478,33 @@ export async function getDashboardData(shopId, { from, to } = {}) {
     aov: b.orders > 0 ? b.revenue / b.orders : 0,
   }))
 
-  // Attach promotion names by reading ThemeConfig blobs for this shop.
-  const themeConfigs = await db.themeConfig.findMany({
-    where: { shopId },
-    select: { config: true },
-  })
-  const idToName = new Map()
-  for (const tc of themeConfigs) {
-    let parsed
-    try { parsed = JSON.parse(tc.config) } catch { continue }
-    for (const arr of ['offers', 'coupons', 'claim_gifts']) {
-      for (const item of (parsed?.[arr] ?? [])) {
-        if (item?.id) idToName.set(item.id, item.name || item.title || item.code || item.id)
-      }
-    }
+  // Resolve display name + type for each promotion. Priority:
+  //   1. snapshot stored on the events (survives config deletion)
+  //   2. current ThemeConfig (labels rows written before snapshots existed,
+  //      as long as the promotion still exists)
+  //   3. friendly "Deleted promotion" fallback (never a raw UUID)
+  const storedMeta = await db.$queryRaw`
+    SELECT DISTINCT ON ("promotionId")
+      "promotionId", "promotionName", "promotionType"
+    FROM "AnalyticsEvent"
+    WHERE "shopId" = ${shopId}
+      AND "occurredAt" >= ${range.from}
+      AND "occurredAt" <= ${range.to}
+      AND "promotionId" IS NOT NULL
+      AND ("promotionName" IS NOT NULL OR "promotionType" IS NOT NULL)
+    ORDER BY "promotionId", "occurredAt" DESC
+  `
+  const storedMetaMap = new Map()
+  for (const row of storedMeta) {
+    storedMetaMap.set(row.promotionId, { name: row.promotionName, type: row.promotionType })
   }
+  const configMeta = await loadPromotionMeta(shopId)
+
   for (const p of promotions) {
-    p.name = idToName.get(p.id) || p.id
+    const stored = storedMetaMap.get(p.id)
+    const cfg = configMeta.get(p.id)
+    p.name = stored?.name || cfg?.name || unknownPromotionLabel(p.id)
+    p.type = p.type || stored?.type || cfg?.type || null
   }
   promotions.sort((a, b) => b.revenue - a.revenue || b.impressions - a.impressions)
 
@@ -507,6 +556,7 @@ async function buildFromDailyStats(shopId, range, rows, { currency = 'USD', tz =
     if (!b) {
       b = {
         id: row.promotionId,
+        name: null,
         type: null,
         impressions: 0, claims: 0, removals: 0,
         upsellAdds: 0, couponApplies: 0,
@@ -521,6 +571,9 @@ async function buildFromDailyStats(shopId, range, rows, { currency = 'USD', tz =
     b.couponApplies += row.couponApplies
     b.orders += row.orders
     b.revenue += row.revenue
+    // Snapshot name/type persisted on DailyStats — survives config deletion.
+    if (!b.name && row.promotionName) b.name = row.promotionName
+    if (!b.type && row.promotionType) b.type = row.promotionType
   }
 
   // Daily series — zero-fill any missing days.
@@ -536,33 +589,22 @@ async function buildFromDailyStats(shopId, range, rows, { currency = 'USD', tz =
     bucket.revenue += row.revenue
   }
 
-  // Promotion-type backfill from ThemeConfig (DailyStats doesn't store type).
-  const themeConfigs = await db.themeConfig.findMany({
-    where: { shopId },
-    select: { config: true },
-  })
-  const idToName = new Map()
-  const idToType = new Map()
-  for (const tc of themeConfigs) {
-    let parsed
-    try { parsed = JSON.parse(tc.config) } catch { continue }
-    for (const [arr, type] of [['offers', 'offer'], ['coupons', 'coupon'], ['claim_gifts', 'claim-gift']]) {
-      for (const item of (parsed?.[arr] ?? [])) {
-        if (item?.id) {
-          idToName.set(item.id, item.name || item.title || item.code || item.id)
-          idToType.set(item.id, type)
-        }
-      }
-    }
-  }
+  // Name/type resolution priority (mirrors the live path):
+  //   1. snapshot stored on DailyStats (b.name / b.type — survives deletion)
+  //   2. current ThemeConfig (still-live promotions)
+  //   3. friendly "Deleted promotion" fallback (never a raw UUID)
+  const configMeta = await loadPromotionMeta(shopId)
 
-  const promotions = Array.from(promoMap.values()).map((b) => ({
-    ...b,
-    name: idToName.get(b.id) || b.id,
-    type: idToType.get(b.id) || b.type,
-    conversionRate: b.impressions > 0 ? b.claims / b.impressions : 0,
-    aov: b.orders > 0 ? b.revenue / b.orders : 0,
-  }))
+  const promotions = Array.from(promoMap.values()).map((b) => {
+    const cfg = configMeta.get(b.id)
+    return {
+      ...b,
+      name: b.name || cfg?.name || unknownPromotionLabel(b.id),
+      type: b.type || cfg?.type || null,
+      conversionRate: b.impressions > 0 ? b.claims / b.impressions : 0,
+      aov: b.orders > 0 ? b.revenue / b.orders : 0,
+    }
+  })
   promotions.sort((a, b) => b.revenue - a.revenue || b.impressions - a.impressions)
 
   const totalImpressions = promotions.reduce((s, p) => s + p.impressions, 0)

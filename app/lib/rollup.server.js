@@ -72,7 +72,9 @@ export async function rollupShop(shopId, opts = {}) {
       COALESCE("promotionId", ${SHOP_WIDE_PROMOTION_ID}) AS "promotionId",
       "event",
       COUNT(*)::int AS count,
-      COALESCE(SUM("revenue"), 0)::bigint AS revenue
+      COALESCE(SUM("revenue"), 0)::bigint AS revenue,
+      MAX("promotionName") AS "promotionName",
+      MAX("promotionType") AS "promotionType"
     FROM "AnalyticsEvent"
     WHERE "shopId" = ${shopId}
       AND "occurredAt" >= ${since}
@@ -93,12 +95,15 @@ export async function rollupShop(shopId, opts = {}) {
       b = {
         date: row.date,
         promotionId: row.promotionId,
+        promotionName: null, promotionType: null,
         impressions: 0, claims: 0, removals: 0,
         upsellAdds: 0, couponApplies: 0,
         checkouts: 0, orders: 0, revenue: 0,
       }
       buckets.set(key, b)
     }
+    if (row.promotionName && !b.promotionName) b.promotionName = row.promotionName
+    if (row.promotionType && !b.promotionType) b.promotionType = row.promotionType
     const n = row.count
     const r = Number(row.revenue)
     switch (row.event) {
@@ -128,11 +133,16 @@ export async function rollupShop(shopId, opts = {}) {
           impressions: b.impressions, claims: b.claims, removals: b.removals,
           upsellAdds: b.upsellAdds, couponApplies: b.couponApplies,
           checkouts: b.checkouts, orders: b.orders, revenue: b.revenue,
+          // Only overwrite the label when this window actually carried one, so a
+          // later window with deleted-promo (null) rows can't erase a good name.
+          ...(b.promotionName ? { promotionName: b.promotionName } : {}),
+          ...(b.promotionType ? { promotionType: b.promotionType } : {}),
         },
         create: {
           shopId,
           date: b.date,
           promotionId: b.promotionId,
+          promotionName: b.promotionName, promotionType: b.promotionType,
           impressions: b.impressions, claims: b.claims, removals: b.removals,
           upsellAdds: b.upsellAdds, couponApplies: b.couponApplies,
           checkouts: b.checkouts, orders: b.orders, revenue: b.revenue,
