@@ -87,13 +87,18 @@ export default function PromotionAnalytics() {
         </s-section>
       )}
 
-      <s-section padding="none" heading="Recent events">
+      <s-section padding="none">
+        <div style={{ padding: "16px 16px 12px" }}>
+          <s-text variant="headingSm">Recent events</s-text>
+        </div>
         {recentEvents.length === 0 ? (
           <div style={{ padding: "40px 20px", textAlign: "center", color: "#6d7175" }}>
             No events recorded for this promotion in the selected range.
           </div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <div style={{ padding: "0 16px 16px" }}>
+          <div style={{ width: "100%", overflowX: "auto", border: "1px solid var(--s-color-border, #e3e3e3)", borderRadius: 8 }}>
+          <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "var(--s-color-bg-surface-secondary, #f6f6f7)", borderBottom: "1px solid var(--s-color-border, #e3e3e3)" }}>
                 <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600 }}>When</th>
@@ -121,6 +126,8 @@ export default function PromotionAnalytics() {
               ))}
             </tbody>
           </table>
+          </div>
+          </div>
         )}
       </s-section>
     </s-page>

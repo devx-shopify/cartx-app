@@ -334,8 +334,13 @@ export default function Analytics() {
           </s-section>
 
           {/* Per-promotion table */}
-          <s-section padding="none" heading="By promotion">
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <s-section padding="none">
+            <div style={{ padding: "16px 16px 12px" }}>
+              <s-text variant="headingSm">By promotion</s-text>
+            </div>
+            <div style={{ padding: "0 16px 16px" }}>
+            <div style={{ width: "100%", overflowX: "auto", border: "1px solid var(--s-color-border, #e3e3e3)", borderRadius: 8 }}>
+            <table style={{ width: "100%", minWidth: 720, borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ background: "var(--s-color-bg-surface-secondary, #f6f6f7)", borderBottom: "1px solid var(--s-color-border, #e3e3e3)" }}>
                   {Object.keys(SORTABLE_COLUMNS).map((key) => (
@@ -360,6 +365,8 @@ export default function Analytics() {
                 ))}
               </tbody>
             </table>
+            </div>
+            </div>
           </s-section>
         </>
       )}
