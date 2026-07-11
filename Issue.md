@@ -101,46 +101,159 @@ Shopify's analytics. It has its own definitions:
    from `DailyStats` when it covers ≥80% of completed days, else live-aggregates
    over `AnalyticsEvent`.
 
-**Why it will legitimately differ from Shopify (candidate causes to verify)**
-- **Different metric definition.** cartx "Attributed revenue" = *promotion-
-  attributed subtotal* (freebie lines zeroed, shipping/tax excluded). Shopify
-  "sales" = gross/net sales across the whole store. These are not the same
-  number by design.
-- **Attribution window / coverage.** cartx only has data for orders received
-  via the `orders/create` webhook *after the app was installed / webhook
-  registered*. Historical orders won't be attributed.
-- **AOV lift is explicitly a v1 directional metric** — see comment at
-  `app/lib/analytics.server.js:468-471`. `aovWithPromo` includes attributed
-  orders in the shop-wide baseline too, so lift is approximate.
-- **Timezone bucketing.** Days are bucketed in the shop's IANA timezone
-  (`analytics.server.js`, `rollup.server.js`). If the shop tz isn't synced onto
-  the `Store` row yet it falls back to UTC → day boundaries shift vs Shopify.
-- **Rollup vs live drift.** If `DailyStats` is stale/partial (rollup missed a
-  run) but still ≥80% covered, the fast path can under-report recent days.
-- **Possible double-count / miss in attribution** — line-property path vs
-  volume-discount path (`attribution.server.js`, pass 1 & 2). Needs a spot check
-  against a known order.
+### Deep-dive verdict (code-level, 2026-07-11): **NOT fully correct**
 
-**Sub-observation (likely a real bug): Claims = 0 everywhere**
-- Every row shows `Claims 0` and `Conv. rate 0%` despite hundreds/thousands of
-  impressions, including on `Claim Gift` promotions.
-- `claims` is populated only by `gift_claimed` events
-  (`analytics.server.js:409`, emitted at `CartDrawer.jsx:2178/2186/2234`).
-- Need to confirm whether `gift_claimed` is actually firing/reaching the server
-  for this store, or whether claims are being attributed under a different
-  `promotion_id` than the impression (see Issue 3 — id mismatch would split
-  impressions and claims across different rows).
+The raw event capture is sound, but the **summary cards** have genuine defects
+and several metrics are misleading-by-definition. Detail below.
 
-**Action items**
-- [ ] Decide and document the **source of truth** + exact metric definitions
-      (what "revenue"/"orders"/"AOV" mean on this tab vs Shopify).
-- [ ] Verify the shop's `ianaTimezone` and `currencyCode` are synced on `Store`.
-- [ ] Verify rollup freshness for this shop (last `DailyStats` date).
-- [ ] Trace one real order end-to-end through `attributeOrder` and compare to
-      Shopify's order detail.
-- [ ] Investigate why claims are 0 (event firing? id mismatch? consent gating?).
+#### 🔴 Genuine correctness bugs
 
-**Status:** open — investigation needed
+**B2.1 — "Attributed revenue" double-counts multi-promo orders.**
+`attribution.server.js:266` credits each promotion in an order its *own*
+`order_attributed` row, and for GWP/claim-gifts the amount is the **whole order
+`subtotal_price`** (not the gift's value). The summary then **sums across
+promotions** (`analytics.server.js:515,533`). So an order that triggers N
+promotions counts its subtotal N times → the total can exceed real sales.
+(soulflower: "Free Gift on above ₹999" ₹83,223 and "Free Perfume Set" ₹10,616
+very likely share orders whose subtotals are both summed.)
+
+**B2.2 — "Attributed orders" card actually shows *total* store orders.**
+`summary.orders = shopOrders` (`analytics.server.js:534`), counting
+`order_completed` — written for **every** order that hits the webhook, whether or
+not a cartx promo was involved. So the card labeled "Attributed orders" is really
+total store orders. The genuinely-attributed count (`attributedOrderCount`,
+`:516`) is computed but never displayed.
+
+**B2.3 — AOV lift compares apples to oranges (and is biased negative).**
+- `aovWithPromo` = attributedRevenue / attributedOrderCount → based on
+  **subtotal** (excl. tax/shipping, freebies zeroed).
+- `aovWithoutPromo` = shopRevenue / shopOrders → based on **`total_price`**
+  (incl. tax/shipping); baseline also *includes* the promo orders themselves
+  (see comment `:518`).
+  The two sides use different bases, so lift is systematically skewed and not
+  trustworthy (`analytics.server.js:520-524`).
+
+#### 🟡 Correct-as-computed but misleading
+
+- **Conversion rate = claims/impressions is ~0% for every Offer by design** —
+  auto-add GWP/bundle offers never emit `gift_claimed`; only *claim-gifts* do.
+  The 0% conv-rate on Offer rows is structural, not a data error.
+- **Per-promo Revenue = "subtotal of orders the promo touched"** = *influenced*
+  revenue, NOT incremental/gift value, and not comparable to Shopify sales.
+- **Claim-rate sub-label** divides by *all* impressions (incl. un-claimable offer
+  impressions), diluting it.
+
+#### 🟢 Actually correct
+Raw event capture, impressions (unique session×promo), claims count, per-promo
+order count, and the daily impressions/claims trend — all sound as defined.
+
+#### Why it can't match Shopify (even after fixes)
+Different definitions (attributed **subtotal** vs Shopify **gross/net sales**),
+**webhook coverage** (only orders created after `orders/create` was live —
+historical orders absent), tz bucketing, and B2.1's double-count. A 1:1 match
+with Shopify's sales report is the wrong expectation; the goal is internal
+consistency + honest labels.
+
+#### Re: earlier "Claims = 0 everywhere" (soulflower)
+Not a universal bug — the devx-dev store shows real claims (Buy 3 ₹1099 → 3
+claims, 5.4%), so the pipeline works. soulflower's zeros are likely genuine (no
+claim-gift claims yet) or store-specific; needs an event-level check on that
+store, not a code fix.
+
+**Open product decisions before implementing fixes** (require sign-off):
+1. "Attributed revenue" definition — (a) distinct orders' subtotal counted once,
+   (b) incremental/gift value only, or (c) keep per-promo but de-dupe the shop
+   total.
+2. "Attributed orders" — relabel to "Total orders", or show the de-duplicated
+   attributed count.
+3. AOV lift — drop it, or redefine on a single consistent basis (both sides
+   subtotal, baseline = non-promo orders only).
+
+#### Quantified against PROD (read-only, 2026-07-11, shop `soulflower-bc21`)
+Measured over all-time `AnalyticsEvent` via the read-only WireGuard tunnel:
+- **B2.1 double-count is real and exact.** Attributed revenue summed (what the
+  dashboard shows) = **₹268,845.64**; counted once per order = **₹216,122.63** →
+  **~24% overstated (₹52,723 phantom)**. 22 of 176 attributed orders touched 2
+  promos; offer `619c6ccf` (22 orders / ₹52,723) is entirely a subset of offer
+  `14ccf7f4`'s orders — every one double-credited. The inflation equals
+  `619c6ccf`'s revenue to the cent.
+- **B2.2 mislabel is large.** Only **176 distinct orders** (198 attributions)
+  involved a cartx promo, but the "Attributed orders" card shows `shopOrders` =
+  **10,619** (every store order) → overstated ~60×. cartx touched ~**1.7%** of
+  orders.
+- **B2.3.** aovWithoutPromo ≈ ₹729 (total_price basis) vs aovWithPromo ≈ ₹1,358
+  (subtotal, double-counted) → would display **+86%**; directional but not exact.
+- **Claims not broken:** 18 `gift_claimed` all-time; revenue promos are all
+  auto-add Offers (no claim event) → 0% conv-rate by design.
+
+### Approved correct-metrics spec (v1) — signed off 2026-07-11
+
+Principle: **attribution rows are per-promo and may overlap; the per-promo table
+stays "influenced" (overlap OK), but shop-level summaries must de-duplicate by
+order.** Approved definitions (all recommended options accepted):
+
+| # | Metric | Correct definition |
+|---|--------|--------------------|
+| ① | **Attributed revenue** (summary) | Σ **subtotal of distinct orders** that used ≥1 promo, each order once (de-duped). ~₹216k, not ₹269k. |
+| ② | **Attributed orders** (summary) | Count of **distinct attributed orders** (176), sub-label "X% of <total> orders". |
+| ③ | **AOV lift** (summary) | Same **subtotal** basis both sides; baseline = **non-promo orders only**. `aov_promo = attrRev/attrOrders` vs `aov_nonpromo = nonPromoRev/nonPromoOrders`. |
+| ④ | Per-promo **Revenue** column | Keep values (per-promo influenced); **rename → "Influenced revenue"** + tooltip (orders may overlap across promos). |
+| ⑤ | Per-promo **Conv. rate** | Type-aware: claim-gifts = claims/impr; offers = **attributed-orders/impr** (view→order). |
+| ⑥ | **Claim rate** sub-label | Denominator = **claim-gift impressions only**. |
+
+Durable implementation (same pattern as Issue 3 — snapshot the truth at write
+time, aggregate in the rollup, read on both paths):
+- **`attribution.server.js`**: on the `_shop` `order_completed` row, store the
+  order **subtotal** and `metadata.attributed = (groups.size > 0)`.
+- **Schema/migration**: `AnalyticsEvent.subtotal Int?`; `DailyStats` +
+  `attributedOrders`, `attributedRevenue`, `nonPromoOrders`, `nonPromoRevenue`
+  (Int, default 0). Nullable/zero-downtime.
+- **`rollup.server.js`**: a per-day shop-metrics query over `order_completed`
+  (split by `metadata.attributed`, sum `subtotal`, count rows = distinct orders
+  since one row per order) → written onto the `_shop` DailyStats row.
+- **`analytics.server.js`**: summary reads the de-duped `_shop` figures (fast
+  path from DailyStats; live path from the same raw query); ⑤/⑥ from existing
+  per-promo counts.
+- **UI/CSV**: relabel cards + "Influenced revenue" column + conv-rate footnote.
+- **Backfill**: one wide-window `rollupShop` run (raw events retained 90d)
+  repopulates the new `_shop` fields for the dashboard's 7/30/90-day presets.
+
+### Resolution (done — durable, 2026-07-11)
+Implemented exactly per the approved spec:
+- **`prisma/schema.prisma` + migration** `20260711102312_analytics_dedup_shop_metrics`:
+  `AnalyticsEvent.subtotal Int?`; `DailyStats` + `attributedOrders`,
+  `attributedRevenue`, `nonPromoOrders`, `nonPromoRevenue` (Int default 0).
+  Zero-downtime; applied to local dev.
+- **`attribution.server.js`**: `_shop` `order_completed` row now stores
+  `subtotal` + `metadata.attributed = (groups.size > 0)`.
+- **`rollup.server.js`**: per-day `order_completed` query (split by
+  `metadata.attributed`, `SUM(COALESCE(subtotal, revenue))`, `COUNT` = distinct
+  orders) → written onto the `_shop` DailyStats row.
+- **`analytics.server.js`** (both paths): summary revenue/orders now use the
+  de-duped `_shop` metrics; daily-chart revenue uses de-duped attributed revenue
+  (fixes a prior cross-path inconsistency); AOV lift on one subtotal basis with
+  a non-promo baseline; ⑤ type-aware conversion; ⑥ claim-rate ÷ claim-gift
+  impressions.
+- **UI** (`app.analytics.jsx`): "Attributed orders" shows distinct attributed +
+  "X% of N orders" sub-label; "Influenced revenue" column rename + footnote.
+  **CSV** header renamed too.
+- **`scripts/backfill-shop-metrics.mjs`**: idempotent one-off — stamps
+  `attributed`/`subtotal` on historical `order_completed` rows and re-rolls the
+  window so the fast path is correct for existing data.
+
+**Verified on dev** (synthetic double-count: one order triggering two offers):
+both read paths return **de-duped ₹3000 (not ₹5000)**, **2/3 orders**, **+200%
+lift**, type-aware conv; backfill correctly stamps old-style rows and repopulates
+`DailyStats`. `npm test` 13/13, lint 0.
+
+**Prod rollout (team — not done here; read-only access + no-deploy):**
+1. `prisma migrate deploy` (runs via `npm run setup`).
+2. Deploy the app (attribution starts stamping new orders).
+3. `node scripts/backfill-shop-metrics.mjs --days=120` once, to correct history.
+Expected soulflower effect: Attributed revenue ₹268,846 → **₹216,123**;
+Attributed orders 10,619 → **176 (1.7%)**.
+
+**Status:** done (durable) — pending prod migrate + backfill by the team
 
 ---
 
@@ -219,6 +332,12 @@ independent of the config lifecycle:
 - **Existing orphans** (the two live-store UUIDs): their real names were never
   persisted anywhere, so they'll show "Deleted promotion (<short id>)". Every
   promotion from now on is labeled durably, including future deletions.
+- **Confirmed on prod (2026-07-11, read-only):** both UUIDs are **deleted
+  Offers** (`promotion_type='offer'` in the raw events) —
+  `07c5f65e…` (31 impressions + 1 order on 2026-07-06) and `f8253187…`
+  (22 impressions on 2026-06-16/17). They rendered as UUID + "—" because the
+  store uses the DailyStats fast path (no type column pre-fix); post-fix they
+  show "Deleted promotion (…)" with type **Offer**. Validates the RCA.
 - **Deploy note:** prod needs `prisma migrate deploy` (runs via the existing
   `npm run setup`). No `shopify app deploy` performed; no drawer rebuild needed.
 
@@ -242,16 +361,33 @@ independent of the config lifecycle:
   `name`/`type` (`analytics.server.js:451-456`, `:549-557`) — `enabled` is
   discarded.
 
-**Proposed fix (to confirm)**
-- In `getDashboardData` / `buildFromDailyStats`, capture `enabled` into an
-  `idToStatus` map alongside `idToName`/`idToType`, attach `status` to each
-  promotion row, and render a status badge column in the table
-  (`app.analytics.jsx`) plus in the CSV export
-  (`app.analytics.export.jsx`).
-- Decide how to label promotions that no longer exist in config (Issue 3
-  overlap) — e.g. "Deleted" / "Archived".
+**Resolution (done)**
+Status is derived from **current config** at read time (it's a live property, not
+historical — merchants want the promotion's status *now*), so no schema change /
+migration / drawer rebuild was needed. Four states:
+- **Active** (`enabled`) · **Draft** (manually disabled) · **Needs attention**
+  (`enabled:false` + `_needs_attention`, i.e. auto-drafted by
+  `product-sync.server.js` when a used product was deleted/unavailable) ·
+  **Deleted** (id no longer in any theme config — the Issue 3 overlap).
+- **Decisions applied:** deleted → "Deleted" badge; 3 live states surfaced;
+  status column **not** sortable; multi-theme = **enabled-in-any-theme wins**
+  (aggregated in `loadPromotionMeta`).
 
-**Status:** open
+Changes:
+- `promotion-meta.server.js`: resolver now also returns `enabled` +
+  `needsAttention` (aggregated across themes); new `promotionStatus(meta)` helper
+  maps to `active | draft | needs-attention | deleted`.
+- `analytics.server.js`: both read paths attach `p.status = promotionStatus(cfg)`.
+- `app.analytics.jsx`: non-sortable **Status** column (badge) inserted after
+  Type via a `COLUMN_ORDER` array; `StatusBadge` with verified `s-badge` tones
+  (active→success, draft→warning, needs-attention→critical, deleted→auto).
+- `app.analytics.$promotionId.jsx`: status badge above the drill-down cards.
+- `app.analytics.export.jsx`: **Status** column added to the CSV.
+- Verified end-to-end on dev DB (all four states resolve correctly, incl. a
+  deleted/not-in-config promo). `npm test` green (13/13), lint 0. No migration,
+  no drawer rebuild.
+
+**Status:** done
 
 ---
 

@@ -9,6 +9,13 @@ const TYPE_LABELS = {
   upsell: 'Upsell',
 }
 
+const STATUS_LABELS = {
+  active: 'Active',
+  draft: 'Draft',
+  'needs-attention': 'Needs attention',
+  deleted: 'Deleted',
+}
+
 // CSV field escaper. Wraps any value containing comma, quote, or newline in
 // double quotes and doubles internal quotes per RFC 4180.
 function csvCell(value) {
@@ -55,17 +62,19 @@ export const loader = async ({ request }) => {
   let body = csvRow([
     'Promotion',
     'Type',
+    'Status',
     'Impressions',
     'Claims',
     'Conversion rate',
     'Orders',
-    `Revenue (${currency})`,
+    `Influenced revenue (${currency})`,
     `AOV (${currency})`,
   ])
   for (const p of data.promotions) {
     body += csvRow([
       p.name,
       TYPE_LABELS[p.type] ?? p.type ?? '',
+      STATUS_LABELS[p.status] ?? p.status ?? '',
       p.impressions,
       p.claims,
       p.conversionRate.toFixed(4),

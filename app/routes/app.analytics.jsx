@@ -64,6 +64,18 @@ const TYPE_LABELS = {
   upsell: "Upsell",
 };
 
+const STATUS_BADGE = {
+  active: { label: "Active", tone: "success" },
+  draft: { label: "Draft", tone: "warning" },
+  "needs-attention": { label: "Needs attention", tone: "critical" },
+  deleted: { label: "Deleted", tone: "auto" },
+};
+
+function StatusBadge({ status }) {
+  const b = STATUS_BADGE[status] || STATUS_BADGE.draft;
+  return <s-badge tone={b.tone}>{b.label}</s-badge>;
+}
+
 function SummaryCard({ label, value, sub }) {
   return (
     <s-card>
@@ -157,9 +169,13 @@ const SORTABLE_COLUMNS = {
   claims:         { label: "Claims",      align: "right", type: "number" },
   conversionRate: { label: "Conv. rate",  align: "right", type: "number" },
   orders:         { label: "Orders",      align: "right", type: "number" },
-  revenue:        { label: "Revenue",     align: "right", type: "number" },
+  revenue:        { label: "Influenced revenue", align: "right", type: "number" },
   aov:            { label: "AOV",         align: "right", type: "number" },
 };
+
+// Column render order. "status" is a non-sortable badge column injected after
+// "type"; every other key maps to a sortable SORTABLE_COLUMNS header.
+const COLUMN_ORDER = ["name", "type", "status", "impressions", "claims", "conversionRate", "orders", "revenue", "aov"];
 
 const DEFAULT_SORT = "revenue";
 const DEFAULT_DIR = "desc";
@@ -225,6 +241,9 @@ function PromotionRow({ p, onClick, currency }) {
       </td>
       <td style={{ padding: "12px 16px" }}>
         <s-text tone="subdued">{TYPE_LABELS[p.type] ?? p.type ?? "—"}</s-text>
+      </td>
+      <td style={{ padding: "12px 16px" }}>
+        <StatusBadge status={p.status} />
       </td>
       <td style={{ padding: "12px 16px", textAlign: "right" }}>{p.impressions.toLocaleString()}</td>
       <td style={{ padding: "12px 16px", textAlign: "right" }}>{p.claims.toLocaleString()}</td>
@@ -321,9 +340,13 @@ export default function Analytics() {
           <s-section>
             <s-grid gridTemplateColumns="repeat(5, 1fr)" gap="200">
               <SummaryCard label="Impressions" value={summary.impressions.toLocaleString()} />
-              <SummaryCard label="Claims" value={summary.claims.toLocaleString()} sub={formatPct(summary.claimRate) + " of impressions"} />
-              <SummaryCard label="Attributed orders" value={summary.orders.toLocaleString()} />
-              <SummaryCard label="Attributed revenue" value={formatMoneyCents(summary.revenue, currency)} />
+              <SummaryCard label="Claims" value={summary.claims.toLocaleString()} sub={formatPct(summary.claimRate) + " of claim-gift views"} />
+              <SummaryCard
+                label="Attributed orders"
+                value={summary.orders.toLocaleString()}
+                sub={summary.totalOrders > 0 ? `${formatPct(summary.orders / summary.totalOrders)} of ${summary.totalOrders.toLocaleString()} orders` : null}
+              />
+              <SummaryCard label="Attributed revenue" value={formatMoneyCents(summary.revenue, currency)} sub="orders using a promotion" />
               <SummaryCard label="AOV lift" value={formatLift(summary.aovLift)} sub={summary.aovWithPromo > 0 ? `${formatMoneyCents(summary.aovWithPromo, currency)} vs ${formatMoneyCents(summary.aovWithoutPromo, currency)}` : null} />
             </s-grid>
           </s-section>
@@ -343,15 +366,21 @@ export default function Analytics() {
             <table style={{ width: "100%", minWidth: 720, borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ background: "var(--s-color-bg-surface-secondary, #f6f6f7)", borderBottom: "1px solid var(--s-color-border, #e3e3e3)" }}>
-                  {Object.keys(SORTABLE_COLUMNS).map((key) => (
-                    <SortableHeader
-                      key={key}
-                      columnKey={key}
-                      currentKey={sortKey}
-                      currentDir={sortDir}
-                      onSort={onSort}
-                    />
-                  ))}
+                  {COLUMN_ORDER.map((key) =>
+                    key === "status" ? (
+                      <th key="status" style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap" }}>
+                        Status
+                      </th>
+                    ) : (
+                      <SortableHeader
+                        key={key}
+                        columnKey={key}
+                        currentKey={sortKey}
+                        currentDir={sortDir}
+                        onSort={onSort}
+                      />
+                    ),
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -365,6 +394,14 @@ export default function Analytics() {
                 ))}
               </tbody>
             </table>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <s-text variant="bodySm" tone="subdued">
+                Influenced revenue = value of orders that used each promotion; an order using
+                multiple promotions is counted under each (so rows can overlap — the summary
+                counts each order once). Conversion rate = claims ÷ views for claim gifts,
+                orders ÷ views for offers.
+              </s-text>
             </div>
             </div>
           </s-section>

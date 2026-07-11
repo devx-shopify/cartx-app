@@ -246,6 +246,10 @@ export async function attributeOrder(shopId, order) {
   }
 
   const rows = []
+  // Shop-wide order row. Carries the order subtotal and whether any cartx promo
+  // fired, so the rollup can compute de-duplicated shop metrics (attributed vs
+  // non-promo orders/revenue) without double-counting multi-promo orders.
+  const attributed = groups.size > 0
   rows.push({
     shopId,
     event: ANALYTICS_EVENTS.ORDER_COMPLETED,
@@ -254,7 +258,8 @@ export async function attributeOrder(shopId, order) {
     customerId,
     cartTotal: totalCents,
     revenue: totalCents,
-    metadata: orderIdMeta,
+    subtotal: orderSubtotalCents,
+    metadata: { ...orderIdMeta, attributed },
     occurredAt,
   })
 

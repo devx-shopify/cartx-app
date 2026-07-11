@@ -45,13 +45,36 @@ export async function loadPromotionMeta(shopId) {
     for (const [arr, type] of Object.entries(TYPE_BY_ARRAY)) {
       for (const item of (parsed?.[arr] ?? [])) {
         if (!item?.id) continue
-        // First writer wins; a given id is stable across themes.
-        if (!map.has(item.id)) map.set(item.id, { name: nameOf(item), type })
+        const existing = map.get(item.id)
+        if (!existing) {
+          // First writer sets name/type (stable per id across themes).
+          map.set(item.id, {
+            name: nameOf(item),
+            type,
+            enabled: !!item.enabled,
+            needsAttention: !!item._needs_attention,
+          })
+        } else {
+          // Status is aggregated across themes: a promotion enabled in ANY
+          // theme reads as Active; needs-attention if any theme flags it.
+          if (item.enabled) existing.enabled = true
+          if (item._needs_attention) existing.needsAttention = true
+        }
       }
     }
   }
   _cache.set(shopId, { map, ts: Date.now() })
   return map
+}
+
+// Derive a display status from resolved meta. Undefined meta means the
+// promotion no longer exists in any theme config → deleted.
+//   active | draft | needs-attention | deleted
+export function promotionStatus(meta) {
+  if (!meta) return 'deleted'
+  if (meta.enabled) return 'active'
+  if (meta.needsAttention) return 'needs-attention'
+  return 'draft'
 }
 
 export function invalidatePromotionMeta(shopId) {

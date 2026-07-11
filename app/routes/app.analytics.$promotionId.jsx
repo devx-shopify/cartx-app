@@ -39,6 +39,19 @@ function formatPct(value) {
   }).format(value);
 }
 
+const STATUS_BADGE = {
+  active: { label: "Active", tone: "success" },
+  draft: { label: "Draft", tone: "warning" },
+  "needs-attention": { label: "Needs attention", tone: "critical" },
+  deleted: { label: "Deleted", tone: "auto" },
+};
+
+function StatusBadge({ status }) {
+  const b = STATUS_BADGE[status];
+  if (!b) return null;
+  return <s-badge tone={b.tone}>{b.label}</s-badge>;
+}
+
 const EVENT_LABELS = {
   promotion_viewed: "Viewed",
   gift_claimed: "Claimed",
@@ -78,6 +91,11 @@ export default function PromotionAnalytics() {
         </s-section>
       ) : (
         <s-section>
+          {promo.status ? (
+            <div style={{ marginBottom: 12 }}>
+              <StatusBadge status={promo.status} />
+            </div>
+          ) : null}
           <s-grid gridTemplateColumns="repeat(4, 1fr)" gap="200">
             <SummaryCard label="Impressions" value={promo.impressions.toLocaleString()} />
             <SummaryCard label="Claims" value={promo.claims.toLocaleString()} sub={formatPct(promo.conversionRate)} />
