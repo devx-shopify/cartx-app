@@ -16,6 +16,7 @@
 
 import { loadConfig, saveConfig, listConfigThemeIds } from './config.server.js'
 import { captureException } from './sentry.server.js'
+import { variantDisplayTitle } from './graphql.server.js'
 
 function numeric(id) {
   const s = String(id || '')
@@ -53,7 +54,7 @@ async function fetchProduct(admin, productId) {
           title
           status
           featuredMedia { preview { image { url } } }
-          variants(first: 100) { nodes { id displayName image { url } price } }
+          variants(first: 100) { nodes { id title displayName image { url } price } }
         }
       }`,
       { variables: { id: gid } }
@@ -65,7 +66,7 @@ async function fetchProduct(admin, productId) {
     const byVariant = {}
     for (const v of p.variants?.nodes || []) {
       byVariant[numeric(v.id)] = {
-        title: v.displayName || p.title || '',
+        title: variantDisplayTitle(p.title, v.title, v.displayName),
         image: v.image?.url || productImage,
         price: v.price,
       }
