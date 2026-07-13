@@ -1,9 +1,11 @@
 import { useMemo } from "react";
-import { useLoaderData, useNavigate, useRouteError, useSearchParams } from "react-router";
+import { useLoaderData, useNavigate, useOutletContext, useRouteError, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
-import { getDashboardData, presetRange } from "../lib/analytics.server.js";
+import { getDashboardData, presetRange, themePromotionIds, filterPromotionsForTheme } from "../lib/analytics.server.js";
+import { getSelectedTheme, getShopAndTheme, loadConfig } from "../lib/config.server.js";
 import { syncShopSettings } from "../lib/billing.server.js";
+import { ThemeSwitcher } from "./app.jsx";
 
 const PRESETS = [
   { id: "7d",  label: "Last 7 days",  days: 7 },
@@ -31,7 +33,21 @@ export const loader = async ({ request }) => {
   }
 
   const data = await getDashboardData(session.shop, { from, to });
-  return { data, preset, customRange: !!(fromParam && toParam) };
+
+  // Scope the per-promotion table to the SELECTED theme's configured promotions.
+  // The summary cards stay store-wide (see Issue 6). `deleted=1` also reveals
+  // orphaned/deleted promotions.
+  const preferred = await getSelectedTheme(session.shop);
+  const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
+  const themeConfig = await loadConfig(shopId, themeId);
+  const showDeleted = url.searchParams.get("deleted") === "1";
+  data.promotions = filterPromotionsForTheme(
+    data.promotions,
+    themePromotionIds(themeConfig),
+    { showDeleted },
+  );
+
+  return { data, preset, customRange: !!(fromParam && toParam), showDeleted };
 };
 
 function formatMoneyCents(cents, currency = "USD") {
@@ -256,7 +272,8 @@ function PromotionRow({ p, onClick, currency }) {
 }
 
 export default function Analytics() {
-  const { data, preset, customRange } = useLoaderData();
+  const { data, preset, customRange, showDeleted } = useLoaderData();
+  const { themes, activeThemeId, mainThemeId } = useOutletContext();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -265,6 +282,14 @@ export default function Analytics() {
     next.set("preset", presetId);
     next.delete("from");
     next.delete("to");
+    setSearchParams(next);
+  }
+
+  function toggleDeleted(e) {
+    const on = e?.target?.checked ?? !showDeleted;
+    const next = new URLSearchParams(searchParams);
+    if (on) next.set("deleted", "1");
+    else next.delete("deleted");
     setSearchParams(next);
   }
 
@@ -286,6 +311,7 @@ export default function Analytics() {
 
   const summary = data.summary;
   const currency = data.currency || "USD";
+  const activeThemeName = themes?.find((t) => t.id === activeThemeId)?.name;
   const isEmpty = data.promotions.length === 0 && summary.impressions === 0;
   const sortedPromotions = useMemo(
     () => sortPromotions(data.promotions, sortKey, sortDir),
@@ -299,6 +325,11 @@ export default function Analytics() {
       <s-button slot="primary-action" onClick={() => { window.open(exportUrl, "_blank", "noopener"); }}>
         Download CSV
       </s-button>
+
+      {/* Theme selector — consistent with Home/Promotions */}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+        <ThemeSwitcher themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
+      </div>
 
       {/* Range picker */}
       <s-section padding="none">
@@ -336,8 +367,11 @@ export default function Analytics() {
         </s-section>
       ) : (
         <>
-          {/* Summary cards */}
+          {/* Summary cards — store-wide totals (not scoped to the selected theme) */}
           <s-section>
+            <div style={{ marginBottom: 10 }}>
+              <s-text variant="bodySm" tone="subdued">Store-wide totals</s-text>
+            </div>
             <s-grid gridTemplateColumns="repeat(5, 1fr)" gap="200">
               <SummaryCard label="Impressions" value={summary.impressions.toLocaleString()} />
               <SummaryCard label="Claims" value={summary.claims.toLocaleString()} sub={formatPct(summary.claimRate) + " of claim-gift views"} />
@@ -358,8 +392,11 @@ export default function Analytics() {
 
           {/* Per-promotion table */}
           <s-section padding="none">
-            <div style={{ padding: "16px 16px 12px" }}>
-              <s-text variant="headingSm">By promotion</s-text>
+            <div style={{ padding: "16px 16px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <s-text variant="headingSm">
+                By promotion{activeThemeName ? ` · ${activeThemeName}` : ""}
+              </s-text>
+              <s-checkbox label="Show deleted" checked={showDeleted} onChange={toggleDeleted} />
             </div>
             <div style={{ padding: "0 16px 16px" }}>
             <div style={{ width: "100%", overflowX: "auto", border: "1px solid var(--s-color-border, #e3e3e3)", borderRadius: 8 }}>
@@ -384,14 +421,23 @@ export default function Analytics() {
                 </tr>
               </thead>
               <tbody>
-                {sortedPromotions.map((p) => (
-                  <PromotionRow
-                    key={p.id}
-                    p={p}
-                    currency={currency}
-                    onClick={() => navigate(`/app/analytics/${encodeURIComponent(p.id)}?${searchParams.toString()}`)}
-                  />
-                ))}
+                {sortedPromotions.length === 0 ? (
+                  <tr>
+                    <td colSpan={COLUMN_ORDER.length} style={{ padding: "28px 16px", textAlign: "center", color: "#6d7175" }}>
+                      No promotions{activeThemeName ? ` on ${activeThemeName}` : ""} in this range.
+                      {!showDeleted ? " Enable “Show deleted” to include removed promotions." : ""}
+                    </td>
+                  </tr>
+                ) : (
+                  sortedPromotions.map((p) => (
+                    <PromotionRow
+                      key={p.id}
+                      p={p}
+                      currency={currency}
+                      onClick={() => navigate(`/app/analytics/${encodeURIComponent(p.id)}?${searchParams.toString()}`)}
+                    />
+                  ))
+                )}
               </tbody>
             </table>
             </div>

@@ -391,9 +391,122 @@ Changes:
 
 ---
 
+## Theme mechanism (shared reference for Issues 5–7)
+- `ThemeSwitcher` (defined in `app.jsx`) switches theme by POSTing
+  `{_action:"set_theme"}` to the `/app` action → `setSelectedTheme(shop, id)`,
+  which persists the choice **server-side, shop-wide** in a special
+  `ThemeConfig` row (`themeId = "__preference__"`, `config.selectedThemeId`).
+- The layout (`app.jsx`) loads `themes / activeThemeId / mainThemeId` and passes
+  them to every route via `Outlet context`. Theme-aware routes resolve data with
+  `getSelectedTheme → getShopAndTheme → loadConfig(shopId, themeId)`.
+- **Selection is a single global DB value** — not per-tab / per-widget. Multiple
+  switchers are just views of the same row, so changing it on one tab applies
+  everywhere (each route's loader re-reads it). Confirmed 2026-07-11.
+- **Key limitation:** `AnalyticsEvent` has **no `themeId`** — storefront events
+  are not tagged with the active theme. So analytics cannot partition event data
+  by theme; theme scope can only be applied by filtering to the promotion IDs in
+  the selected theme's config.
+
+---
+
+## Issue 5 — Theme selector inconsistent across tabs
+
+**Symptom**
+The theme selector renders on **Home** (`app._index.jsx:510`) and **Promotions**
+(`app.promotions._index.jsx`) but **not** on Analytics, Customize Cart, or
+Settings — so to change theme the merchant must go to a tab that has it first.
+
+**Recommended decision (pending sign-off)**
+- **Per-route placement** (add `<ThemeSwitcher>` top-right on Analytics, Customize
+  Cart, Settings) — matches Home/Promotions; a global bar in `app.jsx` would
+  float outside each route's `<s-page>` frame.
+- **Ungated** (match current Home/Promotions behavior; it self-hides when ≤1
+  theme). If multi-theme should be paywalled, gate uniformly as a separate
+  deliberate change.
+- Ships **with Issue 6** for Analytics: the widget alone would show the right
+  theme but not change the data until the loader is theme-aware.
+
+**Resolution (done)**
+- `<ThemeSwitcher>` (from `app.jsx`, via `useOutletContext`) now rendered
+  top-right on **Analytics**, **Customize Cart**, and **Settings** (Home &
+  Promotions already had it). Ungated. Selection stays the single shop-wide DB
+  value, so switching on any tab applies everywhere.
+
+**Status:** done
+
+---
+
+## Issue 6 — Analytics: show only the selected theme's promotions
+
+**Symptom**
+Analytics is fully shop-wide (`getDashboardData(session.shop, …)`, no theme;
+`promotion-meta` resolves names across all themes). The merchant wants the
+By-promotion table to reflect the **selected theme's** configured promotions.
+
+**Constraint**
+`AnalyticsEvent` has no `themeId` (see reference above). Also the Issue-2
+de-duplicated summary metrics live on the shop-level `_shop` row and have **no
+per-theme dimension** — theme-slicing them would break the fast path.
+
+**Recommended decision (pending sign-off)**
+- **Table = theme-scoped**: loader does `getSelectedTheme → loadConfig(theme)`,
+  builds the set of that theme's offer/coupon/claim IDs, filters the
+  per-promotion rows to those. Per-row metrics already exist.
+- **Summary cards = store-wide** (labeled "Store-wide"), because the de-duped
+  metrics can't be cheaply theme-sliced. Standard pattern: global KPIs + a
+  filterable breakdown.
+- **Config-filter approximation**, not `themeId`-on-events tagging (the latter is
+  a big drawer+ingestion+schema change, un-backfillable, and muddied by the
+  copy-between-themes flow that shares promo IDs).
+- Caveat to note in UI/docs: "Copy from another theme" clones promotions
+  *including* their IDs, so a promo ID can exist in multiple themes' configs.
+
+**Resolution (done)**
+- `analytics.server.js`: added `themePromotionIds(config)` +
+  `filterPromotionsForTheme(promotions, ids, {showDeleted})`.
+- Analytics loader (`app.analytics.jsx`) + CSV export loader now resolve
+  `getSelectedTheme → loadConfig(theme)` and filter the per-promotion rows to
+  that theme's promo IDs. Summary cards stay store-wide (labeled "Store-wide
+  totals"). Table header shows `By promotion · <theme name>`; empty-state row
+  added.
+- Verified on dev DB: table shows only the selected theme's promos; other-theme
+  promos hidden.
+
+**Status:** done
+
+---
+
+## Issue 7 — Analytics: filter to hide/show deleted promotions
+
+**Symptom**
+The table shows every promotion including `status:"deleted"`; no way to hide
+them (or reveal them on demand).
+
+**Recommended decision (pending sign-off)**
+- One control: a **"Show deleted" checkbox, off by default**. Default view = the
+  selected theme's live/draft promotions; toggling on appends **truly-deleted
+  orphans** (promo IDs with activity that exist in no config → `status:deleted`).
+- Other-theme promotions stay hidden (seen by switching themes) — keeps the
+  theme-scoped view clean.
+- Wire as a **URL search param** (like `sort`/`dir`) so the **CSV export follows
+  the on-screen filter** (export route already receives search params).
+- Unifies with Issue 6: theme scope + deleted visibility are one filter model.
+
+**Resolution (done)**
+- `deleted=1` URL param + a "Show deleted" `<s-checkbox>` in the By-promotion
+  header (off by default). When on, `filterPromotionsForTheme` also includes
+  orphaned `status:"deleted"` rows; other-theme promos stay hidden. The export
+  URL carries the param so the CSV follows the on-screen filter.
+- Verified on dev DB (deleted orphan appears only with the toggle on).
+
+**Status:** done
+
+---
+
 ## Suggested order of work
-1. **Issue 1** (UI overflow) — quick, isolated, low risk.
-2. **Issue 3** (UUID identification) — needs a DB lookup; informs Issues 2 & 4.
-3. **Issue 4** (status column) — builds on the name/type resolution touched by 3.
-4. **Issue 2** (data correctness / source of truth) — largest; depends on
-   findings from 3 and the claims investigation.
+- **Issues 1–4: done** (see each section above). UI-confirmed on dev 2026-07-11.
+- **Issues 5–7: done** (theme switcher across tabs; Analytics theme-scoped
+  table + "Show deleted" filter; CSV follows the filter). Admin-route changes
+  only — no migration, no drawer rebuild. Verified on dev DB; lint 0, tests 13/13.
+- Prod rollout for Issue 2/3 (migrate deploy + `scripts/backfill-shop-metrics.mjs`
+  + refresh cron machines) is captured in `buildspace/deploy-runbook.md`.

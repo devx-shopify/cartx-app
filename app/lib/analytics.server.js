@@ -225,6 +225,29 @@ function conversionRateFor(p) {
   return p.type === 'claim-gift' ? p.claims / p.impressions : p.orders / p.impressions
 }
 
+// Set of promotion ids configured on a single theme's config
+// (offers/coupons/claim_gifts). Used to scope the analytics table to the
+// selected theme. See Issue 6.
+export function themePromotionIds(config) {
+  const ids = new Set()
+  for (const arr of ['offers', 'coupons', 'claim_gifts']) {
+    for (const item of (config?.[arr] ?? [])) {
+      if (item?.id) ids.add(item.id)
+    }
+  }
+  return ids
+}
+
+// Scope a dashboard's promotions to the selected theme: keep promotions
+// configured on that theme, plus — when `showDeleted` — the orphaned rows whose
+// promotion no longer exists in any config (status 'deleted'). Promotions that
+// belong only to *other* themes stay hidden (switch themes to see them).
+export function filterPromotionsForTheme(promotions, themeIds, { showDeleted = false } = {}) {
+  return promotions.filter(
+    (p) => themeIds.has(p.id) || (showDeleted && p.status === 'deleted'),
+  )
+}
+
 const RANGE_DEFAULT_DAYS = 30
 
 function defaultRange() {

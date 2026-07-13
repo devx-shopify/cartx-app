@@ -1,5 +1,6 @@
 import { authenticate } from '../shopify.server'
-import { getDashboardData, presetRange } from '../lib/analytics.server.js'
+import { getDashboardData, presetRange, themePromotionIds, filterPromotionsForTheme } from '../lib/analytics.server.js'
+import { getSelectedTheme, getShopAndTheme, loadConfig } from '../lib/config.server.js'
 import { syncShopSettings } from '../lib/billing.server.js'
 
 const TYPE_LABELS = {
@@ -58,6 +59,18 @@ export const loader = async ({ request }) => {
 
   const data = await getDashboardData(session.shop, { from, to })
   const currency = data.currency || 'USD'
+
+  // Follow the on-screen filter: scope to the selected theme's promotions,
+  // plus deleted rows when `deleted=1`.
+  const preferred = await getSelectedTheme(session.shop)
+  const { shopId, themeId } = await getShopAndTheme(admin, session, preferred)
+  const themeConfig = await loadConfig(shopId, themeId)
+  const showDeleted = url.searchParams.get('deleted') === '1'
+  data.promotions = filterPromotionsForTheme(
+    data.promotions,
+    themePromotionIds(themeConfig),
+    { showDeleted },
+  )
 
   let body = csvRow([
     'Promotion',
