@@ -39,6 +39,19 @@ function formatPct(value) {
   }).format(value);
 }
 
+const STATUS_BADGE = {
+  active: { label: "Active", tone: "success" },
+  draft: { label: "Draft", tone: "warning" },
+  "needs-attention": { label: "Needs attention", tone: "critical" },
+  deleted: { label: "Deleted", tone: "auto" },
+};
+
+function StatusBadge({ status }) {
+  const b = STATUS_BADGE[status];
+  if (!b) return null;
+  return <s-badge tone={b.tone}>{b.label}</s-badge>;
+}
+
 const EVENT_LABELS = {
   promotion_viewed: "Viewed",
   gift_claimed: "Claimed",
@@ -78,6 +91,11 @@ export default function PromotionAnalytics() {
         </s-section>
       ) : (
         <s-section>
+          {promo.status ? (
+            <div style={{ marginBottom: 12 }}>
+              <StatusBadge status={promo.status} />
+            </div>
+          ) : null}
           <s-grid gridTemplateColumns="repeat(4, 1fr)" gap="200">
             <SummaryCard label="Impressions" value={promo.impressions.toLocaleString()} />
             <SummaryCard label="Claims" value={promo.claims.toLocaleString()} sub={formatPct(promo.conversionRate)} />
@@ -87,13 +105,18 @@ export default function PromotionAnalytics() {
         </s-section>
       )}
 
-      <s-section padding="none" heading="Recent events">
+      <s-section padding="none">
+        <div style={{ padding: "16px 16px 12px" }}>
+          <s-text variant="headingSm">Recent events</s-text>
+        </div>
         {recentEvents.length === 0 ? (
           <div style={{ padding: "40px 20px", textAlign: "center", color: "#6d7175" }}>
             No events recorded for this promotion in the selected range.
           </div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <div style={{ padding: "0 16px 16px" }}>
+          <div style={{ width: "100%", overflowX: "auto", border: "1px solid var(--s-color-border, #e3e3e3)", borderRadius: 8 }}>
+          <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "var(--s-color-bg-surface-secondary, #f6f6f7)", borderBottom: "1px solid var(--s-color-border, #e3e3e3)" }}>
                 <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600 }}>When</th>
@@ -121,6 +144,8 @@ export default function PromotionAnalytics() {
               ))}
             </tbody>
           </table>
+          </div>
+          </div>
         )}
       </s-section>
     </s-page>

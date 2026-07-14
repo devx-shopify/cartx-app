@@ -98,11 +98,13 @@ model AnalyticsEvent {
   source        String   // drawer | web_pixel | server
   promotionId   String?
   promotionType String?  // offer | coupon | claim-gift | upsell
+  promotionName String?  // snapshot of the promotion's display name at write time
   customerId    String?
   sessionId     String?
   cartTotal     Int?
   itemCount     Int?
   revenue       Int?
+  subtotal      Int?     // order subtotal (cents); set on _shop order_completed rows for de-duped shop metrics
   metadata      Json?
   occurredAt    DateTime
   createdAt     DateTime @default(now())
@@ -117,6 +119,8 @@ model DailyStats {
   shopId        String
   date          String   // YYYY-MM-DD, shop-local
   promotionId   String
+  promotionName String?  // snapshot of the promotion's display name (durable label; survives config deletion)
+  promotionType String?  // offer | coupon | claim-gift | upsell (snapshot; survives config deletion)
   impressions   Int      @default(0)
   claims        Int      @default(0)
   removals      Int      @default(0)
@@ -125,6 +129,14 @@ model DailyStats {
   checkouts     Int      @default(0)
   orders        Int      @default(0)
   revenue       Int      @default(0)
+  // De-duplicated shop-level metrics (populated on the `_shop` row only).
+  // Orders are counted once each (one order_completed row per order), and
+  // revenue is the order *subtotal*, so summaries don't double-count orders
+  // that trigger multiple promotions.
+  attributedOrders  Int  @default(0)
+  attributedRevenue Int  @default(0)
+  nonPromoOrders    Int  @default(0)
+  nonPromoRevenue   Int  @default(0)
   updatedAt     DateTime @updatedAt
 
   @@unique([shopId, date, promotionId])

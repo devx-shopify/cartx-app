@@ -1,4 +1,5 @@
 import db from '../db.server.js'
+import { loadPromotionMeta, promotionStatus } from './promotion-meta.server.js'
 import {
   ANALYTICS_BOUNDS,
   ANALYTICS_EVENTS as EVENTS,
@@ -70,6 +71,7 @@ function shapeEvent(shopId, source, raw) {
       source,
       promotionId: raw.promotion_id ?? raw.promotionId ?? null,
       promotionType: raw.promotion_type ?? raw.promotionType ?? null,
+      promotionName: raw.promotion_name ?? raw.promotionName ?? null,
       customerId: raw.customer_id ?? raw.customerId ?? null,
       sessionId: raw.session_id ?? raw.sessionId ?? null,
       cartTotal: clampInt(raw.cart_total ?? raw.cartTotal, ANALYTICS_BOUNDS.MAX_CART_CENTS),
@@ -82,6 +84,32 @@ function shapeEvent(shopId, source, raw) {
   }
 }
 
+// Snapshot the promotion display name/type onto promotion-scoped rows from the
+// shop's live config, so historical rows stay labeled even if the promotion is
+// later deleted/recreated. Best-effort: a config-read failure leaves rows as-is.
+async function stampPromotionMeta(shopId, rows) {
+  const needs = rows.some(
+    (r) => r.promotionId &&
+      r.promotionId !== SHOP_WIDE_PROMOTION_ID &&
+      (!r.promotionName || !r.promotionType),
+  )
+  if (!needs) return
+  let map
+  try {
+    map = await loadPromotionMeta(shopId)
+  } catch (err) {
+    console.error('[cartx][analytics] stampPromotionMeta failed:', err)
+    return
+  }
+  for (const r of rows) {
+    if (!r.promotionId || r.promotionId === SHOP_WIDE_PROMOTION_ID) continue
+    const meta = map.get(r.promotionId)
+    if (!meta) continue
+    if (!r.promotionName && meta.name) r.promotionName = meta.name
+    if (!r.promotionType && meta.type) r.promotionType = meta.type
+  }
+}
+
 /**
  * Persist a single event. Returns the created row, or null if validation failed.
  */
@@ -89,6 +117,7 @@ export async function recordEvent(shopId, source, payload) {
   if (!shopId) return null
   const { row } = shapeEvent(shopId, source, payload)
   if (!row) return null
+  await stampPromotionMeta(shopId, [row])
   try {
     return await db.analyticsEvent.create({ data: row })
   } catch (err) {
@@ -119,6 +148,8 @@ export async function recordEventBatch(shopId, source, payloads) {
   }
 
   if (rows.length === 0) return result
+
+  await stampPromotionMeta(shopId, rows)
 
   try {
     const created = await db.analyticsEvent.createMany({ data: rows })
@@ -176,6 +207,45 @@ export async function queryDailyStats(shopId, { from, to, promotionId } = {}) {
 function toIsoDate(d) {
   const date = d instanceof Date ? d : new Date(d)
   return date.toISOString().slice(0, 10)
+}
+
+// Friendly label for a promotion id that can't be resolved to a name (deleted
+// or recreated — its config entry is gone). A short id suffix keeps rows
+// distinguishable without exposing a full UUID.
+function unknownPromotionLabel(id) {
+  const short = typeof id === 'string' ? id.slice(0, 8) : ''
+  return short ? `Deleted promotion (${short})` : 'Deleted promotion'
+}
+
+// Type-aware "view → action" rate. Claim-gifts convert a view into a claim;
+// auto-add offers have no claim step, so their funnel is view → attributed
+// order. Using claims/impressions for offers would always read 0%.
+function conversionRateFor(p) {
+  if (!p.impressions) return 0
+  return p.type === 'claim-gift' ? p.claims / p.impressions : p.orders / p.impressions
+}
+
+// Set of promotion ids configured on a single theme's config
+// (offers/coupons/claim_gifts). Used to scope the analytics table to the
+// selected theme. See Issue 6.
+export function themePromotionIds(config) {
+  const ids = new Set()
+  for (const arr of ['offers', 'coupons', 'claim_gifts']) {
+    for (const item of (config?.[arr] ?? [])) {
+      if (item?.id) ids.add(item.id)
+    }
+  }
+  return ids
+}
+
+// Scope a dashboard's promotions to the selected theme: keep promotions
+// configured on that theme, plus — when `showDeleted` — the orphaned rows whose
+// promotion no longer exists in any config (status 'deleted'). Promotions that
+// belong only to *other* themes stay hidden (switch themes to see them).
+export function filterPromotionsForTheme(promotions, themeIds, { showDeleted = false } = {}) {
+  return promotions.filter(
+    (p) => themeIds.has(p.id) || (showDeleted && p.status === 'deleted'),
+  )
 }
 
 const RANGE_DEFAULT_DAYS = 30
@@ -349,33 +419,65 @@ export async function getDashboardData(shopId, { from, to } = {}) {
     GROUP BY "promotionId", "promotionType", "event"
   `
 
-  // 2. Per-day rollup. Bucket into the shop's local (tz) calendar day:
-  // interpret the naive timestamp as UTC, convert to the shop tz, then truncate.
+  // 2. Per-day impressions/claims (revenue comes from the de-duped shop metrics).
   const perDay = await db.$queryRaw`
     SELECT
       to_char(date_trunc('day', ("occurredAt" AT TIME ZONE 'UTC') AT TIME ZONE ${tz}), 'YYYY-MM-DD') AS date,
       "event",
-      COUNT(*)::int AS count,
-      COALESCE(SUM("revenue"), 0)::bigint AS revenue
+      COUNT(*)::int AS count
     FROM "AnalyticsEvent"
     WHERE "shopId" = ${shopId}
       AND "occurredAt" >= ${range.from}
       AND "occurredAt" <= ${range.to}
+      AND "event" IN (${EVENTS.PROMOTION_VIEWED}, ${EVENTS.GIFT_CLAIMED})
     GROUP BY date, "event"
     ORDER BY date ASC
   `
 
-  // Daily trend — zero-fill so the chart doesn't have gaps.
+  // 2b. Per-day de-duplicated shop metrics from order_completed (one row per
+  // order → COUNT is a distinct-order count, no multi-promo double-counting).
+  // Splits attributed vs non-promo and sums the order subtotal (falling back to
+  // total_price for rows written before subtotal capture).
+  const shopByDay = await db.$queryRaw`
+    SELECT
+      to_char(date_trunc('day', ("occurredAt" AT TIME ZONE 'UTC') AT TIME ZONE ${tz}), 'YYYY-MM-DD') AS date,
+      COUNT(*)::int AS total_orders,
+      COUNT(*) FILTER (WHERE COALESCE(("metadata"->>'attributed')::boolean, false))::int AS attr_orders,
+      COALESCE(SUM(COALESCE("subtotal", "revenue")) FILTER (WHERE COALESCE(("metadata"->>'attributed')::boolean, false)), 0)::bigint AS attr_revenue,
+      COUNT(*) FILTER (WHERE NOT COALESCE(("metadata"->>'attributed')::boolean, false))::int AS nonpromo_orders,
+      COALESCE(SUM(COALESCE("subtotal", "revenue")) FILTER (WHERE NOT COALESCE(("metadata"->>'attributed')::boolean, false)), 0)::bigint AS nonpromo_revenue
+    FROM "AnalyticsEvent"
+    WHERE "shopId" = ${shopId}
+      AND "event" = ${EVENTS.ORDER_COMPLETED}
+      AND "occurredAt" >= ${range.from}
+      AND "occurredAt" <= ${range.to}
+    GROUP BY date
+  `
+  const shopDayMap = new Map(shopByDay.map((r) => [r.date, r]))
+
+  // Daily trend — zero-fill. Revenue is the de-duplicated attributed revenue
+  // (each order once), so the chart sums to the summary card.
   const dailyMap = new Map()
   for (const day of eachDay(range.from, range.to, tz)) {
-    dailyMap.set(day, { date: day, impressions: 0, claims: 0, revenue: 0 })
+    const s = shopDayMap.get(day)
+    dailyMap.set(day, { date: day, impressions: 0, claims: 0, revenue: s ? Number(s.attr_revenue) : 0 })
   }
   for (const row of perDay) {
-    const bucket = dailyMap.get(row.date)
-    if (!bucket) continue
-    if (row.event === EVENTS.PROMOTION_VIEWED) bucket.impressions += row.count
-    else if (row.event === EVENTS.GIFT_CLAIMED) bucket.claims += row.count
-    else if (row.event === EVENTS.ORDER_ATTRIBUTED) bucket.revenue += Number(row.revenue)
+    const b = dailyMap.get(row.date)
+    if (!b) continue
+    if (row.event === EVENTS.PROMOTION_VIEWED) b.impressions += row.count
+    else if (row.event === EVENTS.GIFT_CLAIMED) b.claims += row.count
+  }
+
+  // Shop-level totals = sum of the per-day de-duped metrics.
+  let totalOrders = 0, attributedOrders = 0, attributedRevenue = 0
+  let nonPromoOrders = 0, nonPromoRevenue = 0
+  for (const r of shopByDay) {
+    totalOrders += r.total_orders
+    attributedOrders += r.attr_orders
+    attributedRevenue += Number(r.attr_revenue)
+    nonPromoOrders += r.nonpromo_orders
+    nonPromoRevenue += Number(r.nonpromo_revenue)
   }
 
   // Per-promotion rollup.
@@ -414,64 +516,59 @@ export async function getDashboardData(shopId, { from, to } = {}) {
     }
   }
 
-  // Strip the shop-wide bucket from the per-promotion table; it powers AOV-without instead.
-  const shopBucket = promoMap.get(SHOP_WIDE_PROMOTION_ID)
+  // Strip the shop-wide bucket from the per-promotion table; its de-duplicated
+  // totals were computed above (attributedOrders/attributedRevenue/…).
   promoMap.delete(SHOP_WIDE_PROMOTION_ID)
-
-  // Shop-wide counts come from the `_shop` bucket OR from rolling up across
-  // every promotion. We use the shop bucket for orders (ground truth from the
-  // orders/create webhook), and per-promo for impressions/claims (the only
-  // place they exist).
-  let shopOrders = 0
-  let shopRevenue = 0
-  for (const row of perPromo) {
-    if (row.promotionId !== SHOP_WIDE_PROMOTION_ID) continue
-    if (row.event === EVENTS.ORDER_COMPLETED) {
-      shopOrders += row.count
-      shopRevenue += Number(row.revenue)
-    }
-  }
-  void shopBucket // reserved for future shop-only KPIs
 
   const promotions = Array.from(promoMap.values()).map((b) => ({
     ...b,
-    conversionRate: b.impressions > 0 ? b.claims / b.impressions : 0,
     aov: b.orders > 0 ? b.revenue / b.orders : 0,
   }))
 
-  // Attach promotion names by reading ThemeConfig blobs for this shop.
-  const themeConfigs = await db.themeConfig.findMany({
-    where: { shopId },
-    select: { config: true },
-  })
-  const idToName = new Map()
-  for (const tc of themeConfigs) {
-    let parsed
-    try { parsed = JSON.parse(tc.config) } catch { continue }
-    for (const arr of ['offers', 'coupons', 'claim_gifts']) {
-      for (const item of (parsed?.[arr] ?? [])) {
-        if (item?.id) idToName.set(item.id, item.name || item.title || item.code || item.id)
-      }
-    }
+  // Resolve display name + type for each promotion. Priority:
+  //   1. snapshot stored on the events (survives config deletion)
+  //   2. current ThemeConfig (labels rows written before snapshots existed,
+  //      as long as the promotion still exists)
+  //   3. friendly "Deleted promotion" fallback (never a raw UUID)
+  const storedMeta = await db.$queryRaw`
+    SELECT DISTINCT ON ("promotionId")
+      "promotionId", "promotionName", "promotionType"
+    FROM "AnalyticsEvent"
+    WHERE "shopId" = ${shopId}
+      AND "occurredAt" >= ${range.from}
+      AND "occurredAt" <= ${range.to}
+      AND "promotionId" IS NOT NULL
+      AND ("promotionName" IS NOT NULL OR "promotionType" IS NOT NULL)
+    ORDER BY "promotionId", "occurredAt" DESC
+  `
+  const storedMetaMap = new Map()
+  for (const row of storedMeta) {
+    storedMetaMap.set(row.promotionId, { name: row.promotionName, type: row.promotionType })
   }
+  const configMeta = await loadPromotionMeta(shopId)
+
   for (const p of promotions) {
-    p.name = idToName.get(p.id) || p.id
+    const stored = storedMetaMap.get(p.id)
+    const cfg = configMeta.get(p.id)
+    p.name = stored?.name || cfg?.name || unknownPromotionLabel(p.id)
+    p.type = p.type || stored?.type || cfg?.type || null
+    p.status = promotionStatus(cfg)
+    p.conversionRate = conversionRateFor(p)
   }
   promotions.sort((a, b) => b.revenue - a.revenue || b.impressions - a.impressions)
 
-  // Summary cards.
-  const totalImpressions = promotions.reduce((sum, p) => sum + p.impressions, 0)
-  const totalClaims = promotions.reduce((sum, p) => sum + p.claims, 0)
-  const attributedRevenue = promotions.reduce((sum, p) => sum + p.revenue, 0)
-  const attributedOrderCount = promotions.reduce((sum, p) => sum + p.orders, 0)
-  const claimRate = totalImpressions > 0 ? totalClaims / totalImpressions : 0
-  // Note: shop-wide AOV includes attributed orders too. Splitting these out
-  // cleanly requires per-order joins; this is a v1 directional metric.
-  const aovWithPromo = attributedOrderCount > 0 ? attributedRevenue / attributedOrderCount : 0
-  const aovWithoutPromo = shopOrders > 0 ? shopRevenue / shopOrders : 0
-  const aovLift = aovWithoutPromo > 0
-    ? (aovWithPromo - aovWithoutPromo) / aovWithoutPromo
-    : 0
+  // Summary cards. Shop-level revenue/orders use the DE-DUPLICATED shop metrics
+  // (each order counted once); the per-promo table keeps its influenced figures.
+  const totalImpressions = promotions.reduce((s, p) => s + p.impressions, 0)
+  const totalClaims = promotions.reduce((s, p) => s + p.claims, 0)
+  // Claim rate is claims ÷ claim-gift impressions only (offer impressions can't
+  // be claimed, so including them would dilute it).
+  const claimGiftImpressions = promotions.reduce((s, p) => s + (p.type === 'claim-gift' ? p.impressions : 0), 0)
+  const claimRate = claimGiftImpressions > 0 ? totalClaims / claimGiftImpressions : 0
+  // AOV lift on a single consistent (subtotal) basis; baseline = non-promo orders.
+  const aovWithPromo = attributedOrders > 0 ? attributedRevenue / attributedOrders : 0
+  const aovWithoutPromo = nonPromoOrders > 0 ? nonPromoRevenue / nonPromoOrders : 0
+  const aovLift = aovWithoutPromo > 0 ? (aovWithPromo - aovWithoutPromo) / aovWithoutPromo : 0
 
   return {
     range: { from: range.from.toISOString(), to: range.to.toISOString() },
@@ -481,7 +578,8 @@ export async function getDashboardData(shopId, { from, to } = {}) {
       claims: totalClaims,
       claimRate,
       revenue: attributedRevenue,
-      orders: shopOrders,
+      orders: attributedOrders,
+      totalOrders,
       aovWithPromo,
       aovWithoutPromo,
       aovLift,
@@ -493,20 +591,26 @@ export async function getDashboardData(shopId, { from, to } = {}) {
 }
 
 async function buildFromDailyStats(shopId, range, rows, { currency = 'USD', tz = 'UTC' } = {}) {
-  // Promotion-level rollup.
+  // Promotion-level rollup + de-duplicated shop metrics from the `_shop` rows.
   const promoMap = new Map()
-  let shopOrders = 0
-  let shopRevenue = 0
+  let totalOrders = 0, attributedOrders = 0, attributedRevenue = 0
+  let nonPromoOrders = 0, nonPromoRevenue = 0
+  const shopRevByDate = new Map() // date -> de-duped attributed revenue
   for (const row of rows) {
     if (row.promotionId === SHOP_WIDE_PROMOTION_ID) {
-      shopOrders += row.orders
-      shopRevenue += row.revenue
+      totalOrders += row.orders
+      attributedOrders += row.attributedOrders
+      attributedRevenue += row.attributedRevenue
+      nonPromoOrders += row.nonPromoOrders
+      nonPromoRevenue += row.nonPromoRevenue
+      shopRevByDate.set(row.date, (shopRevByDate.get(row.date) || 0) + row.attributedRevenue)
       continue
     }
     let b = promoMap.get(row.promotionId)
     if (!b) {
       b = {
         id: row.promotionId,
+        name: null,
         type: null,
         impressions: 0, claims: 0, removals: 0,
         upsellAdds: 0, couponApplies: 0,
@@ -521,57 +625,51 @@ async function buildFromDailyStats(shopId, range, rows, { currency = 'USD', tz =
     b.couponApplies += row.couponApplies
     b.orders += row.orders
     b.revenue += row.revenue
+    // Snapshot name/type persisted on DailyStats — survives config deletion.
+    if (!b.name && row.promotionName) b.name = row.promotionName
+    if (!b.type && row.promotionType) b.type = row.promotionType
   }
 
-  // Daily series — zero-fill any missing days.
+  // Daily series — zero-fill. Revenue is the de-duplicated attributed revenue
+  // from the `_shop` row (each order once); impressions/claims from per-promo.
   const dailyMap = new Map()
   for (const day of eachDay(range.from, range.to, tz)) {
-    dailyMap.set(day, { date: day, impressions: 0, claims: 0, revenue: 0 })
+    dailyMap.set(day, { date: day, impressions: 0, claims: 0, revenue: shopRevByDate.get(day) || 0 })
   }
   for (const row of rows) {
+    if (row.promotionId === SHOP_WIDE_PROMOTION_ID) continue
     const bucket = dailyMap.get(row.date)
     if (!bucket) continue
     bucket.impressions += row.impressions
     bucket.claims += row.claims
-    bucket.revenue += row.revenue
   }
 
-  // Promotion-type backfill from ThemeConfig (DailyStats doesn't store type).
-  const themeConfigs = await db.themeConfig.findMany({
-    where: { shopId },
-    select: { config: true },
-  })
-  const idToName = new Map()
-  const idToType = new Map()
-  for (const tc of themeConfigs) {
-    let parsed
-    try { parsed = JSON.parse(tc.config) } catch { continue }
-    for (const [arr, type] of [['offers', 'offer'], ['coupons', 'coupon'], ['claim_gifts', 'claim-gift']]) {
-      for (const item of (parsed?.[arr] ?? [])) {
-        if (item?.id) {
-          idToName.set(item.id, item.name || item.title || item.code || item.id)
-          idToType.set(item.id, type)
-        }
-      }
+  // Name/type resolution priority (mirrors the live path):
+  //   1. snapshot stored on DailyStats (b.name / b.type — survives deletion)
+  //   2. current ThemeConfig (still-live promotions)
+  //   3. friendly "Deleted promotion" fallback (never a raw UUID)
+  const configMeta = await loadPromotionMeta(shopId)
+
+  const promotions = Array.from(promoMap.values()).map((b) => {
+    const cfg = configMeta.get(b.id)
+    const p = {
+      ...b,
+      name: b.name || cfg?.name || unknownPromotionLabel(b.id),
+      type: b.type || cfg?.type || null,
+      status: promotionStatus(cfg),
+      aov: b.orders > 0 ? b.revenue / b.orders : 0,
     }
-  }
-
-  const promotions = Array.from(promoMap.values()).map((b) => ({
-    ...b,
-    name: idToName.get(b.id) || b.id,
-    type: idToType.get(b.id) || b.type,
-    conversionRate: b.impressions > 0 ? b.claims / b.impressions : 0,
-    aov: b.orders > 0 ? b.revenue / b.orders : 0,
-  }))
+    p.conversionRate = conversionRateFor(p)
+    return p
+  })
   promotions.sort((a, b) => b.revenue - a.revenue || b.impressions - a.impressions)
 
   const totalImpressions = promotions.reduce((s, p) => s + p.impressions, 0)
   const totalClaims = promotions.reduce((s, p) => s + p.claims, 0)
-  const attributedRevenue = promotions.reduce((s, p) => s + p.revenue, 0)
-  const attributedOrderCount = promotions.reduce((s, p) => s + p.orders, 0)
-  const claimRate = totalImpressions > 0 ? totalClaims / totalImpressions : 0
-  const aovWithPromo = attributedOrderCount > 0 ? attributedRevenue / attributedOrderCount : 0
-  const aovWithoutPromo = shopOrders > 0 ? shopRevenue / shopOrders : 0
+  const claimGiftImpressions = promotions.reduce((s, p) => s + (p.type === 'claim-gift' ? p.impressions : 0), 0)
+  const claimRate = claimGiftImpressions > 0 ? totalClaims / claimGiftImpressions : 0
+  const aovWithPromo = attributedOrders > 0 ? attributedRevenue / attributedOrders : 0
+  const aovWithoutPromo = nonPromoOrders > 0 ? nonPromoRevenue / nonPromoOrders : 0
   const aovLift = aovWithoutPromo > 0 ? (aovWithPromo - aovWithoutPromo) / aovWithoutPromo : 0
 
   return {
@@ -582,7 +680,8 @@ async function buildFromDailyStats(shopId, range, rows, { currency = 'USD', tz =
       claims: totalClaims,
       claimRate,
       revenue: attributedRevenue,
-      orders: shopOrders,
+      orders: attributedOrders,
+      totalOrders,
       aovWithPromo,
       aovWithoutPromo,
       aovLift,
@@ -599,7 +698,7 @@ function emptyDashboard() {
     currency: 'USD',
     summary: {
       impressions: 0, claims: 0, claimRate: 0, revenue: 0,
-      orders: 0, aovWithPromo: 0, aovWithoutPromo: 0, aovLift: 0,
+      orders: 0, totalOrders: 0, aovWithPromo: 0, aovWithoutPromo: 0, aovLift: 0,
     },
     daily: [],
     promotions: [],

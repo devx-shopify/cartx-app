@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLoaderData, useFetcher, useOutletContext } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
-import { ThemeCopyCard } from "./app.jsx";
+import { ThemeCopyCard, ThemeSwitcher } from "./app.jsx";
 import useConfirm from "../components/useConfirm.jsx";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
@@ -609,6 +609,9 @@ export default function Settings() {
 
       <s-page heading="Settings">
         <div style={{ maxWidth: 820, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <ThemeSwitcher themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
+          </div>
 
           {/* ── Progress Bar ─────────────────────────────── */}
           <s-section

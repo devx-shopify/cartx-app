@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useLoaderData, useFetcher, useRouteError } from "react-router";
+import { useLoaderData, useFetcher, useOutletContext, useRouteError } from "react-router";
+import { ThemeSwitcher } from "./app.jsx";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -309,6 +310,7 @@ function SectionToggles({ sections, onToggle }) {
 
 export default function CartCustomizer() {
   const { drawer: initial, promotionCoupons } = useLoaderData();
+  const { themes, activeThemeId, mainThemeId } = useOutletContext();
   const [settings, setSettings] = useState(initial);
   const [dirty, setDirty] = useState(false);
   const [showEmpty, setShowEmpty] = useState(false);
@@ -487,6 +489,9 @@ export default function CartCustomizer() {
       </ui-save-bar>
 
       <s-page heading="Customize Cart">
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+          <ThemeSwitcher themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: `minmax(0, 1fr) ${PREVIEW_VISUAL_WIDTH}px`, gap: 24, alignItems: "start" }}>
           {/* ── Left: Settings ─────────────────── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>

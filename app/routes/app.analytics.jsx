@@ -1,9 +1,11 @@
 import { useMemo } from "react";
-import { useLoaderData, useNavigate, useRouteError, useSearchParams } from "react-router";
+import { useLoaderData, useNavigate, useOutletContext, useRouteError, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
-import { getDashboardData, presetRange } from "../lib/analytics.server.js";
+import { getDashboardData, presetRange, themePromotionIds, filterPromotionsForTheme } from "../lib/analytics.server.js";
+import { getSelectedTheme, getShopAndTheme, loadConfig } from "../lib/config.server.js";
 import { syncShopSettings } from "../lib/billing.server.js";
+import { ThemeSwitcher } from "./app.jsx";
 
 const PRESETS = [
   { id: "7d",  label: "Last 7 days",  days: 7 },
@@ -31,7 +33,21 @@ export const loader = async ({ request }) => {
   }
 
   const data = await getDashboardData(session.shop, { from, to });
-  return { data, preset, customRange: !!(fromParam && toParam) };
+
+  // Scope the per-promotion table to the SELECTED theme's configured promotions.
+  // The summary cards stay store-wide (see Issue 6). `deleted=1` also reveals
+  // orphaned/deleted promotions.
+  const preferred = await getSelectedTheme(session.shop);
+  const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
+  const themeConfig = await loadConfig(shopId, themeId);
+  const showDeleted = url.searchParams.get("deleted") === "1";
+  data.promotions = filterPromotionsForTheme(
+    data.promotions,
+    themePromotionIds(themeConfig),
+    { showDeleted },
+  );
+
+  return { data, preset, customRange: !!(fromParam && toParam), showDeleted };
 };
 
 function formatMoneyCents(cents, currency = "USD") {
@@ -63,6 +79,18 @@ const TYPE_LABELS = {
   "claim-gift": "Claim Gift",
   upsell: "Upsell",
 };
+
+const STATUS_BADGE = {
+  active: { label: "Active", tone: "success" },
+  draft: { label: "Draft", tone: "warning" },
+  "needs-attention": { label: "Needs attention", tone: "critical" },
+  deleted: { label: "Deleted", tone: "auto" },
+};
+
+function StatusBadge({ status }) {
+  const b = STATUS_BADGE[status] || STATUS_BADGE.draft;
+  return <s-badge tone={b.tone}>{b.label}</s-badge>;
+}
 
 function SummaryCard({ label, value, sub }) {
   return (
@@ -157,9 +185,13 @@ const SORTABLE_COLUMNS = {
   claims:         { label: "Claims",      align: "right", type: "number" },
   conversionRate: { label: "Conv. rate",  align: "right", type: "number" },
   orders:         { label: "Orders",      align: "right", type: "number" },
-  revenue:        { label: "Revenue",     align: "right", type: "number" },
+  revenue:        { label: "Influenced revenue", align: "right", type: "number" },
   aov:            { label: "AOV",         align: "right", type: "number" },
 };
+
+// Column render order. "status" is a non-sortable badge column injected after
+// "type"; every other key maps to a sortable SORTABLE_COLUMNS header.
+const COLUMN_ORDER = ["name", "type", "status", "impressions", "claims", "conversionRate", "orders", "revenue", "aov"];
 
 const DEFAULT_SORT = "revenue";
 const DEFAULT_DIR = "desc";
@@ -226,6 +258,9 @@ function PromotionRow({ p, onClick, currency }) {
       <td style={{ padding: "12px 16px" }}>
         <s-text tone="subdued">{TYPE_LABELS[p.type] ?? p.type ?? "—"}</s-text>
       </td>
+      <td style={{ padding: "12px 16px" }}>
+        <StatusBadge status={p.status} />
+      </td>
       <td style={{ padding: "12px 16px", textAlign: "right" }}>{p.impressions.toLocaleString()}</td>
       <td style={{ padding: "12px 16px", textAlign: "right" }}>{p.claims.toLocaleString()}</td>
       <td style={{ padding: "12px 16px", textAlign: "right" }}>{formatPct(p.conversionRate)}</td>
@@ -237,7 +272,8 @@ function PromotionRow({ p, onClick, currency }) {
 }
 
 export default function Analytics() {
-  const { data, preset, customRange } = useLoaderData();
+  const { data, preset, customRange, showDeleted } = useLoaderData();
+  const { themes, activeThemeId, mainThemeId } = useOutletContext();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -246,6 +282,14 @@ export default function Analytics() {
     next.set("preset", presetId);
     next.delete("from");
     next.delete("to");
+    setSearchParams(next);
+  }
+
+  function toggleDeleted(e) {
+    const on = e?.target?.checked ?? !showDeleted;
+    const next = new URLSearchParams(searchParams);
+    if (on) next.set("deleted", "1");
+    else next.delete("deleted");
     setSearchParams(next);
   }
 
@@ -267,6 +311,7 @@ export default function Analytics() {
 
   const summary = data.summary;
   const currency = data.currency || "USD";
+  const activeThemeName = themes?.find((t) => t.id === activeThemeId)?.name;
   const isEmpty = data.promotions.length === 0 && summary.impressions === 0;
   const sortedPromotions = useMemo(
     () => sortPromotions(data.promotions, sortKey, sortDir),
@@ -280,6 +325,11 @@ export default function Analytics() {
       <s-button slot="primary-action" onClick={() => { window.open(exportUrl, "_blank", "noopener"); }}>
         Download CSV
       </s-button>
+
+      {/* Theme selector — consistent with Home/Promotions */}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+        <ThemeSwitcher themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
+      </div>
 
       {/* Range picker */}
       <s-section padding="none">
@@ -317,13 +367,20 @@ export default function Analytics() {
         </s-section>
       ) : (
         <>
-          {/* Summary cards */}
+          {/* Summary cards — store-wide totals (not scoped to the selected theme) */}
           <s-section>
+            <div style={{ marginBottom: 10 }}>
+              <s-text variant="bodySm" tone="subdued">Store-wide totals</s-text>
+            </div>
             <s-grid gridTemplateColumns="repeat(5, 1fr)" gap="200">
               <SummaryCard label="Impressions" value={summary.impressions.toLocaleString()} />
-              <SummaryCard label="Claims" value={summary.claims.toLocaleString()} sub={formatPct(summary.claimRate) + " of impressions"} />
-              <SummaryCard label="Attributed orders" value={summary.orders.toLocaleString()} />
-              <SummaryCard label="Attributed revenue" value={formatMoneyCents(summary.revenue, currency)} />
+              <SummaryCard label="Claims" value={summary.claims.toLocaleString()} sub={formatPct(summary.claimRate) + " of claim-gift views"} />
+              <SummaryCard
+                label="Attributed orders"
+                value={summary.orders.toLocaleString()}
+                sub={summary.totalOrders > 0 ? `${formatPct(summary.orders / summary.totalOrders)} of ${summary.totalOrders.toLocaleString()} orders` : null}
+              />
+              <SummaryCard label="Attributed revenue" value={formatMoneyCents(summary.revenue, currency)} sub="orders using a promotion" />
               <SummaryCard label="AOV lift" value={formatLift(summary.aovLift)} sub={summary.aovWithPromo > 0 ? `${formatMoneyCents(summary.aovWithPromo, currency)} vs ${formatMoneyCents(summary.aovWithoutPromo, currency)}` : null} />
             </s-grid>
           </s-section>
@@ -334,32 +391,65 @@ export default function Analytics() {
           </s-section>
 
           {/* Per-promotion table */}
-          <s-section padding="none" heading="By promotion">
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <s-section padding="none">
+            <div style={{ padding: "16px 16px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <s-text variant="headingSm">
+                By promotion{activeThemeName ? ` · ${activeThemeName}` : ""}
+              </s-text>
+              <s-checkbox label="Show deleted" checked={showDeleted} onChange={toggleDeleted} />
+            </div>
+            <div style={{ padding: "0 16px 16px" }}>
+            <div style={{ width: "100%", overflowX: "auto", border: "1px solid var(--s-color-border, #e3e3e3)", borderRadius: 8 }}>
+            <table style={{ width: "100%", minWidth: 720, borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ background: "var(--s-color-bg-surface-secondary, #f6f6f7)", borderBottom: "1px solid var(--s-color-border, #e3e3e3)" }}>
-                  {Object.keys(SORTABLE_COLUMNS).map((key) => (
-                    <SortableHeader
-                      key={key}
-                      columnKey={key}
-                      currentKey={sortKey}
-                      currentDir={sortDir}
-                      onSort={onSort}
-                    />
-                  ))}
+                  {COLUMN_ORDER.map((key) =>
+                    key === "status" ? (
+                      <th key="status" style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap" }}>
+                        Status
+                      </th>
+                    ) : (
+                      <SortableHeader
+                        key={key}
+                        columnKey={key}
+                        currentKey={sortKey}
+                        currentDir={sortDir}
+                        onSort={onSort}
+                      />
+                    ),
+                  )}
                 </tr>
               </thead>
               <tbody>
-                {sortedPromotions.map((p) => (
-                  <PromotionRow
-                    key={p.id}
-                    p={p}
-                    currency={currency}
-                    onClick={() => navigate(`/app/analytics/${encodeURIComponent(p.id)}?${searchParams.toString()}`)}
-                  />
-                ))}
+                {sortedPromotions.length === 0 ? (
+                  <tr>
+                    <td colSpan={COLUMN_ORDER.length} style={{ padding: "28px 16px", textAlign: "center", color: "#6d7175" }}>
+                      No promotions{activeThemeName ? ` on ${activeThemeName}` : ""} in this range.
+                      {!showDeleted ? " Enable “Show deleted” to include removed promotions." : ""}
+                    </td>
+                  </tr>
+                ) : (
+                  sortedPromotions.map((p) => (
+                    <PromotionRow
+                      key={p.id}
+                      p={p}
+                      currency={currency}
+                      onClick={() => navigate(`/app/analytics/${encodeURIComponent(p.id)}?${searchParams.toString()}`)}
+                    />
+                  ))
+                )}
               </tbody>
             </table>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <s-text variant="bodySm" tone="subdued">
+                Influenced revenue = value of orders that used each promotion; an order using
+                multiple promotions is counted under each (so rows can overlap — the summary
+                counts each order once). Conversion rate = claims ÷ views for claim gifts,
+                orders ÷ views for offers.
+              </s-text>
+            </div>
+            </div>
           </s-section>
         </>
       )}
