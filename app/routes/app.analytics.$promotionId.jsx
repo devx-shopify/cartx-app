@@ -1,7 +1,8 @@
 import { useLoaderData, useNavigate, useRouteError, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
-import { getDashboardData, queryEvents, presetRange } from "../lib/analytics.server.js";
+import { getDashboardData, queryEvents, presetRange, themePromotionStatusMap } from "../lib/analytics.server.js";
+import { getSelectedTheme, getShopAndTheme, loadConfig } from "../lib/config.server.js";
 import { syncShopSettings } from "../lib/billing.server.js";
 
 export const loader = async ({ request, params }) => {
@@ -19,6 +20,17 @@ export const loader = async ({ request, params }) => {
   ]);
 
   const promo = dashboard.promotions.find((p) => p.id === promotionId) ?? null;
+
+  // Status must reflect the SELECTED theme, not the cross-theme aggregate — so
+  // the drill-down agrees with the "By promotion" table. Ids not on this theme
+  // (orphans) fall back to the global 'deleted'.
+  if (promo) {
+    const preferred = await getSelectedTheme(session.shop);
+    const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
+    const themeConfig = await loadConfig(shopId, themeId);
+    promo.status = themePromotionStatusMap(themeConfig).get(promo.id) ?? "deleted";
+  }
+
   return { promo, promotionId, preset, recentEvents, currency: dashboard.currency || "USD" };
 };
 

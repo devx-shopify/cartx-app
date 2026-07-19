@@ -238,14 +238,43 @@ export function themePromotionIds(config) {
   return ids
 }
 
-// Scope a dashboard's promotions to the selected theme: keep promotions
-// configured on that theme, plus — when `showDeleted` — the orphaned rows whose
-// promotion no longer exists in any config (status 'deleted'). Promotions that
-// belong only to *other* themes stay hidden (switch themes to see them).
-export function filterPromotionsForTheme(promotions, themeIds, { showDeleted = false } = {}) {
-  return promotions.filter(
-    (p) => themeIds.has(p.id) || (showDeleted && p.status === 'deleted'),
-  )
+// Per-theme promotion status, derived from a SINGLE theme's config (never the
+// cross-theme aggregate in promotion-meta). The same offer id can be enabled on
+// one theme and disabled on another, so status must reflect the theme the
+// merchant is viewing. Returns Map(id -> 'active' | 'needs-attention' | 'draft').
+// Ids absent from the map are simply not configured on this theme.
+export function themePromotionStatusMap(config) {
+  const map = new Map()
+  for (const arr of ['offers', 'coupons', 'claim_gifts']) {
+    for (const item of (config?.[arr] ?? [])) {
+      if (!item?.id) continue
+      map.set(
+        item.id,
+        item.enabled ? 'active' : item._needs_attention ? 'needs-attention' : 'draft',
+      )
+    }
+  }
+  return map
+}
+
+// Scope a dashboard's promotions to the selected theme AND re-stamp each row's
+// status from that theme's config (so a promotion disabled here reads "Draft"
+// even if it is enabled on another theme). Keeps promotions configured on the
+// theme, plus — when `showDeleted` — orphaned rows whose promotion no longer
+// exists in any config (status 'deleted'). Promotions that belong only to
+// *other* themes stay hidden (switch themes to see them).
+export function filterPromotionsForTheme(promotions, config, { showDeleted = false } = {}) {
+  const statusMap = themePromotionStatusMap(config)
+  const out = []
+  for (const p of promotions) {
+    const themeStatus = statusMap.get(p.id)
+    if (themeStatus) {
+      out.push({ ...p, status: themeStatus })
+    } else if (showDeleted && p.status === 'deleted') {
+      out.push(p)
+    }
+  }
+  return out
 }
 
 const RANGE_DEFAULT_DAYS = 30
