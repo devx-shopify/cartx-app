@@ -1932,6 +1932,18 @@ export default class CartDrawer extends Component {
     // Separate remove button: only when qty > 1 (at qty=1 trash is in the qty row)
     var showRemoveBtn = this._layout.show_remove_btn && displayQty > 1 && !isFreebie && !isClaimed;
 
+    // Freebie lines have no variant switcher, so the variant only shows if it's
+    // part of the title. The optimistic gift line's enriched title already bakes
+    // it in ("Product - Variant", variant_title null), while the reconciled
+    // Shopify line splits product_title + variant_title — which dropped the
+    // "- 100 ml" on reconcile. Fold it back in so the name is stable across the
+    // reconcile. Guarded by indexOf so we never double-append the optimistic case.
+    var lineTitle = item.product_title;
+    if (isFreebie && item.variant_title && item.variant_title !== 'Default Title'
+        && String(item.product_title || '').indexOf(item.variant_title) === -1) {
+      lineTitle = item.product_title + ' - ' + item.variant_title;
+    }
+
     // A claim gift can be configured at a price ("Customer pays"); it's stamped
     // on the line as `_claim_price` (per-unit, minor units). Show that price
     // rather than "FREE" when it's > 0.
@@ -1954,7 +1966,7 @@ export default class CartDrawer extends Component {
         <div class="cartmax-line-details">
           {this._layout.show_vendor && item.vendor ? <div class="cartmax-line-vendor">{item.vendor}</div> : null}
           <div class="cartmax-line-title-row">
-            <div class="cartmax-line-title">{item.product_title}</div>
+            <div class="cartmax-line-title">{lineTitle}</div>
             {showRemoveBtn
               ? <button
                   class="cartmax-line-remove"
