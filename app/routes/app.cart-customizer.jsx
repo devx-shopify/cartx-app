@@ -14,6 +14,16 @@ import { syncDrawerMetafield } from "../lib/drawer-metafield.server.js";
 import { ensureStorefrontToken } from "../lib/storefront-token.server.js";
 import CartPreview from "../components/CartPreview.jsx";
 
+// GoKwik "open checkout" snippet used by the customizer's checkout action. Calls
+// GoKwik's handler when present, else falls back to native /checkout so a store
+// where GoKwik hasn't loaded still checks out. Kept in sync with the value set
+// manually on the live store so new stores get the same, updated behavior.
+const GOKWIK_CHECKOUT_JS = `if (typeof window.onCheckoutClick === 'function') {
+  window.onCheckoutClick(button);
+} else {
+  window.location.href = '/checkout';
+}`;
+
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const preferred = await getSelectedTheme(session.shop);
@@ -1314,7 +1324,7 @@ function BehaviorTab({ s, update }) {
               if (v === "") {
                 update("behavior.checkout_js", "");
               } else if (!s.behavior.checkout_js) {
-                update("behavior.checkout_js", "window.onCheckoutClick(button)");
+                update("behavior.checkout_js", GOKWIK_CHECKOUT_JS);
               }
             }}
           />
@@ -1341,7 +1351,7 @@ function BehaviorTab({ s, update }) {
                 }}
               />
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <s-button onClick={() => update("behavior.checkout_js", "window.onCheckoutClick(button)")}>GoKwik</s-button>
+                <s-button onClick={() => update("behavior.checkout_js", GOKWIK_CHECKOUT_JS)}>GoKwik</s-button>
                 <s-button onClick={() => update("behavior.checkout_js", "window.RazorpayMagicCheckout && window.RazorpayMagicCheckout.trigger()")}>Razorpay Magic</s-button>
                 <s-button onClick={() => update("behavior.checkout_js", "window.ScCheckout && window.ScCheckout.open()")}>Shiprocket</s-button>
               </div>
