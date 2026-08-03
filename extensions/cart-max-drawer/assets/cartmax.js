@@ -740,9 +740,11 @@
   }
   function evaluateTrigger(offer, cart, adjTotal, adjQty) {
     if (offer.source && offer.source.type === "product") {
-      var ids = (offer.source.product_variant_ids || []).map(normalizeVariantId);
+      var ids = (offer.source.product_variant_ids || []).map(function(v2) {
+        return String(normalizeVariantId(v2));
+      });
       return (cart.items || []).some(function(li) {
-        return ids.indexOf(normalizeVariantId(li.variant_id)) !== -1;
+        return ids.indexOf(String(normalizeVariantId(li.variant_id))) !== -1;
       });
     }
     var t2 = offer.trigger || {};

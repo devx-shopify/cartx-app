@@ -91,9 +91,17 @@ function evaluateTrigger(offer, cart, adjTotal, adjQty) {
   // add such a gift, since it drives gift add/remove from local eval, not the
   // server's to_add.
   if (offer.source && offer.source.type === 'product') {
-    var ids = (offer.source.product_variant_ids || []).map(normalizeId);
+    // Compare as strings: `product_variant_ids` are gids that normalize to a
+    // numeric STRING, but a /cart.js line's `variant_id` is a NUMBER that
+    // normalizeVariantId leaves untouched — so `indexOf` (strict ===) never
+    // matches without coercing both sides. (The server's normalizeId does
+    // String(id); mirror that here.) Getting this wrong makes the offer read as
+    // "not triggered" locally, which yanks the just-added gift back out.
+    var ids = (offer.source.product_variant_ids || []).map(function (v) {
+      return String(normalizeId(v));
+    });
     return (cart.items || []).some(function (li) {
-      return ids.indexOf(normalizeId(li.variant_id)) !== -1;
+      return ids.indexOf(String(normalizeId(li.variant_id))) !== -1;
     });
   }
   var t = offer.trigger || {};
