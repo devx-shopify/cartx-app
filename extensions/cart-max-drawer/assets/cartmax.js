@@ -738,7 +738,13 @@
     }
     return true;
   }
-  function evaluateTrigger(offer, adjTotal, adjQty) {
+  function evaluateTrigger(offer, cart, adjTotal, adjQty) {
+    if (offer.source && offer.source.type === "product") {
+      var ids = (offer.source.product_variant_ids || []).map(normalizeVariantId);
+      return (cart.items || []).some(function(li) {
+        return ids.indexOf(normalizeVariantId(li.variant_id)) !== -1;
+      });
+    }
     var t2 = offer.trigger || {};
     var priceMet = t2.price_threshold && adjTotal >= t2.price_threshold;
     var qtyMet = t2.quantity_threshold && adjQty >= t2.quantity_threshold;
@@ -752,7 +758,7 @@
       var offer = offers[i2];
       if (!pageMatch(offer.page_handles, page)) continue;
       if (!customerMatchesTags(offer, customer)) continue;
-      var triggered = evaluateTrigger(offer, adjTotal, adjQty);
+      var triggered = evaluateTrigger(offer, cart, adjTotal, adjQty);
       if (triggered) {
         triggeredIds[offer.id] = true;
         if (offer.reward && offer.reward.type === "auto_add_gift" && offer.reward.add_mode === "auto") {

@@ -167,6 +167,11 @@ export const action = async ({ request }) => {
   const clientConfig = {
     offers: (config.offers || []).filter((o) => o.enabled).map((o) => ({
       id: o.id,
+      // `source` drives product/collection-presence triggers (e.g. a product-page
+      // gift with an empty `trigger: {}`). The client's local eval reconciles gifts
+      // on the AJAX cart, so without `source` it can't reproduce the server's
+      // product-presence trigger and the gift is never added. See rules.js.
+      source: o.source,
       trigger: o.trigger,
       reward: { type: o.reward.type, gift_variants: o.reward.gift_variants, gift_variant_data: o.reward.gift_variant_data, quantity_per_variant: o.reward.quantity_per_variant, add_mode: o.reward.add_mode },
       page_handles: o.page_handles,

@@ -84,7 +84,18 @@ function customerMatchesTags(rule, customer) {
   return true;
 }
 
-function evaluateTrigger(offer, adjTotal, adjQty) {
+function evaluateTrigger(offer, cart, adjTotal, adjQty) {
+  // Product-presence trigger — fires when any source variant is in the cart
+  // (e.g. a product-page gift with an empty `trigger: {}`). Mirrors the server
+  // (triggers.server.js); without this the local AJAX-cart reconcile can never
+  // add such a gift, since it drives gift add/remove from local eval, not the
+  // server's to_add.
+  if (offer.source && offer.source.type === 'product') {
+    var ids = (offer.source.product_variant_ids || []).map(normalizeId);
+    return (cart.items || []).some(function (li) {
+      return ids.indexOf(normalizeId(li.variant_id)) !== -1;
+    });
+  }
   var t = offer.trigger || {};
   var priceMet = t.price_threshold && adjTotal >= t.price_threshold;
   var qtyMet = t.quantity_threshold && adjQty >= t.quantity_threshold;
@@ -101,7 +112,7 @@ function evaluateOffers(offers, cart, adjTotal, adjQty, page, customer) {
     if (!pageMatch(offer.page_handles, page)) continue;
     if (!customerMatchesTags(offer, customer)) continue;
 
-    var triggered = evaluateTrigger(offer, adjTotal, adjQty);
+    var triggered = evaluateTrigger(offer, cart, adjTotal, adjQty);
     if (triggered) {
       triggeredIds[offer.id] = true;
       if (offer.reward && offer.reward.type === 'auto_add_gift' && offer.reward.add_mode === 'auto') {
