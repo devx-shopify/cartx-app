@@ -12,6 +12,7 @@ import {
   getShopAndTheme,
 } from "../lib/config.server.js";
 import { getActivePlan, ensureStoreRecord, syncShopSettings } from "../lib/billing.server.js";
+import { syncPlanMetafield } from "../lib/drawer-metafield.server.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -36,6 +37,13 @@ export const loader = async ({ request }) => {
     planData = await getActivePlan(admin, shopId);
   } catch {
     // Default to free if billing query fails
+  }
+  // Mirror the plan tier to a storefront-readable metafield so the drawer theme
+  // block can suppress itself on drawer-less plans (Basic). Best-effort.
+  try {
+    await syncPlanMetafield(admin, planData.plan);
+  } catch {
+    // Non-fatal — the block fails open (renders) if the metafield is stale/absent.
   }
 
   return {

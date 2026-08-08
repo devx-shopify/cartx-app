@@ -10,6 +10,11 @@
   drawer flashes on click until the stylesheet loads. Keep these selectors in
   sync with the matching block in assets/cartmax.css.
 {% endcomment %}
+{%- comment -%} Drawer-less plans (Basic) don't include the cart drawer. Suppress
+  the ENTIRE block — interception script AND bundle — so enabling this embed on
+  Basic does nothing. Fail-open: hides only when the plan metafield is exactly
+  "basic"; absent / Pro / Enterprise always render (protects live drawer stores). {%- endcomment -%}
+{%- unless shop.metafields['$app'].plan.value == 'basic' -%}
 <style>
   #cartmax-root { display: block !important; }
   cart-drawer,
@@ -228,6 +233,7 @@
 {{ 'cartmax.css' | asset_url | stylesheet_tag }}
 <script src="{{ 'cartmax.js' | asset_url }}" defer></script>
 <!-- cache-bust: v2 -->
+{%- endunless -%}
 
 {% schema %}
 {

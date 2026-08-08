@@ -64,3 +64,52 @@ export async function syncDrawerMetafield(admin, drawer) {
     return false;
   }
 }
+
+/**
+ * Mirror the merchant's plan tier into an app-owned shop metafield so the drawer
+ * theme block (app-embed.liquid) can suppress itself on drawer-less plans (Basic)
+ * — even if the merchant enables the drawer embed. Best-effort: never throws.
+ */
+export async function syncPlanMetafield(admin, plan) {
+  try {
+    const shopRes = await admin.graphql(
+      `#graphql
+      query cartxShopId { shop { id } }`
+    );
+    const ownerId = (await shopRes.json()).data?.shop?.id;
+    if (!ownerId) return false;
+
+    const res = await admin.graphql(
+      `#graphql
+      mutation cartxSetPlanMetafield($metafields: [MetafieldsSetInput!]!) {
+        metafieldsSet(metafields: $metafields) {
+          metafields { id }
+          userErrors { field message }
+        }
+      }`,
+      {
+        variables: {
+          metafields: [
+            {
+              ownerId,
+              namespace: METAFIELD_NAMESPACE,
+              key: "plan",
+              type: "single_line_text_field",
+              value: String(plan || "free"),
+            },
+          ],
+        },
+      }
+    );
+    const errors = (await res.json()).data?.metafieldsSet?.userErrors;
+    if (errors && errors.length) {
+      console.error("[cartx] plan metafield userErrors:", errors);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    captureException(err);
+    console.error("[cartx] syncPlanMetafield failed:", err);
+    return false;
+  }
+}

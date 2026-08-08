@@ -64,6 +64,17 @@ description = "Storefront drawer styling (managed by cartx)."
 type = "json"
 access.storefront = "public_read"
 
+# App-owned shop metafield holding the merchant's cartx plan tier, exposed to the
+# storefront so the drawer theme block (app-embed.liquid) can suppress itself on
+# drawer-less plans (Basic). Written by app/lib/drawer-metafield.server.js on each
+# admin load. Read in Liquid as shop.metafields['$app'].plan. Fail-open: the block
+# only hides when this equals "basic", so an absent/other value always renders.
+[shop.metafields.app.plan]
+name = "cartx plan"
+description = "Merchant's cartx plan tier (managed by cartx)."
+type = "single_line_text_field"
+access.storefront = "public_read"
+
 [auth]
 redirect_urls = [ "https://cartx.fly.dev/auth/callback" ]
 
