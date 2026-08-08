@@ -29,15 +29,23 @@ export const loader = async ({ request }) => {
   const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
 
-  // Bring an over-limit store into compliance by DRAFTING the excess offers
-  // (e.g. offers created on Free, then downgraded to Basic) — never deleting.
-  // Persist so the list matches what's live at checkout (already capped by the
-  // Function sync). Best-effort; never blocks the page.
+  // Resolve the plan HERE (this page's own loader) — the source of truth for
+  // both normalization and the client gates — instead of trusting the parent
+  // layout's outlet-context planData, which can go stale/free on a transient
+  // billing-query hiccup and silently disable every gate.
+  let plan = "free";
+  let offerLimit = Infinity;
   try {
-    const limit = planOfferLimit(await getActivePlan(admin, session.shop));
-    if (enforceActiveOfferCap(config, limit) > 0) {
-      await saveConfig(shopId, themeId, config);
-    }
+    const planData = await getActivePlan(admin, session.shop);
+    plan = planData.plan;
+    offerLimit = planOfferLimit(planData);
+    // Bring an over-limit store into compliance by DRAFTING the excess offers
+    // (e.g. offers created on Free, then downgraded to Basic) — never deleting.
+    const drafted = enforceActiveOfferCap(config, offerLimit);
+    console.log(
+      `[cartx] promotions loader: shop=${session.shop} plan=${plan} limit=${offerLimit} offers=${config.offers.length} drafted=${drafted}`,
+    );
+    if (drafted > 0) await saveConfig(shopId, themeId, config);
   } catch (err) {
     console.error("[cartx] offer cap normalization failed:", err);
   }
@@ -53,7 +61,7 @@ export const loader = async ({ request }) => {
     promotions.push({ id: gift.id, type: "claim-gift", name: gift.name, enabled: gift.enabled, trigger: gift.trigger ? (gift.trigger.type === "price" ? `Rs.${gift.trigger.threshold} cart total` : `${gift.trigger.threshold} items`) : "No trigger", needsAttention: gift._needs_attention || null });
   }
 
-  return { promotions };
+  return { promotions, plan, offerLimit: Number.isFinite(offerLimit) ? offerLimit : null };
 };
 
 function triggerSummary(offer) {
@@ -166,16 +174,17 @@ function EmptyPromotions({ hasSearch, navigate }) {
 const PAGE_SIZE = 10;
 
 export default function PromotionsIndex() {
-  const { promotions } = useLoaderData();
+  const { promotions, offerLimit: loaderOfferLimit } = useLoaderData();
   const fetcher = useFetcher();
   const shopify = useAppBridge();
   const [searchParams] = useSearchParams();
-  const { themes, activeThemeId, mainThemeId, planData } = useOutletContext();
+  const { themes, activeThemeId, mainThemeId } = useOutletContext();
   const [confirmFn, confirmModal] = useConfirm();
   const navigate = useNavigate();
 
-  // Active-offer cap (Basic only; undefined limit on other plans ⇒ no cap).
-  const offerLimit = planData?.limits?.active_offers ?? Infinity;
+  // Active-offer cap from THIS page's own loader (authoritative & fresh) — not the
+  // parent layout's outlet context, which can go stale. null ⇒ uncapped plan.
+  const offerLimit = loaderOfferLimit ?? Infinity;
   const activeOfferCount = promotions.filter((p) => p.type === "offer" && p.enabled).length;
   const atOfferCap = Number.isFinite(offerLimit) && activeOfferCount >= offerLimit;
 
