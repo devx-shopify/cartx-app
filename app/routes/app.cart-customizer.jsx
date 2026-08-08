@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useLoaderData, useFetcher, useOutletContext, useRouteError } from "react-router";
+import { useLoaderData, useFetcher, useOutletContext, useRouteError, redirect } from "react-router";
 import { ThemeSwitcher } from "./app.jsx";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { useAppBridge } from "@shopify/app-bridge-react";
@@ -10,6 +10,7 @@ import {
   getShopAndTheme,
   getSelectedTheme,
 } from "../lib/config.server.js";
+import { getActivePlan, planAllowsDrawer } from "../lib/billing.server.js";
 import { syncDrawerMetafield } from "../lib/drawer-metafield.server.js";
 import { ensureStorefrontToken } from "../lib/storefront-token.server.js";
 import CartPreview from "../components/CartPreview.jsx";
@@ -26,6 +27,11 @@ const GOKWIK_CHECKOUT_JS = `if (typeof window.onCheckoutClick === 'function') {
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
+  // The cart drawer isn't part of drawer-less plans (Basic) — send them to
+  // billing rather than the customizer. Nav also hides the link; this guards a
+  // direct visit.
+  const planData = await getActivePlan(admin, session.shop);
+  if (!planAllowsDrawer(planData)) return redirect("/app/billing");
   const preferred = await getSelectedTheme(session.shop);
   const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);

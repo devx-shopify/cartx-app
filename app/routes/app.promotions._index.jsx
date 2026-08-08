@@ -15,6 +15,11 @@ import {
   migrateLegacyDiscountRules,
   syncDiscounts,
 } from "../lib/discount.server.js";
+import {
+  getActivePlan,
+  offerCapPolicyError,
+  countActiveOffers,
+} from "../lib/billing.server.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -52,6 +57,12 @@ export const action = async ({ request }) => {
   await migrateLegacyDiscountRules(config, session.shop);
   const body = await request.json();
 
+  // Plan policy (Basic only): capture the active-offer count before any mutation so
+  // we can reject ops that ENABLE offers past the cap (toggle-on, bulk-toggle-on,
+  // duplicate). Delete/disable never increase the count, so they're always allowed.
+  const planData = await getActivePlan(admin, session.shop);
+  const beforeActive = countActiveOffers(config);
+
   // Bulk path: { intent: "bulk-toggle"|"bulk-delete", items: [{ id, type }], enabled?: boolean }
   if (body.items) {
     const { intent, items, enabled } = body;
@@ -66,6 +77,8 @@ export const action = async ({ request }) => {
         else if (type === "claim-gift") { const g = config.claim_gifts.find((g) => g.id === id); if (g) g.enabled = enabled; }
       }
     }
+    const capErr = offerCapPolicyError(planData, beforeActive, countActiveOffers(config));
+    if (capErr) return capErr;
     await saveConfig(shopId, themeId, config);
     const affectedTypes = [...new Set(items.map((i) => i.type))];
     const warnings = (await Promise.all(affectedTypes.map((t) => syncDiscounts(admin, session.shop, config, t)))).flat();
@@ -85,6 +98,9 @@ export const action = async ({ request }) => {
     if (intent === "delete") config.claim_gifts = config.claim_gifts.filter((g) => g.id !== id);
     else if (intent === "toggle") { const gift = config.claim_gifts.find((g) => g.id === id); if (gift) gift.enabled = !gift.enabled; }
   }
+
+  const capErr = offerCapPolicyError(planData, beforeActive, countActiveOffers(config));
+  if (capErr) return capErr;
 
   await saveConfig(shopId, themeId, config);
 
@@ -142,6 +158,23 @@ export default function PromotionsIndex() {
   const { themes, activeThemeId, mainThemeId, planData } = useOutletContext();
   const [confirmFn, confirmModal] = useConfirm();
   const navigate = useNavigate();
+
+  // Active-offer cap (Basic only; undefined limit on other plans ⇒ no cap).
+  const offerLimit = planData?.limits?.active_offers ?? Infinity;
+  const activeOfferCount = promotions.filter((p) => p.type === "offer" && p.enabled).length;
+  const atOfferCap = Number.isFinite(offerLimit) && activeOfferCount >= offerLimit;
+
+  function goCreate() {
+    if (atOfferCap) {
+      shopify.toast.show(
+        `Your plan allows up to ${offerLimit} active offers — upgrade to Pro for unlimited.`,
+        { isError: true, duration: 6000 },
+      );
+      navigate("/app/billing");
+      return;
+    }
+    navigate("/app/promotions/new?type=offer");
+  }
 
   const initialTab = searchParams.get("tab") || "all";
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -229,9 +262,17 @@ export default function PromotionsIndex() {
 
   return (
     <s-page heading="Promotions">
-      <s-button slot="primary-action" variant="primary" onClick={() => navigate("/app/promotions/new?type=offer")}>
-        Create promotion
+      <s-button slot="primary-action" variant="primary" onClick={goCreate}>
+        {atOfferCap ? "Upgrade for more offers" : "Create promotion"}
       </s-button>
+
+      {atOfferCap && (
+        <s-banner tone="info" heading={`You're using all ${offerLimit} offers on your plan`}>
+          <s-text>
+            Disable an existing offer, or upgrade to Pro for unlimited promotions and the cart drawer.
+          </s-text>
+        </s-banner>
+      )}
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
         <ThemeSwitcher themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
@@ -261,7 +302,7 @@ export default function PromotionsIndex() {
             <div style={{ fontSize: 14, color: "#6d7175", marginBottom: 24, maxWidth: 400, margin: "0 auto 24px" }}>
               Add offers, coupons, or claim gifts to increase your average order value and delight your customers.
             </div>
-            <s-button variant="primary" onClick={() => navigate("/app/promotions/new?type=offer")}>
+            <s-button variant="primary" onClick={goCreate}>
               Create promotion
             </s-button>
           </div>

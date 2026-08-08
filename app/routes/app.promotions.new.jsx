@@ -1,4 +1,4 @@
-import { useSearchParams } from "react-router";
+import { useSearchParams, useOutletContext } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
@@ -14,6 +14,13 @@ import {
   syncDiscounts,
 } from "../lib/discount.server.js";
 import { markStep } from "../lib/onboarding.server.js";
+import {
+  getActivePlan,
+  promoTypePolicyError,
+  offerRewardPolicyError,
+  offerCapPolicyError,
+  countActiveOffers,
+} from "../lib/billing.server.js";
 import { usePromotionForm } from "../hooks/usePromotionForm.js";
 import OfferForm from "../components/OfferForm.jsx";
 import CouponForm from "../components/CouponForm.jsx";
@@ -34,6 +41,17 @@ export const action = async ({ request }) => {
   const type = body._type;
   delete body._type;
 
+  // Plan policy (Basic only; other plans are unrestricted). Reject disallowed
+  // promo type / reward type up front, and the active-offer cap before persisting.
+  const planData = await getActivePlan(admin, session.shop);
+  const typeErr = promoTypePolicyError(planData, type);
+  if (typeErr) return typeErr;
+  if (type === "offer") {
+    const rewardErr = offerRewardPolicyError(planData, body.reward?.type);
+    if (rewardErr) return rewardErr;
+  }
+  const beforeActive = countActiveOffers(config);
+
   if (type === "offer") {
     // Enrich gift variants (title + image) so the drawer can render the gift
     // instantly — the "Show offer card" cards AND the auto-added gift line
@@ -51,6 +69,9 @@ export const action = async ({ request }) => {
     body.claimable_variant_data = enrichVariantData(body.claimable_variants || [], variantDataMap);
     config.claim_gifts.push({ id: generateId(), ...body });
   }
+
+  const capErr = offerCapPolicyError(planData, beforeActive, countActiveOffers(config));
+  if (capErr) return capErr;
 
   await saveConfig(shopId, themeId, config);
 
@@ -76,9 +97,28 @@ const SUCCESS_LABELS = {
   "claim-gift": "Claim gift created",
 };
 
+const PROMO_TYPE_OPTIONS = [
+  { value: "offer", label: "Offer — auto-add free gifts or bundles" },
+  { value: "coupon", label: "Coupon — link a Shopify discount code" },
+  { value: "claim-gift", label: "Claim Gift — let customers pick a freebie" },
+];
+
 export default function NewPromotion() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const type = searchParams.get("type") || "offer";
+  const { planData } = useOutletContext();
+  // Capability fields ride on planData (spread from PLANS); undefined ⇒ unrestricted.
+  const allowedPromoTypes = planData?.promoTypes;
+  const allowedRewardTypes = planData?.offerRewardTypes;
+  const rawType = searchParams.get("type") || "offer";
+  // Coerce a disallowed ?type= (e.g. a Basic user landing on ?type=coupon) to the
+  // first allowed type so the form + server never disagree.
+  const type =
+    allowedPromoTypes && !allowedPromoTypes.includes(rawType)
+      ? allowedPromoTypes[0]
+      : rawType;
+  const typeOptions = PROMO_TYPE_OPTIONS.filter(
+    (o) => !allowedPromoTypes || allowedPromoTypes.includes(o.value),
+  );
   const { formRef, submitting, handleSubmit, handleSave, handleDiscard } = usePromotionForm({ type, successLabels: SUCCESS_LABELS });
 
   return (
@@ -88,20 +128,22 @@ export default function NewPromotion() {
         <button id="discard-action" onClick={handleDiscard}></button>
       </ui-save-bar>
 
-      {/* Type selector */}
-      <s-section heading="Promotion type">
-        <s-select
-          label="What kind of promotion do you want to create?"
-          value={type}
-          onChange={(e) => setSearchParams({ type: e.target.value })}
-        >
-          <s-option value="offer">Offer — auto-add free gifts or bundles</s-option>
-          <s-option value="coupon">Coupon — link a Shopify discount code</s-option>
-          <s-option value="claim-gift">Claim Gift — let customers pick a freebie</s-option>
-        </s-select>
-      </s-section>
+      {/* Type selector — only shown when more than one promo type is available */}
+      {typeOptions.length > 1 && (
+        <s-section heading="Promotion type">
+          <s-select
+            label="What kind of promotion do you want to create?"
+            value={type}
+            onChange={(e) => setSearchParams({ type: e.target.value })}
+          >
+            {typeOptions.map((o) => (
+              <s-option key={o.value} value={o.value}>{o.label}</s-option>
+            ))}
+          </s-select>
+        </s-section>
+      )}
 
-      {type === "offer" && <OfferForm ref={formRef} onSubmit={handleSubmit} submitting={submitting} />}
+      {type === "offer" && <OfferForm ref={formRef} onSubmit={handleSubmit} submitting={submitting} allowedRewardTypes={allowedRewardTypes} />}
       {type === "coupon" && <CouponForm ref={formRef} onSubmit={handleSubmit} submitting={submitting} />}
       {type === "claim-gift" && <ClaimGiftForm ref={formRef} onSubmit={handleSubmit} submitting={submitting} />}
     </s-page>

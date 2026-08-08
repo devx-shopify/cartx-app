@@ -54,6 +54,10 @@ export function usePromotionForm({ type, successLabels, saveBarId = "promotion-s
         shopify.toast.show(successLabels[type] || "Saved");
       }
       navigate("/app/promotions");
+    } else if (fetcher.data && fetcher.data.ok === false && fetcher.data.error) {
+      // Server rejected the save (e.g. a plan policy limit). Surface it and stay
+      // on the form so nothing is lost — the save bar remains visible.
+      shopify.toast.show(fetcher.data.error, { isError: true, duration: 6000 });
     }
   }, [fetcher.data, navigate, shopify, type, successLabels, saveBarId]);
 

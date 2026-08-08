@@ -326,7 +326,12 @@ export default function App() {
     <AppProvider embedded apiKey={apiKey}>
       <s-app-nav>
         <s-link href="/app">Home</s-link>
-        <s-link href="/app/cart-customizer">Customize Cart</s-link>
+        {/* The cart drawer isn't part of drawer-less plans (Basic) — hide its
+            customizer. `allowsDrawer` is carried on planData (spread from PLANS);
+            undefined on Pro/Free/Enterprise ⇒ shown. */}
+        {planData?.allowsDrawer !== false && (
+          <s-link href="/app/cart-customizer">Customize Cart</s-link>
+        )}
         <s-link href="/app/promotions">Promotions</s-link>
         <s-link href="/app/analytics">Analytics</s-link>
         <s-link href="/app/settings">Settings</s-link>

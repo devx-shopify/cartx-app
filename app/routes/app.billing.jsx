@@ -95,6 +95,7 @@ export const action = async ({ request }) => {
 // Client-safe plan display data
 const CLIENT_PLANS = {
   free: { name: "Free", amount: 0, amountAnnual: 0, trialDays: 0 },
+  basic: { name: "Basic", amount: 50, amountAnnual: 480, trialDays: 7 },
   pro: { name: "Pro", amount: 150, amountAnnual: 1440, trialDays: 7 },
   enterprise: { name: "Enterprise", isEnterprise: true },
 };
@@ -106,9 +107,14 @@ const ANNUAL_DISCOUNT_PCT = 20;
 const FEATURE_LIST = [
   { key: "drawer", label: "Cart drawer (progress bar, upsells, coupons)" },
   { key: "promotions", label: "Unlimited promotions" },
-  { key: "discount_function", label: "Automatic gift discounts at checkout" },
+  { key: "discount_function", label: "Automatic discounts at checkout" },
   { key: "theme_switcher", label: "Multi-theme configuration" },
 ];
+
+// Per-plan label overrides for the feature checklist (display only).
+const FEATURE_LABEL_OVERRIDES = {
+  basic: { promotions: "Up to 3 volume-discount offers" },
+};
 
 const ENTERPRISE_EXTRAS = [
   "Custom pricing & invoicing",
@@ -121,6 +127,12 @@ const PLAN_FEATURES = {
     drawer: true,
     promotions: true,
     discount_function: false,
+    theme_switcher: false,
+  },
+  basic: {
+    drawer: false,
+    promotions: true, // capped — label overridden to "Up to 3…"
+    discount_function: true,
     theme_switcher: false,
   },
   pro: {
@@ -163,7 +175,7 @@ export default function BillingPage() {
   // For enterprise stores the Enterprise card shows their cartx-set price + a
   // cancel option; for everyone else it's a contact-only card (email to upgrade).
   const isEnterpriseStore = planData.isLegacy;
-  const planOrder = ["pro", "enterprise"];
+  const planOrder = ["basic", "pro", "enterprise"];
 
   useEffect(() => {
     if (!submitting) setActivePlanAction(null);
@@ -236,7 +248,11 @@ export default function BillingPage() {
             style={{
               display: "grid",
               gridTemplateColumns:
-                planOrder.length > 1 ? "1fr 1fr" : "minmax(0, 440px)",
+                planOrder.length > 2
+                  ? "repeat(3, minmax(0, 1fr))"
+                  : planOrder.length > 1
+                    ? "1fr 1fr"
+                    : "minmax(0, 440px)",
               justifyContent: "center",
               gap: 16,
             }}
@@ -428,6 +444,9 @@ export default function BillingPage() {
                     >
                       {FEATURE_LIST.map((feat) => {
                         const has = PLAN_FEATURES[planKey][feat.key];
+                        const label =
+                          FEATURE_LABEL_OVERRIDES[planKey]?.[feat.key] ||
+                          feat.label;
                         return (
                           <div
                             key={feat.key}
@@ -465,7 +484,7 @@ export default function BillingPage() {
                                 color: has ? "#1a1a1a" : "#8c8c8c",
                               }}
                             >
-                              {feat.label}
+                              {label}
                             </span>
                           </div>
                         );

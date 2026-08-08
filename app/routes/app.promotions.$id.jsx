@@ -1,4 +1,4 @@
-import { useLoaderData } from "react-router";
+import { useLoaderData, useOutletContext } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
@@ -12,6 +12,12 @@ import {
   migrateLegacyDiscountRules,
   syncDiscounts,
 } from "../lib/discount.server.js";
+import {
+  getActivePlan,
+  offerRewardPolicyError,
+  offerCapPolicyError,
+  countActiveOffers,
+} from "../lib/billing.server.js";
 import { usePromotionForm } from "../hooks/usePromotionForm.js";
 import OfferForm from "../components/OfferForm.jsx";
 import CouponForm from "../components/CouponForm.jsx";
@@ -56,6 +62,15 @@ export const action = async ({ request, params }) => {
   const type = body._type;
   delete body._type;
 
+  // Plan policy (Basic only; other plans unrestricted). Guard reward-type switches
+  // and the active-offer cap when this edit enables an offer.
+  const planData = await getActivePlan(admin, session.shop);
+  if (type === "offer") {
+    const rewardErr = offerRewardPolicyError(planData, body.reward?.type);
+    if (rewardErr) return rewardErr;
+  }
+  const beforeActive = countActiveOffers(config);
+
   if (type === "offer") {
     const idx = config.offers.findIndex((o) => o.id === params.id);
     if (idx === -1) throw new Response("Offer not found", { status: 404 });
@@ -76,6 +91,9 @@ export const action = async ({ request, params }) => {
     body.claimable_variant_data = enrichVariantData(body.claimable_variants || [], variantDataMap);
     config.claim_gifts[idx] = { ...config.claim_gifts[idx], ...body, id: params.id };
   }
+
+  const capErr = offerCapPolicyError(planData, beforeActive, countActiveOffers(config));
+  if (capErr) return capErr;
 
   await saveConfig(shopId, themeId, config);
 
@@ -99,6 +117,7 @@ const SUCCESS_LABELS = {
 
 export default function EditPromotion() {
   const { type, data, variantDataMap } = useLoaderData();
+  const { planData } = useOutletContext();
   const { formRef, submitting, handleSubmit, handleSave, handleDiscard } = usePromotionForm({ type, successLabels: SUCCESS_LABELS });
 
   return (
@@ -108,7 +127,7 @@ export default function EditPromotion() {
         <button id="discard-action" onClick={handleDiscard}></button>
       </ui-save-bar>
 
-      {type === "offer" && <OfferForm ref={formRef} offer={data} variantDataMap={variantDataMap} onSubmit={handleSubmit} submitting={submitting} />}
+      {type === "offer" && <OfferForm ref={formRef} offer={data} variantDataMap={variantDataMap} onSubmit={handleSubmit} submitting={submitting} allowedRewardTypes={planData?.offerRewardTypes} />}
       {type === "coupon" && <CouponForm ref={formRef} coupon={data} onSubmit={handleSubmit} submitting={submitting} />}
       {type === "claim-gift" && <ClaimGiftForm ref={formRef} claimGift={data} variantDataMap={variantDataMap} onSubmit={handleSubmit} submitting={submitting} />}
     </s-page>

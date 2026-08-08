@@ -13,6 +13,25 @@ export const PLANS = {
       theme_switcher: false,
     },
   },
+  // Entry tier: cartx's promotion engine (volume/quantity-break discounts) WITHOUT
+  // the cart drawer. The volume Function applies the discount at checkout once the
+  // merchant sets `_cartx:"on"` (via the activator theme block). Capability fields
+  // (limits/offerRewardTypes/promoTypes/allowsDrawer) are read ONLY to restrict
+  // Basic — plans that omit them (free/pro/enterprise) stay unrestricted.
+  basic: {
+    name: "Basic",
+    amount: 50.0,
+    amountAnnual: 480.0, // 50 × 12 × 0.8
+    trialDays: 7,
+    features: {
+      discount_function: true,
+      theme_switcher: false,
+    },
+    limits: { active_offers: 3 },
+    offerRewardTypes: ["volume_discount"],
+    promoTypes: ["offer"],
+    allowsDrawer: false,
+  },
   pro: {
     name: "Pro",
     amount: 150.0,
@@ -221,9 +240,16 @@ export async function getActivePlan(admin, shopDomain) {
   const billingCycle = pricing?.interval === "ANNUAL" ? "annual" : "monthly";
 
   const proThreshold = amountForCycle(PLANS.pro, billingCycle);
+  const basicThreshold = amountForCycle(PLANS.basic, billingCycle);
 
+  // Resolve tiers by amount, highest first — Pro must be checked before Basic so
+  // a Pro subscription never mis-resolves to the cheaper Basic band.
   if (amount >= proThreshold) {
     return { plan: "pro", subscriptionId: standardSub.id, isLegacy: false, billingCycle, ...PLANS.pro };
+  }
+
+  if (amount >= basicThreshold) {
+    return { plan: "basic", subscriptionId: standardSub.id, isLegacy: false, billingCycle, ...PLANS.basic };
   }
 
   return { plan: "free", isLegacy: false, billingCycle: "monthly", ...PLANS.free };
@@ -354,6 +380,74 @@ export async function cancelSubscription(admin, subscriptionId) {
 
 export function hasFeature(planData, feature) {
   return planData?.features?.[feature] === true;
+}
+
+// ── Plan capability checks ───────────────────────────────
+//
+// These read the capability descriptors on a plan (limits/offerRewardTypes/
+// promoTypes/allowsDrawer). Only Basic defines them, so plans that omit them
+// (free/pro/enterprise) are treated as UNRESTRICTED — this keeps existing tiers
+// (incl. live Pro/Enterprise stores) byte-for-byte unchanged.
+
+export function planOfferLimit(planData) {
+  return PLANS[planData?.plan]?.limits?.active_offers ?? Infinity;
+}
+
+export function planAllowsReward(planData, rewardType) {
+  const allowed = PLANS[planData?.plan]?.offerRewardTypes;
+  return !allowed || allowed.includes(rewardType);
+}
+
+export function planAllowsPromoType(planData, promoType) {
+  const allowed = PLANS[planData?.plan]?.promoTypes;
+  return !allowed || allowed.includes(promoType);
+}
+
+export function planAllowsDrawer(planData) {
+  return PLANS[planData?.plan]?.allowsDrawer !== false;
+}
+
+// ── Promotion policy guards (server-side enforcement) ────
+//
+// Used by the promotion write actions to enforce a plan's promotion policy.
+// Each returns an error payload the action can return verbatim, or null when the
+// op is allowed. Only Basic carries a policy; on every other plan these are
+// no-ops (the capability helpers above return "unrestricted").
+
+function policyError(message) {
+  return { ok: false, error: message, upgrade_required: true, required_plan: "pro" };
+}
+
+export function promoTypePolicyError(planData, promoType) {
+  if (planAllowsPromoType(planData, promoType)) return null;
+  return policyError(
+    "Your plan supports offers only — upgrade to Pro for coupons and claim gifts.",
+  );
+}
+
+export function offerRewardPolicyError(planData, rewardType) {
+  if (planAllowsReward(planData, rewardType)) return null;
+  return policyError(
+    "Your plan supports volume discounts only — upgrade to Pro for free gifts and bundles.",
+  );
+}
+
+// Reject only when the op INCREASES the active-offer count beyond the plan limit.
+// A store that lands over the cap (e.g. a Pro→Basic downgrade) can still edit,
+// disable, and delete offers — it just can't enable more until back under the cap.
+export function offerCapPolicyError(planData, beforeActive, afterActive) {
+  const limit = planOfferLimit(planData);
+  if (Number.isFinite(limit) && afterActive > limit && afterActive > beforeActive) {
+    return policyError(
+      `Your plan allows up to ${limit} active offers — disable one or upgrade to Pro for unlimited.`,
+    );
+  }
+  return null;
+}
+
+// Count enabled offers in a config (the "active offers" the cap applies to).
+export function countActiveOffers(config) {
+  return (config?.offers || []).filter((o) => o.enabled).length;
 }
 
 export function requireFeature(planData, feature) {
