@@ -476,6 +476,26 @@ export function countActiveOffers(config) {
   return (config?.offers || []).filter((o) => o.enabled).length;
 }
 
+// Enforce the plan's active-offer cap by DRAFTING (disabling) offers beyond the
+// limit — never deleting. Keeps the first `limit` active (config order); the rest
+// become drafts the merchant can re-enable after upgrading or disabling others.
+// Mutates config.offers in place. No-op when the plan is uncapped (Infinity).
+// Returns the number of offers drafted (0 = nothing changed).
+export function enforceActiveOfferCap(config, limit) {
+  if (!Number.isFinite(limit)) return 0;
+  let active = 0;
+  let drafted = 0;
+  for (const o of config?.offers || []) {
+    if (!o.enabled) continue;
+    active += 1;
+    if (active > limit) {
+      o.enabled = false;
+      drafted += 1;
+    }
+  }
+  return drafted;
+}
+
 export function requireFeature(planData, feature) {
   if (!hasFeature(planData, feature)) {
     throw new Response(

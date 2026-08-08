@@ -19,6 +19,8 @@ import {
   getActivePlan,
   offerCapPolicyError,
   countActiveOffers,
+  planOfferLimit,
+  enforceActiveOfferCap,
 } from "../lib/billing.server.js";
 
 export const loader = async ({ request }) => {
@@ -26,6 +28,19 @@ export const loader = async ({ request }) => {
   const preferred = await getSelectedTheme(session.shop);
   const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
+
+  // Bring an over-limit store into compliance by DRAFTING the excess offers
+  // (e.g. offers created on Free, then downgraded to Basic) — never deleting.
+  // Persist so the list matches what's live at checkout (already capped by the
+  // Function sync). Best-effort; never blocks the page.
+  try {
+    const limit = planOfferLimit(await getActivePlan(admin, session.shop));
+    if (enforceActiveOfferCap(config, limit) > 0) {
+      await saveConfig(shopId, themeId, config);
+    }
+  } catch (err) {
+    console.error("[cartx] offer cap normalization failed:", err);
+  }
 
   const promotions = [];
   for (const offer of config.offers) {
@@ -262,22 +277,35 @@ export default function PromotionsIndex() {
 
   return (
     <s-page heading="Promotions">
-      <s-button slot="primary-action" variant="primary" onClick={goCreate}>
-        {atOfferCap ? "Upgrade for more offers" : "Create promotion"}
+      {/* At the plan cap the create button is frozen; the upgrade path lives in
+          the banner below. Uncapped plans behave as before. */}
+      <s-button
+        slot="primary-action"
+        variant="primary"
+        onClick={goCreate}
+        {...(atOfferCap ? { disabled: true } : {})}
+      >
+        Create promotion
       </s-button>
 
       {atOfferCap && (
         activeOfferCount > offerLimit ? (
           <s-banner tone="warning" heading={`${activeOfferCount} active offers, but your plan includes ${offerLimit}`}>
-            <s-text>
-              Only your first {offerLimit} apply at checkout. Disable {activeOfferCount - offerLimit} to choose which, or upgrade to Pro for unlimited promotions and the cart drawer.
-            </s-text>
+            <s-stack direction="block" gap="200">
+              <s-text>
+                Only your first {offerLimit} apply at checkout. Disable {activeOfferCount - offerLimit} to choose which, or upgrade to Pro for unlimited promotions and the cart drawer.
+              </s-text>
+              <s-button variant="primary" onClick={() => navigate("/app/billing")}>Upgrade to Pro</s-button>
+            </s-stack>
           </s-banner>
         ) : (
-          <s-banner tone="info" heading={`You're using all ${offerLimit} offers on your plan`}>
-            <s-text>
-              Disable an existing offer, or upgrade to Pro for unlimited promotions and the cart drawer.
-            </s-text>
+          <s-banner tone="info" heading={`You've reached your plan's limit of ${offerLimit} offers`}>
+            <s-stack direction="block" gap="200">
+              <s-text>
+                To add another, disable an existing offer or upgrade to Pro for unlimited promotions and the cart drawer.
+              </s-text>
+              <s-button variant="primary" onClick={() => navigate("/app/billing")}>Upgrade to Pro</s-button>
+            </s-stack>
           </s-banner>
         )
       )}
