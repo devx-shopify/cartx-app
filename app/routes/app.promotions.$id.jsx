@@ -15,8 +15,6 @@ import {
 import {
   getActivePlan,
   offerRewardPolicyError,
-  offerCapPolicyError,
-  countActiveOffers,
 } from "../lib/billing.server.js";
 import { usePromotionForm } from "../hooks/usePromotionForm.js";
 import OfferForm from "../components/OfferForm.jsx";
@@ -62,14 +60,14 @@ export const action = async ({ request, params }) => {
   const type = body._type;
   delete body._type;
 
-  // Plan policy (Basic only; other plans unrestricted). Guard reward-type switches
-  // and the active-offer cap when this edit enables an offer.
+  // Plan policy (Basic only; other plans unrestricted). Guard reward-type switches.
+  // Offer COUNT isn't hard-blocked — over-limit offers just don't apply at
+  // checkout, and the promotions page shows an upgrade note.
   const planData = await getActivePlan(admin, session.shop);
   if (type === "offer") {
     const rewardErr = offerRewardPolicyError(planData, body.reward?.type);
     if (rewardErr) return rewardErr;
   }
-  const beforeActive = countActiveOffers(config);
 
   if (type === "offer") {
     const idx = config.offers.findIndex((o) => o.id === params.id);
@@ -91,9 +89,6 @@ export const action = async ({ request, params }) => {
     body.claimable_variant_data = enrichVariantData(body.claimable_variants || [], variantDataMap);
     config.claim_gifts[idx] = { ...config.claim_gifts[idx], ...body, id: params.id };
   }
-
-  const capErr = offerCapPolicyError(planData, beforeActive, countActiveOffers(config));
-  if (capErr) return capErr;
 
   await saveConfig(shopId, themeId, config);
 

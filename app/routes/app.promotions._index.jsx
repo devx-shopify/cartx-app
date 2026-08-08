@@ -17,10 +17,7 @@ import {
 } from "../lib/discount.server.js";
 import {
   getActivePlan,
-  offerCapPolicyError,
-  countActiveOffers,
   planOfferLimit,
-  enforceActiveOfferCap,
 } from "../lib/billing.server.js";
 
 export const loader = async ({ request }) => {
@@ -29,25 +26,15 @@ export const loader = async ({ request }) => {
   const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
 
-  // Resolve the plan HERE (this page's own loader) — the source of truth for
-  // both normalization and the client gates — instead of trusting the parent
-  // layout's outlet-context planData, which can go stale/free on a transient
-  // billing-query hiccup and silently disable every gate.
-  let plan = "free";
+  // Resolve the plan's active-offer limit HERE (this page's own loader) so the
+  // upgrade note is driven by fresh, authoritative data — not the parent layout's
+  // outlet-context planData, which can go stale. Over-limit offers aren't blocked
+  // or drafted; they simply don't apply at checkout (buildVolumeDiscountConfig).
   let offerLimit = Infinity;
   try {
-    const planData = await getActivePlan(admin, session.shop);
-    plan = planData.plan;
-    offerLimit = planOfferLimit(planData);
-    // Bring an over-limit store into compliance by DRAFTING the excess offers
-    // (e.g. offers created on Free, then downgraded to Basic) — never deleting.
-    const drafted = enforceActiveOfferCap(config, offerLimit);
-    console.log(
-      `[cartx] promotions loader: shop=${session.shop} plan=${plan} limit=${offerLimit} offers=${config.offers.length} drafted=${drafted}`,
-    );
-    if (drafted > 0) await saveConfig(shopId, themeId, config);
+    offerLimit = planOfferLimit(await getActivePlan(admin, session.shop));
   } catch (err) {
-    console.error("[cartx] offer cap normalization failed:", err);
+    console.error("[cartx] plan lookup for offer note failed:", err);
   }
 
   const promotions = [];
@@ -61,7 +48,7 @@ export const loader = async ({ request }) => {
     promotions.push({ id: gift.id, type: "claim-gift", name: gift.name, enabled: gift.enabled, trigger: gift.trigger ? (gift.trigger.type === "price" ? `Rs.${gift.trigger.threshold} cart total` : `${gift.trigger.threshold} items`) : "No trigger", needsAttention: gift._needs_attention || null });
   }
 
-  return { promotions, plan, offerLimit: Number.isFinite(offerLimit) ? offerLimit : null };
+  return { promotions, offerLimit: Number.isFinite(offerLimit) ? offerLimit : null };
 };
 
 function triggerSummary(offer) {
@@ -80,12 +67,6 @@ export const action = async ({ request }) => {
   await migrateLegacyDiscountRules(config, session.shop);
   const body = await request.json();
 
-  // Plan policy (Basic only): capture the active-offer count before any mutation so
-  // we can reject ops that ENABLE offers past the cap (toggle-on, bulk-toggle-on,
-  // duplicate). Delete/disable never increase the count, so they're always allowed.
-  const planData = await getActivePlan(admin, session.shop);
-  const beforeActive = countActiveOffers(config);
-
   // Bulk path: { intent: "bulk-toggle"|"bulk-delete", items: [{ id, type }], enabled?: boolean }
   if (body.items) {
     const { intent, items, enabled } = body;
@@ -100,8 +81,6 @@ export const action = async ({ request }) => {
         else if (type === "claim-gift") { const g = config.claim_gifts.find((g) => g.id === id); if (g) g.enabled = enabled; }
       }
     }
-    const capErr = offerCapPolicyError(planData, beforeActive, countActiveOffers(config));
-    if (capErr) return capErr;
     await saveConfig(shopId, themeId, config);
     const affectedTypes = [...new Set(items.map((i) => i.type))];
     const warnings = (await Promise.all(affectedTypes.map((t) => syncDiscounts(admin, session.shop, config, t)))).flat();
@@ -121,9 +100,6 @@ export const action = async ({ request }) => {
     if (intent === "delete") config.claim_gifts = config.claim_gifts.filter((g) => g.id !== id);
     else if (intent === "toggle") { const gift = config.claim_gifts.find((g) => g.id === id); if (gift) gift.enabled = !gift.enabled; }
   }
-
-  const capErr = offerCapPolicyError(planData, beforeActive, countActiveOffers(config));
-  if (capErr) return capErr;
 
   await saveConfig(shopId, themeId, config);
 
@@ -182,21 +158,14 @@ export default function PromotionsIndex() {
   const [confirmFn, confirmModal] = useConfirm();
   const navigate = useNavigate();
 
-  // Active-offer cap from THIS page's own loader (authoritative & fresh) — not the
-  // parent layout's outlet context, which can go stale. null ⇒ uncapped plan.
+  // Plan's active-offer limit from THIS page's own loader (fresh & authoritative).
+  // Not enforced — over-limit offers simply don't apply at checkout — but we show
+  // an upgrade note when the store has more active offers than its plan runs.
   const offerLimit = loaderOfferLimit ?? Infinity;
   const activeOfferCount = promotions.filter((p) => p.type === "offer" && p.enabled).length;
-  const atOfferCap = Number.isFinite(offerLimit) && activeOfferCount >= offerLimit;
+  const overOfferLimit = Number.isFinite(offerLimit) && activeOfferCount > offerLimit;
 
   function goCreate() {
-    if (atOfferCap) {
-      shopify.toast.show(
-        `Your plan allows up to ${offerLimit} active offers — upgrade to Pro for unlimited.`,
-        { isError: true, duration: 6000 },
-      );
-      navigate("/app/billing");
-      return;
-    }
     navigate("/app/promotions/new?type=offer");
   }
 
@@ -286,37 +255,21 @@ export default function PromotionsIndex() {
 
   return (
     <s-page heading="Promotions">
-      {/* At the plan cap the create button is frozen; the upgrade path lives in
-          the banner below. Uncapped plans behave as before. */}
-      <s-button
-        slot="primary-action"
-        variant="primary"
-        onClick={goCreate}
-        {...(atOfferCap ? { disabled: true } : {})}
-      >
+      <s-button slot="primary-action" variant="primary" onClick={goCreate}>
         Create promotion
       </s-button>
 
-      {atOfferCap && (
-        activeOfferCount > offerLimit ? (
-          <s-banner tone="warning" heading={`${activeOfferCount} active offers, but your plan includes ${offerLimit}`}>
-            <s-stack direction="block" gap="200">
-              <s-text>
-                Only your first {offerLimit} apply at checkout. Disable {activeOfferCount - offerLimit} to choose which, or upgrade to Pro for unlimited promotions and the cart drawer.
-              </s-text>
-              <s-button variant="primary" onClick={() => navigate("/app/billing")}>Upgrade to Pro</s-button>
-            </s-stack>
-          </s-banner>
-        ) : (
-          <s-banner tone="info" heading={`You've reached your plan's limit of ${offerLimit} offers`}>
-            <s-stack direction="block" gap="200">
-              <s-text>
-                To add another, disable an existing offer or upgrade to Pro for unlimited promotions and the cart drawer.
-              </s-text>
-              <s-button variant="primary" onClick={() => navigate("/app/billing")}>Upgrade to Pro</s-button>
-            </s-stack>
-          </s-banner>
-        )
+      {/* Informational only — over-limit offers still show as active here, but only
+          the plan's first N apply at checkout (buildVolumeDiscountConfig). */}
+      {overOfferLimit && (
+        <s-banner tone="warning" heading={`Only ${offerLimit} of your ${activeOfferCount} active offers apply at checkout`}>
+          <s-stack direction="block" gap="200">
+            <s-text>
+              Your plan runs up to {offerLimit} volume-discount offers. The extra {activeOfferCount - offerLimit} stay listed here but are paused at checkout. Upgrade to Pro to run them all.
+            </s-text>
+            <s-button variant="primary" onClick={() => navigate("/app/billing")}>Upgrade to Pro</s-button>
+          </s-stack>
+        </s-banner>
       )}
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>

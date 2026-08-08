@@ -458,43 +458,10 @@ export function offerRewardPolicyError(planData, rewardType) {
   );
 }
 
-// Reject only when the op INCREASES the active-offer count beyond the plan limit.
-// A store that lands over the cap (e.g. a Pro→Basic downgrade) can still edit,
-// disable, and delete offers — it just can't enable more until back under the cap.
-export function offerCapPolicyError(planData, beforeActive, afterActive) {
-  const limit = planOfferLimit(planData);
-  if (Number.isFinite(limit) && afterActive > limit && afterActive > beforeActive) {
-    return policyError(
-      `Your plan allows up to ${limit} active offers — disable one or upgrade to Pro for unlimited.`,
-    );
-  }
-  return null;
-}
-
-// Count enabled offers in a config (the "active offers" the cap applies to).
-export function countActiveOffers(config) {
-  return (config?.offers || []).filter((o) => o.enabled).length;
-}
-
-// Enforce the plan's active-offer cap by DRAFTING (disabling) offers beyond the
-// limit — never deleting. Keeps the first `limit` active (config order); the rest
-// become drafts the merchant can re-enable after upgrading or disabling others.
-// Mutates config.offers in place. No-op when the plan is uncapped (Infinity).
-// Returns the number of offers drafted (0 = nothing changed).
-export function enforceActiveOfferCap(config, limit) {
-  if (!Number.isFinite(limit)) return 0;
-  let active = 0;
-  let drafted = 0;
-  for (const o of config?.offers || []) {
-    if (!o.enabled) continue;
-    active += 1;
-    if (active > limit) {
-      o.enabled = false;
-      drafted += 1;
-    }
-  }
-  return drafted;
-}
+// Note: the active-offer COUNT is not hard-enforced. Over-limit volume offers are
+// simply not synced to the Function (buildVolumeDiscountConfig slices to the plan
+// limit), so only the first N apply at checkout, and the promotions page shows an
+// upgrade note. `planOfferLimit` above drives both.
 
 export function requireFeature(planData, feature) {
   if (!hasFeature(planData, feature)) {
