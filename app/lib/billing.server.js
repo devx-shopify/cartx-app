@@ -64,6 +64,30 @@ function isBillingTest() {
   return process.env.NODE_ENV !== "production";
 }
 
+// Partner development stores can't be charged real money, so a merchant trying
+// the app there should get a free, card-less TEST charge — even though the app
+// runs in production. Detect them and force test mode. Real (non-dev) stores are
+// unaffected: partnerDevelopment is false → real charge as before. Fails safe to
+// false (real charge) so a query hiccup never silently makes a real store free.
+async function isDevelopmentStore(admin) {
+  try {
+    const res = await admin.graphql(
+      `#graphql
+      query { shop { plan { partnerDevelopment } } }`,
+    );
+    const json = await res.json();
+    return json?.data?.shop?.plan?.partnerDevelopment === true;
+  } catch (err) {
+    console.error("[cartx][billing] isDevelopmentStore query failed:", err);
+    return false;
+  }
+}
+
+// A charge is a test charge when the app env says so OR the store is a dev store.
+async function shouldTestCharge(admin) {
+  return isBillingTest() || (await isDevelopmentStore(admin));
+}
+
 function amountForCycle(plan, cycle) {
   return cycle === "annual" ? plan.amountAnnual : plan.amount;
 }
@@ -265,6 +289,7 @@ export async function createSubscription(admin, planKey, returnUrl, billingCycle
   const cycle = billingCycle === "annual" ? "annual" : "monthly";
   const amount = amountForCycle(plan, cycle);
   const interval = INTERVAL_BY_CYCLE[cycle];
+  const testCharge = await shouldTestCharge(admin);
 
   const res = await admin.graphql(
     `#graphql
@@ -273,7 +298,7 @@ export async function createSubscription(admin, planKey, returnUrl, billingCycle
         name: $name
         returnUrl: $returnUrl
         trialDays: $trialDays
-        test: ${isBillingTest()}
+        test: ${testCharge}
         lineItems: [{
           plan: {
             appRecurringPricingDetails: {
@@ -313,6 +338,7 @@ export async function createEnterpriseSubscription(admin, returnUrl, amount) {
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error("Enterprise price must be greater than 0");
   }
+  const testCharge = await shouldTestCharge(admin);
 
   const res = await admin.graphql(
     `#graphql
@@ -320,7 +346,7 @@ export async function createEnterpriseSubscription(admin, returnUrl, amount) {
       appSubscriptionCreate(
         name: $name
         returnUrl: $returnUrl
-        test: ${isBillingTest()}
+        test: ${testCharge}
         replacementBehavior: STANDARD
         lineItems: [{
           plan: {
