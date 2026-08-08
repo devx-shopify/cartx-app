@@ -139,10 +139,17 @@ function normalizeId(id) {
 
 /**
  * Build function config JSON from the app's offers.
+ *
+ * `limit` caps how many active volume offers are actually synced to the Function
+ * — the plan's active-offer cap (Basic = 3). Defaults to Infinity (no cap) so
+ * Pro/Enterprise/Free are unaffected. Enforcing here (not just in the admin)
+ * closes the gap where offers created on an unlimited plan stay functionally
+ * live after moving to a capped plan.
  */
-export function buildVolumeDiscountConfig(offers) {
+export function buildVolumeDiscountConfig(offers, limit = Infinity) {
   const volumeOffers = (offers || [])
     .filter((o) => o.enabled && o.reward?.type === "volume_discount")
+    .slice(0, limit)
     .map((o) => ({
       offer_id: o.id,
       variant_ids: (o.source?.product_variant_ids || []).map(normalizeId),
@@ -161,8 +168,8 @@ export function buildVolumeDiscountConfig(offers) {
  * Ensure the volume discount exists.
  * Uses functionHandle (newer API) instead of functionId.
  */
-export async function ensureVolumeDiscount(admin, shopId, offers) {
-  const functionConfig = buildVolumeDiscountConfig(offers);
+export async function ensureVolumeDiscount(admin, shopId, offers, limit = Infinity) {
+  const functionConfig = buildVolumeDiscountConfig(offers, limit);
 
   const existing = await loadRecord(shopId);
   if (existing?.discountId) {
@@ -249,7 +256,7 @@ export async function ensureVolumeDiscount(admin, shopId, offers) {
 /**
  * Sync volume discount config after saving offers.
  */
-export async function syncVolumeDiscountConfig(admin, shopId, offers) {
+export async function syncVolumeDiscountConfig(admin, shopId, offers, limit = Infinity) {
   const hasVolumeOffers = (offers || []).some(
     (o) => o.enabled && o.reward?.type === "volume_discount"
   );
@@ -262,7 +269,7 @@ export async function syncVolumeDiscountConfig(admin, shopId, offers) {
     return;
   }
 
-  await ensureVolumeDiscount(admin, shopId, offers);
+  await ensureVolumeDiscount(admin, shopId, offers, limit);
 }
 
 /**

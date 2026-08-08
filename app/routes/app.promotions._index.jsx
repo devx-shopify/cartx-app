@@ -267,11 +267,19 @@ export default function PromotionsIndex() {
       </s-button>
 
       {atOfferCap && (
-        <s-banner tone="info" heading={`You're using all ${offerLimit} offers on your plan`}>
-          <s-text>
-            Disable an existing offer, or upgrade to Pro for unlimited promotions and the cart drawer.
-          </s-text>
-        </s-banner>
+        activeOfferCount > offerLimit ? (
+          <s-banner tone="warning" heading={`${activeOfferCount} active offers, but your plan includes ${offerLimit}`}>
+            <s-text>
+              Only your first {offerLimit} apply at checkout. Disable {activeOfferCount - offerLimit} to choose which, or upgrade to Pro for unlimited promotions and the cart drawer.
+            </s-text>
+          </s-banner>
+        ) : (
+          <s-banner tone="info" heading={`You're using all ${offerLimit} offers on your plan`}>
+            <s-text>
+              Disable an existing offer, or upgrade to Pro for unlimited promotions and the cart drawer.
+            </s-text>
+          </s-banner>
+        )
       )}
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>

@@ -1,5 +1,6 @@
 import prisma from "../db.server.js";
 import { syncVolumeDiscountConfig } from "./volume-discount.server.js";
+import { getActivePlan, planOfferLimit } from "./billing.server.js";
 import { captureException } from "./sentry.server.js";
 
 const DISCOUNT_STORE_KEY = "__freebie_discount__";
@@ -609,8 +610,17 @@ export async function syncDiscounts(admin, shopId, config, type) {
   }
 
   if (type === "offer") {
+    // Cap how many volume offers actually go live by the plan's active-offer
+    // limit (Basic = 3). Fail-open to no cap so a plan-query hiccup never
+    // silently drops a paying store's offers.
+    let volumeLimit = Infinity;
     try {
-      await syncVolumeDiscountConfig(admin, shopId, config.offers);
+      volumeLimit = planOfferLimit(await getActivePlan(admin, shopId));
+    } catch (err) {
+      console.error("[cartx] plan lookup for volume cap failed:", err);
+    }
+    try {
+      await syncVolumeDiscountConfig(admin, shopId, config.offers, volumeLimit);
     } catch (err) {
       console.error("[cartx] volume discount sync failed:", err);
       captureException(err, { tags: { area: "volume_discount_sync" }, extra: { shopId } });
