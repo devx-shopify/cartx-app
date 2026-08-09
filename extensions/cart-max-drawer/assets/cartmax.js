@@ -2380,6 +2380,15 @@
     });
     return out;
   }
+  var _unavailableVids = {};
+  var UNAVAILABLE_RETRY_MS = 6e4;
+  function isVidUnavailable(vid) {
+    var t2 = _unavailableVids[vid];
+    return t2 != null && Date.now() - t2 < UNAVAILABLE_RETRY_MS;
+  }
+  function markVidUnavailable(vid) {
+    _unavailableVids[vid] = Date.now();
+  }
   async function runSync2() {
     if (!_state2.localCart) {
       completeAndTriggerNext2();
@@ -2410,13 +2419,22 @@
             quantity: a2.quantity,
             properties: propsFromAttributes(a2.attributes)
           };
+        }).filter(function(it) {
+          return !isVidUnavailable(it.id);
         });
-        await internalFetch("/cart/add.js", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ items })
-        });
-        didAdd = true;
+        if (items.length) {
+          var addRes = await internalFetch("/cart/add.js", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ items })
+          });
+          if (!addRes.ok) {
+            items.forEach(function(it) {
+              markVidUnavailable(it.id);
+            });
+          }
+          didAdd = true;
+        }
       }
       _state2.serverCart = didAdd || !lastCart ? await fetchCart() : lastCart;
       var hasMore = completeAndTriggerNext2();
@@ -2433,6 +2451,7 @@
     }
   }
   function addLine2(variantId, quantity, properties, meta) {
+    if (isVidUnavailable(numericVariantId(variantId))) return;
     var base = _state2.localCart || _state2.serverCart || { items: [] };
     setLocalCart2(addItemToLocalCart(base, createOptimisticItem(variantId, quantity, properties, meta)));
   }

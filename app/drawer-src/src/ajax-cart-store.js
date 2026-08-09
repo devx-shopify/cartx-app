@@ -171,6 +171,20 @@ function propsFromAttributes(attributes) {
   return out;
 }
 
+// ── Un-addable (e.g. sold-out) variant backoff ────────────
+// When /cart/add.js rejects a variant (422 "…already sold out."), we must NOT
+// retry it every reconcile. `_reconcileLocalGifts` calls addLine on each cart
+// change, so without a cooldown a sold-out gift retries in a tight loop →
+// /cart/add.js 422 storm → 429 rate-limit (the soulflower incident). Mark the
+// variant and skip re-adding it for a cooldown; after it lapses we retry once.
+var _unavailableVids = {};
+var UNAVAILABLE_RETRY_MS = 60000;
+function isVidUnavailable(vid) {
+  var t = _unavailableVids[vid];
+  return t != null && (Date.now() - t) < UNAVAILABLE_RETRY_MS;
+}
+function markVidUnavailable(vid) { _unavailableVids[vid] = Date.now(); }
+
 async function runSync() {
   // _syncing is already claimed by queueSync(); release/hand-off on early return.
   if (!_state.localCart) { completeAndTriggerNext(); return; }
@@ -202,19 +216,30 @@ async function runSync() {
     // output back to AJAX line inputs). /cart/add.js returns the added lines,
     // not the full cart, so an add forces a fresh /cart.js below.
     if (diff.itemsToAdd.length) {
-      var items = diff.itemsToAdd.map(function (a) {
-        return {
-          id: numericVariantId(a.merchandiseId),
-          quantity: a.quantity,
-          properties: propsFromAttributes(a.attributes),
-        };
-      });
-      await internalFetch('/cart/add.js', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: items }),
-      });
-      didAdd = true;
+      var items = diff.itemsToAdd
+        .map(function (a) {
+          return {
+            id: numericVariantId(a.merchandiseId),
+            quantity: a.quantity,
+            properties: propsFromAttributes(a.attributes),
+          };
+        })
+        // Don't re-send a variant we already know is un-addable (within cooldown).
+        .filter(function (it) { return !isVidUnavailable(it.id); });
+      if (items.length) {
+        var addRes = await internalFetch('/cart/add.js', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: items }),
+        });
+        // A rejected add (e.g. 422 "…already sold out.") must not be retried in a
+        // loop. Mark the attempted variants so addLine/the diff skip them for a
+        // cooldown; localCart snaps to the server cart below, dropping the line.
+        if (!addRes.ok) {
+          items.forEach(function (it) { markVidUnavailable(it.id); });
+        }
+        didAdd = true;
+      }
     }
 
     // NOTE: discount codes are NOT reconciled here. The drawer is the single
@@ -251,6 +276,11 @@ async function runSync() {
 // meta carries display data for the instant line: { price, title, product_title,
 // variant_title, image, handle, product_id, compare_at } (all optional).
 export function addLine(variantId, quantity, properties, meta) {
+  // Skip a variant that just failed to add (e.g. a sold-out gift). This is what
+  // stops the retry storm: _reconcileLocalGifts re-adds gifts every cycle, so a
+  // no-op here keeps the optimistic cart matching the server (no phantom line,
+  // no diff → no /cart/add.js retry). Retries once automatically after cooldown.
+  if (isVidUnavailable(numericVariantId(variantId))) return;
   var base = _state.localCart || _state.serverCart || { items: [] };
   setLocalCart(addItemToLocalCart(base, createOptimisticItem(variantId, quantity, properties, meta)));
 }
