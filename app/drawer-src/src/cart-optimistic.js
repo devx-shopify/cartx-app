@@ -14,11 +14,23 @@
 // getCartDifference(server, local) and applies the minimal set of mutations.
 // =============================================================
 
+// Line properties that must NOT be part of a line's identity: they differ
+// between the drawer's optimistic line and the server line for the SAME gift, so
+// including them made getCartDifference think the gift was missing every cycle
+// and re-add it endlessly (429 request storm + duplicate/runaway gift lines).
+//  - `_acquired_on_page` is stamped per page by the server/drawer (varies).
+//  - GoKwik injects `_gk_line_key` (and other `_gk*`) on the server line only.
+// Everything else (incl. `_unique`, `_freebie`, `_offer_id`, real custom props)
+// stays part of identity.
+function isVolatileLineProp(k) {
+  return k === '_acquired_on_page' || k.indexOf('_gk') === 0;
+}
+
 // Stable per-line identity: variant + a deterministic signature of properties.
 // Two lines merge only if both match (mirrors the AJAX line `key` semantics).
 export function propsSignature(properties) {
   var p = properties || {};
-  var keys = Object.keys(p).sort();
+  var keys = Object.keys(p).filter(function (k) { return !isVolatileLineProp(k); }).sort();
   var parts = [];
   for (var i = 0; i < keys.length; i++) parts.push(keys[i] + '=' + p[keys[i]]);
   return parts.join('&');

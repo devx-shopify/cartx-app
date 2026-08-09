@@ -1833,9 +1833,14 @@
   });
 
   // app/drawer-src/src/cart-optimistic.js
+  function isVolatileLineProp(k2) {
+    return k2 === "_acquired_on_page" || k2.indexOf("_gk") === 0;
+  }
   function propsSignature(properties) {
     var p2 = properties || {};
-    var keys = Object.keys(p2).sort();
+    var keys = Object.keys(p2).filter(function(k2) {
+      return !isVolatileLineProp(k2);
+    }).sort();
     var parts = [];
     for (var i2 = 0; i2 < keys.length; i2++) parts.push(keys[i2] + "=" + p2[keys[i2]]);
     return parts.join("&");
