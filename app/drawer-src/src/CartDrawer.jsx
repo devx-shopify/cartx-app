@@ -2,7 +2,7 @@
 import { h, Component } from 'preact';
 import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId } from './helpers';
 import { fireConfetti, setConfettiLottieUrl } from './confetti';
-import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLine, ensureCartxAttribute, ensureDrawerAttribute, localGiftDelta } from './evaluate';
+import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLine, ensureCartxAttribute, ensureDrawerAttribute, localGiftDelta, giftIntendedQuantity } from './evaluate';
 import { isGraphqlCartEnabled } from './storefront-cart';
 import { initStore as gqlInitStore, subscribe as gqlSubscribe, getOptimisticCart as gqlGetCart, changeQuantity as gqlChangeQuantity, removeLine as gqlRemoveLine, addLine as gqlAddLine, applyDiscountCode as gqlApplyCoupon, removeDiscountCode as gqlRemoveCoupon, whenSettled as gqlWhenSettled } from './cart-store';
 import { isAjaxCartStoreEnabled, subscribe as ajaxSubscribe, getOptimisticCart as ajaxGetCart, init as ajaxInit, reconcileFromServer as ajaxReconcile, addLine as ajaxAddLine, changeQuantity as ajaxChangeQty, removeLine as ajaxRemoveLine, whenSettled as ajaxWhenSettled } from './ajax-cart-store';
@@ -1290,10 +1290,37 @@ export default class CartDrawer extends Component {
     }
   }
 
+  // Hard idempotency guard: force each cartx gift (variant + _offer_id) to its
+  // configured quantity. Keeps the first line (reduced to giftIntendedQuantity if
+  // inflated) and removes any EXTRA lines of the same gift. Guarantees "one gift,
+  // correct amount" however duplicates/over-quantities arise — races, a sold-out
+  // retry, or a manual/hacked add. Only touches cartx gift lines (_freebie +
+  // _offer_id) and only collapses the SAME variant+offer, so distinct gifts of a
+  // "pick N" claim offer are untouched. removeFn/changeQtyFn are the active cart
+  // store's mutators (ajax or gql). Runs every reconcile → self-heals + converges.
+  _normalizeGiftQuantities(cart, removeFn, changeQtyFn) {
+    var items = (cart && cart.items) || [];
+    var seen = {};
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      var p = it.properties;
+      if (!p || p['_freebie'] !== 'true' || !p['_offer_id']) continue;
+      var key = String(normalizeVariantId(it.variant_id)) + '|' + p['_offer_id'];
+      if (seen[key]) {
+        removeFn(it.key);                                   // extra line — drop it
+      } else {
+        seen[key] = true;
+        var intended = giftIntendedQuantity(p['_offer_id']);
+        if ((it.quantity || 0) > intended) changeQtyFn(it.key, intended); // cap inflated line
+      }
+    }
+  }
+
   // Add/remove automatic gift lines on the GraphQL cart to match the eval result.
   // Idempotent: only adds a gift not already present, only removes listed lines.
   // Each store mutation re-triggers eval; it converges once gifts are settled.
   _reconcileGqlGifts(result, cart) {
+    this._normalizeGiftQuantities(cart, gqlRemoveLine, gqlChangeQuantity);
     (result.to_remove || []).forEach(function (key) { gqlRemoveLine(key); });
     var items = (cart && cart.items) || [];
     (result.to_add || []).forEach(function (item) {
@@ -1336,6 +1363,10 @@ export default class CartDrawer extends Component {
     var items = (cart && cart.items) || [];
     this._reconcilingGifts = true;
     try {
+      // Force every cartx gift to its configured quantity (removes duplicate lines
+      // and caps inflated ones) before applying the add/remove plan.
+      this._normalizeGiftQuantities(cart, ajaxRemoveLine, ajaxChangeQty);
+
       // Clear the optimistic "claimed" flag for any gift we auto-remove, so its
       // claim card reverts to "Claim gift" instead of a stuck, disabled
       // "Claimed" button once the shopper drops below (and later crosses back

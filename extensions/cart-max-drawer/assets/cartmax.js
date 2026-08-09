@@ -1437,6 +1437,7 @@
   }
   async function applyResult(result, cart, pendingActions) {
     if (result.frozen) return null;
+    result = Object.assign({}, result, { to_add: [], to_remove: [] });
     var existingItems = cart.items || [];
     var updates = {};
     var hasUpdates = false;
@@ -1661,6 +1662,17 @@
     var local = localEvaluate(_cachedConfig, cart, { id: ctx.customerId, tags: ctx.customerTags });
     if (!local) return null;
     return { to_add: local.to_add || [], to_remove: local.to_remove || [] };
+  }
+  function giftIntendedQuantity(offerId) {
+    var cfg = _cachedConfig;
+    if (!cfg || !offerId) return 1;
+    var offers = cfg.offers || [];
+    for (var i2 = 0; i2 < offers.length; i2++) {
+      if (offers[i2].id === offerId && offers[i2].reward && offers[i2].reward.type === "auto_add_gift") {
+        return offers[i2].reward.quantity_per_variant || 1;
+      }
+    }
+    return 1;
   }
   function applyOptimisticGifts(cart) {
     if (!cart || !isCacheValid()) return cart;
@@ -3696,10 +3708,36 @@
         console.error("[cartx] gql promo eval failed:", err);
       }
     }
+    // Hard idempotency guard: force each cartx gift (variant + _offer_id) to its
+    // configured quantity. Keeps the first line (reduced to giftIntendedQuantity if
+    // inflated) and removes any EXTRA lines of the same gift. Guarantees "one gift,
+    // correct amount" however duplicates/over-quantities arise — races, a sold-out
+    // retry, or a manual/hacked add. Only touches cartx gift lines (_freebie +
+    // _offer_id) and only collapses the SAME variant+offer, so distinct gifts of a
+    // "pick N" claim offer are untouched. removeFn/changeQtyFn are the active cart
+    // store's mutators (ajax or gql). Runs every reconcile → self-heals + converges.
+    _normalizeGiftQuantities(cart, removeFn, changeQtyFn) {
+      var items = cart && cart.items || [];
+      var seen = {};
+      for (var i2 = 0; i2 < items.length; i2++) {
+        var it = items[i2];
+        var p2 = it.properties;
+        if (!p2 || p2["_freebie"] !== "true" || !p2["_offer_id"]) continue;
+        var key = String(normalizeVariantId(it.variant_id)) + "|" + p2["_offer_id"];
+        if (seen[key]) {
+          removeFn(it.key);
+        } else {
+          seen[key] = true;
+          var intended = giftIntendedQuantity(p2["_offer_id"]);
+          if ((it.quantity || 0) > intended) changeQtyFn(it.key, intended);
+        }
+      }
+    }
     // Add/remove automatic gift lines on the GraphQL cart to match the eval result.
     // Idempotent: only adds a gift not already present, only removes listed lines.
     // Each store mutation re-triggers eval; it converges once gifts are settled.
     _reconcileGqlGifts(result, cart) {
+      this._normalizeGiftQuantities(cart, removeLine, changeQuantity);
       (result.to_remove || []).forEach(function(key) {
         removeLine(key);
       });
@@ -3738,6 +3776,7 @@
       var items = cart && cart.items || [];
       this._reconcilingGifts = true;
       try {
+        this._normalizeGiftQuantities(cart, removeLine2, changeQuantity2);
         if (plan.to_remove && plan.to_remove.length) {
           var nextClaimed = null;
           plan.to_remove.forEach(function(key) {

@@ -202,6 +202,15 @@ function clearAvailableGifts(cartItems) {
 async function applyResult(result, cart, pendingActions) {
   if (result.frozen) return null;
 
+  // Gift add/remove is owned SOLELY by the drawer's local reconcile
+  // (_reconcileLocalGifts / _reconcileGqlGifts). This server path must never be a
+  // second gift adder — that's what produced duplicate/runaway gift lines. Drop
+  // its gift ops (to_add/to_remove + unavailable detection all key off these);
+  // user qty/removals come from `pendingActions`, and bar/savings/attributes
+  // below are unaffected. (Already dormant when the AJAX store is active — this
+  // makes it permanent regardless of which cart path is on.)
+  result = Object.assign({}, result, { to_add: [], to_remove: [] });
+
   var existingItems = cart.items || [];
 
   // Build update payload (qty changes + removals)
@@ -488,6 +497,22 @@ export function localGiftDelta(cart) {
   var local = localEvaluate(_cachedConfig, cart, { id: ctx.customerId, tags: ctx.customerTags });
   if (!local) return null;
   return { to_add: local.to_add || [], to_remove: local.to_remove || [] };
+}
+
+// The correct quantity a single gift line should carry, per offer. Auto-add
+// gifts use the offer's quantity_per_variant; claim gifts are one per line.
+// Defaults to 1 (also when the config cache isn't warm). Used by the drawer's
+// gift-quantity guard to cap runaway/duplicate gift lines to their intended amount.
+export function giftIntendedQuantity(offerId) {
+  var cfg = _cachedConfig;
+  if (!cfg || !offerId) return 1;
+  var offers = cfg.offers || [];
+  for (var i = 0; i < offers.length; i++) {
+    if (offers[i].id === offerId && offers[i].reward && offers[i].reward.type === 'auto_add_gift') {
+      return offers[i].reward.quantity_per_variant || 1;
+    }
+  }
+  return 1; // claim gifts + unknown offers → one per line
 }
 
 // Merge the gifts a just-crossed threshold implies into a cart, for INSTANT
