@@ -311,6 +311,40 @@ export function formatMoneyTemplate(moneyFormat, amount) {
   return formatted;
 }
 
+// ── Gift-line detection / quantity-selector policy ──────────
+
+// A line is a "free gift" if ANY of its properties is a freebie marker — cartx's
+// own `_freebie`, or a third-party one whose key contains `_freebie` (e.g.
+// GoKwik's `_gokwik_freebie`). Marks gift lines so the drawer can hide the
+// quantity selector / remove / variant switcher and show FREE, so a shopper
+// can't bump the quantity of a gift a partner app added.
+export function hasFreebieMarker(properties) {
+  if (!properties) return false;
+  for (var k in properties) {
+    if (!Object.prototype.hasOwnProperty.call(properties, k)) continue;
+    if (k.indexOf('_freebie') === -1) continue;
+    var v = properties[k];
+    if (v === 'true' || v === true) return true;
+  }
+  return false;
+}
+
+// The quantity selector shows ONLY for a real paid line. It is hidden when the
+// line is a gift — a freebie/claim marker is present — OR when the effective
+// price is 0. A ₹0 line is treated as a gift (a freebie whose attribute may be
+// missing, or any free line), so shoppers can't change the quantity of anything
+// they aren't paying for. `final_price` is the per-unit price the shopper pays
+// (minor units); fall back to `price` if absent, and treat 0 / missing as free.
+export function showsQuantitySelector(item) {
+  if (!item) return false;
+  var p = item.properties || {};
+  var isClaim = p['_claimed'] === 'true' || p['_cartmax_claim'] === 'true';
+  var isFreebie = hasFreebieMarker(p) && !isClaim;
+  if (isFreebie || isClaim) return false;
+  var unit = item.final_price != null ? item.final_price : (item.price || 0);
+  return Number(unit) > 0;
+}
+
 // ── Focus trap for accessibility ────────────────────────────
 
 var FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';

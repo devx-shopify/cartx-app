@@ -110,10 +110,15 @@ function evaluateTrigger(offer, cart, adjTotal, adjQty) {
   return priceMet || qtyMet;
 }
 
-function evaluateOffers(offers, cart, adjTotal, adjQty, page, customer) {
+export function evaluateOffers(offers, cart, adjTotal, adjQty, page, customer) {
   var toAdd = [];
   var toRemove = [];
   var triggeredIds = {};
+  // Per-offer set of the variants it CURRENTLY grants (normalized to a numeric
+  // string). Populated only for triggered auto-gift offers. The removal pass
+  // keeps a gift line only if it appears here under its own offer id — so a
+  // line survives ONLY while its offer still lists that exact variant.
+  var triggeredGiftVids = {};
 
   for (var i = 0; i < offers.length; i++) {
     var offer = offers[i];
@@ -123,12 +128,27 @@ function evaluateOffers(offers, cart, adjTotal, adjQty, page, customer) {
     var triggered = evaluateTrigger(offer, cart, adjTotal, adjQty);
     if (triggered) {
       triggeredIds[offer.id] = true;
+      if (offer.reward && offer.reward.type === 'auto_add_gift') {
+        // Record the exact variants this offer grants right now. `gift_variants`
+        // are gids → normalize to a numeric STRING; a /cart.js line's variant_id
+        // is a NUMBER that normalizeId leaves untouched, so both sides must be
+        // String()'d to compare (same coercion the product-presence trigger uses).
+        var grantSet = {};
+        var grantList = offer.reward.gift_variants || [];
+        for (var gvi = 0; gvi < grantList.length; gvi++) {
+          grantSet[String(normalizeId(grantList[gvi]))] = true;
+        }
+        triggeredGiftVids[offer.id] = grantSet;
+      }
       if (offer.reward && offer.reward.type === 'auto_add_gift' && offer.reward.add_mode === 'auto') {
         var giftVids = offer.reward.gift_variants || [];
         for (var g = 0; g < giftVids.length; g++) {
-          var vid = normalizeId(giftVids[g]);
+          // String()-coerce both sides: gift_variants are gids (→ numeric string)
+          // and a /cart.js line's variant_id is a number, so a bare === never
+          // matches — which made a present gift look absent and get re-added.
+          var vid = String(normalizeId(giftVids[g]));
           var alreadyIn = (cart.items || []).some(function (li) {
-            return normalizeId(li.variant_id) === vid &&
+            return String(normalizeId(li.variant_id)) === vid &&
               li.properties && li.properties['_offer_id'] === offer.id;
           });
           if (!alreadyIn) {
@@ -136,7 +156,7 @@ function evaluateOffers(offers, cart, adjTotal, adjQty, page, customer) {
             // drawer can render an optimistic gift line instantly, with the real
             // title/image, before the server add lands.
             var gdata = (offer.reward.gift_variant_data || []).find(function (d) {
-              return normalizeId(d.variant_id) === vid;
+              return String(normalizeId(d.variant_id)) === vid;
             }) || {};
             toAdd.push({
               variant_id: giftVids[g],
@@ -151,32 +171,49 @@ function evaluateOffers(offers, cart, adjTotal, adjQty, page, customer) {
     }
   }
 
-  // Find gifts to remove (offer not triggered)
-  for (var j = 0; j < (cart.items || []).length; j++) {
-    var item = cart.items[j];
-    if (!item.properties || item.properties['_freebie'] !== 'true') continue;
-    if (item.properties['_claimed'] === 'true') continue;
-    var offerId = item.properties['_offer_id'];
-    if (!offerId) continue;
-    if (!triggeredIds[offerId]) {
-      toRemove.push(item.key);
+  // Remove gift lines that no longer belong to a currently-granting offer.
+  // A cartx auto-gift line is KEPT only when its offer is triggered on this eval
+  // AND that offer still lists the line's variant in gift_variants. This drops:
+  //   - gifts whose offer is gone / disabled / below threshold (not triggered), and
+  //   - stale gifts from a *recycled or edited* offer id that now grants different
+  //     products (e.g. "Free Gift ₹999" reused as the Mystery Box offer) — the old
+  //     lines share the offer id but not the current variant.
+  // Guard: when the cached config has NO offers (e.g. a mis-resolved / empty theme
+  // config), never strip — cartx isn't authoritative here and a blanket removal
+  // would wipe legitimate gifts. Mirrors evaluateClaimRemovals' cold-cache guard.
+  if (offers.length > 0) {
+    for (var j = 0; j < (cart.items || []).length; j++) {
+      var item = cart.items[j];
+      if (!item.properties || item.properties['_freebie'] !== 'true') continue;
+      if (item.properties['_claimed'] === 'true') continue; // claim gifts handled elsewhere
+      var offerId = item.properties['_offer_id'];
+      if (!offerId) continue; // not a cartx-owned gift line — leave it alone
+      var granted = triggeredGiftVids[offerId];
+      var keep = !!(triggeredIds[offerId] && granted &&
+        granted[String(normalizeId(item.variant_id))]);
+      if (!keep) toRemove.push(item.key);
     }
   }
 
   return { to_add: toAdd, to_remove: toRemove };
 }
 
-// Claimed gifts whose threshold is no longer met must be pulled too — mirrors
-// the server's claim-removal (proxy.evaluate-cart.jsx). Offer-gift removal above
-// skips claimed items, so without this a claimed freebie strands in the cart
-// when the shopper drops below its threshold (e.g. removes a paid item),
-// leaving a zero-total cart. Conservative on purpose: only removes when the
-// rule is FOUND in the cached config and the cart is below its threshold. The
-// "rule missing / orphaned" case is left to the authoritative server eval, so a
-// cold/partial config cache can never mass-strip claimed gifts.
-function evaluateClaimRemovals(claimGifts, items, adjTotal, adjQty) {
+// Claimed gifts to pull from the cart. A claimed line is removed when EITHER:
+//   - its claim offer is still enabled but the cart dropped below its threshold, OR
+//   - its claim offer is gone from the config (disabled/deleted) → orphaned. This
+//     is the AJAX-store case the server can't fix: soulflower disabled its
+//     "Choose your gifts" claim, but the AJAX drawer ignores the server's
+//     to_remove, so a stale claimed line (e.g. a coconut-oil gift from a retired
+//     promo) strands in the cart across refreshes.
+// `configPopulated` guards the orphan branch: only strip when the cached config
+// actually has offers or claim gifts. A cold / empty / mis-resolved config must
+// never mass-strip claimed gifts (mirrors the auto-gift empty-config guard).
+// The enabled cache only holds ENABLED claims, so "id not found" == the offer is
+// disabled/deleted — a genuine orphan, not a cross-page miss (claim cache isn't
+// page-filtered).
+export function evaluateClaimRemovals(claimGifts, items, adjTotal, adjQty, configPopulated) {
   var removals = [];
-  if (!claimGifts || !claimGifts.length) return removals;
+  var rules = claimGifts || [];
   for (var i = 0; i < items.length; i++) {
     var item = items[i];
     var p = item.properties;
@@ -185,14 +222,15 @@ function evaluateClaimRemovals(claimGifts, items, adjTotal, adjQty) {
     var claimId = p['_offer_id'];
     if (!claimId) continue;
     var rule = null;
-    for (var r = 0; r < claimGifts.length; r++) {
-      if (claimGifts[r].id === claimId) { rule = claimGifts[r]; break; }
+    for (var r = 0; r < rules.length; r++) {
+      if (rules[r].id === claimId) { rule = rules[r]; break; }
     }
-    // No rule in cache = orphan case; leave it to the authoritative server eval
-    // (a cold/partial cache must never mass-strip claimed gifts).
-    if (!rule || !rule.trigger) continue;
-    var currentValue = rule.trigger.type === 'price' ? adjTotal : adjQty;
-    if (currentValue < rule.trigger.threshold) {
+    if (rule && rule.trigger) {
+      // Enabled claim offer still present → pull only if now below its threshold.
+      var currentValue = rule.trigger.type === 'price' ? adjTotal : adjQty;
+      if (currentValue < rule.trigger.threshold) removals.push(item.key);
+    } else if (configPopulated) {
+      // No matching enabled claim offer in a real (populated) config → orphaned.
       removals.push(item.key);
     }
   }
@@ -287,8 +325,15 @@ export function localEvaluate(cachedConfig, cart, customer) {
   var adjQty = adjustedQty(items);
   var page = window.location.pathname;
 
-  var offerResult = evaluateOffers(cachedConfig.offers || [], cart, adjTotal, adjQty, page, customer);
-  var claimRemovals = evaluateClaimRemovals(cachedConfig.claim_gifts || [], items, adjTotal, adjQty);
+  var cfgOffers = cachedConfig.offers || [];
+  var cfgClaims = cachedConfig.claim_gifts || [];
+  // Config is "populated" (a real, resolved config) when it carries any offers
+  // or claim gifts — used to gate orphaned-claim removal against an empty/
+  // mis-resolved config, exactly as evaluateOffers gates freebie removal.
+  var configPopulated = cfgOffers.length > 0 || cfgClaims.length > 0;
+
+  var offerResult = evaluateOffers(cfgOffers, cart, adjTotal, adjQty, page, customer);
+  var claimRemovals = evaluateClaimRemovals(cfgClaims, items, adjTotal, adjQty, configPopulated);
   if (claimRemovals.length) {
     offerResult.to_remove = (offerResult.to_remove || []).concat(claimRemovals);
   }
