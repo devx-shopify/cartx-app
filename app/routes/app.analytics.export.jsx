@@ -1,5 +1,5 @@
 import { authenticate } from '../shopify.server'
-import { getDashboardData, presetRange, themePromotionIds, filterPromotionsForTheme } from '../lib/analytics.server.js'
+import { getDashboardData, presetRange, filterPromotionsForTheme } from '../lib/analytics.server.js'
 import { getSelectedTheme, getShopAndTheme, loadConfig } from '../lib/config.server.js'
 import { syncShopSettings } from '../lib/billing.server.js'
 
@@ -68,7 +68,7 @@ export const loader = async ({ request }) => {
   const showDeleted = url.searchParams.get('deleted') === '1'
   data.promotions = filterPromotionsForTheme(
     data.promotions,
-    themePromotionIds(themeConfig),
+    themeConfig,
     { showDeleted },
   )
 

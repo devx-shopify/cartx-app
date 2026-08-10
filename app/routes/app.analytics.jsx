@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useLoaderData, useNavigate, useOutletContext, useRouteError, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
-import { getDashboardData, presetRange, themePromotionIds, filterPromotionsForTheme } from "../lib/analytics.server.js";
+import { getDashboardData, presetRange, filterPromotionsForTheme } from "../lib/analytics.server.js";
 import { getSelectedTheme, getShopAndTheme, loadConfig } from "../lib/config.server.js";
 import { syncShopSettings } from "../lib/billing.server.js";
 import { ThemeSwitcher } from "./app.jsx";
@@ -43,7 +43,7 @@ export const loader = async ({ request }) => {
   const showDeleted = url.searchParams.get("deleted") === "1";
   data.promotions = filterPromotionsForTheme(
     data.promotions,
-    themePromotionIds(themeConfig),
+    themeConfig,
     { showDeleted },
   );
 
@@ -232,12 +232,11 @@ function SortableHeader({ columnKey, currentKey, currentDir, onSort }) {
     <th
       onClick={() => onSort(columnKey)}
       style={{
-        padding: "10px 16px",
+        padding: "10px 10px",
         textAlign: col.align,
         fontWeight: 600,
         cursor: "pointer",
         userSelect: "none",
-        whiteSpace: "nowrap",
       }}
     >
       {col.label}
@@ -252,21 +251,21 @@ function PromotionRow({ p, onClick, currency }) {
       onClick={onClick}
       style={{ cursor: "pointer", borderBottom: "1px solid var(--s-color-border, #e3e3e3)" }}
     >
-      <td style={{ padding: "12px 16px" }}>
+      <td style={{ padding: "12px 10px", wordBreak: "break-word" }}>
         <s-text fontWeight="semibold">{p.name}</s-text>
       </td>
-      <td style={{ padding: "12px 16px" }}>
+      <td style={{ padding: "12px 10px" }}>
         <s-text tone="subdued">{TYPE_LABELS[p.type] ?? p.type ?? "—"}</s-text>
       </td>
-      <td style={{ padding: "12px 16px" }}>
+      <td style={{ padding: "12px 10px" }}>
         <StatusBadge status={p.status} />
       </td>
-      <td style={{ padding: "12px 16px", textAlign: "right" }}>{p.impressions.toLocaleString()}</td>
-      <td style={{ padding: "12px 16px", textAlign: "right" }}>{p.claims.toLocaleString()}</td>
-      <td style={{ padding: "12px 16px", textAlign: "right" }}>{formatPct(p.conversionRate)}</td>
-      <td style={{ padding: "12px 16px", textAlign: "right" }}>{p.orders.toLocaleString()}</td>
-      <td style={{ padding: "12px 16px", textAlign: "right" }}>{formatMoneyCents(p.revenue, currency)}</td>
-      <td style={{ padding: "12px 16px", textAlign: "right" }}>{formatMoneyCents(p.aov, currency)}</td>
+      <td style={{ padding: "12px 10px", textAlign: "right" }}>{p.impressions.toLocaleString()}</td>
+      <td style={{ padding: "12px 10px", textAlign: "right" }}>{p.claims.toLocaleString()}</td>
+      <td style={{ padding: "12px 10px", textAlign: "right" }}>{formatPct(p.conversionRate)}</td>
+      <td style={{ padding: "12px 10px", textAlign: "right" }}>{p.orders.toLocaleString()}</td>
+      <td style={{ padding: "12px 10px", textAlign: "right" }}>{formatMoneyCents(p.revenue, currency)}</td>
+      <td style={{ padding: "12px 10px", textAlign: "right" }}>{formatMoneyCents(p.aov, currency)}</td>
     </tr>
   );
 }
@@ -399,13 +398,24 @@ export default function Analytics() {
               <s-checkbox label="Show deleted" checked={showDeleted} onChange={toggleDeleted} />
             </div>
             <div style={{ padding: "0 16px 16px" }}>
-            <div style={{ width: "100%", overflowX: "auto", border: "1px solid var(--s-color-border, #e3e3e3)", borderRadius: 8 }}>
-            <table style={{ width: "100%", minWidth: 720, borderCollapse: "collapse", fontSize: 13 }}>
+            <div style={{ width: "100%", border: "1px solid var(--s-color-border, #e3e3e3)", borderRadius: 8, overflow: "hidden" }}>
+            <table style={{ width: "100%", tableLayout: "fixed", borderCollapse: "collapse", fontSize: 13 }}>
+              <colgroup>
+                <col style={{ width: "16%" }} />{/* name */}
+                <col style={{ width: "9%" }} />{/* type */}
+                <col style={{ width: "13%" }} />{/* status */}
+                <col style={{ width: "11%" }} />{/* impressions */}
+                <col style={{ width: "8%" }} />{/* claims */}
+                <col style={{ width: "10%" }} />{/* conv. rate */}
+                <col style={{ width: "9%" }} />{/* orders */}
+                <col style={{ width: "13%" }} />{/* influenced revenue */}
+                <col style={{ width: "11%" }} />{/* aov */}
+              </colgroup>
               <thead>
                 <tr style={{ background: "var(--s-color-bg-surface-secondary, #f6f6f7)", borderBottom: "1px solid var(--s-color-border, #e3e3e3)" }}>
                   {COLUMN_ORDER.map((key) =>
                     key === "status" ? (
-                      <th key="status" style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap" }}>
+                      <th key="status" style={{ padding: "10px 10px", textAlign: "left", fontWeight: 600 }}>
                         Status
                       </th>
                     ) : (
