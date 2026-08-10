@@ -756,6 +756,7 @@
     var toAdd = [];
     var toRemove = [];
     var triggeredIds = {};
+    var triggeredGiftVids = {};
     for (var i2 = 0; i2 < offers.length; i2++) {
       var offer = offers[i2];
       if (!pageMatch(offer.page_handles, page)) continue;
@@ -763,16 +764,24 @@
       var triggered = evaluateTrigger(offer, cart, adjTotal, adjQty);
       if (triggered) {
         triggeredIds[offer.id] = true;
+        if (offer.reward && offer.reward.type === "auto_add_gift") {
+          var grantSet = {};
+          var grantList = offer.reward.gift_variants || [];
+          for (var gvi = 0; gvi < grantList.length; gvi++) {
+            grantSet[String(normalizeVariantId(grantList[gvi]))] = true;
+          }
+          triggeredGiftVids[offer.id] = grantSet;
+        }
         if (offer.reward && offer.reward.type === "auto_add_gift" && offer.reward.add_mode === "auto") {
           var giftVids = offer.reward.gift_variants || [];
           for (var g2 = 0; g2 < giftVids.length; g2++) {
-            var vid = normalizeVariantId(giftVids[g2]);
+            var vid = String(normalizeVariantId(giftVids[g2]));
             var alreadyIn = (cart.items || []).some(function(li) {
-              return normalizeVariantId(li.variant_id) === vid && li.properties && li.properties["_offer_id"] === offer.id;
+              return String(normalizeVariantId(li.variant_id)) === vid && li.properties && li.properties["_offer_id"] === offer.id;
             });
             if (!alreadyIn) {
               var gdata = (offer.reward.gift_variant_data || []).find(function(d2) {
-                return normalizeVariantId(d2.variant_id) === vid;
+                return String(normalizeVariantId(d2.variant_id)) === vid;
               }) || {};
               toAdd.push({
                 variant_id: giftVids[g2],
@@ -786,21 +795,23 @@
         }
       }
     }
-    for (var j2 = 0; j2 < (cart.items || []).length; j2++) {
-      var item = cart.items[j2];
-      if (!item.properties || item.properties["_freebie"] !== "true") continue;
-      if (item.properties["_claimed"] === "true") continue;
-      var offerId = item.properties["_offer_id"];
-      if (!offerId) continue;
-      if (!triggeredIds[offerId]) {
-        toRemove.push(item.key);
+    if (offers.length > 0) {
+      for (var j2 = 0; j2 < (cart.items || []).length; j2++) {
+        var item = cart.items[j2];
+        if (!item.properties || item.properties["_freebie"] !== "true") continue;
+        if (item.properties["_claimed"] === "true") continue;
+        var offerId = item.properties["_offer_id"];
+        if (!offerId) continue;
+        var granted = triggeredGiftVids[offerId];
+        var keep = !!(triggeredIds[offerId] && granted && granted[String(normalizeVariantId(item.variant_id))]);
+        if (!keep) toRemove.push(item.key);
       }
     }
     return { to_add: toAdd, to_remove: toRemove };
   }
-  function evaluateClaimRemovals(claimGifts, items, adjTotal, adjQty) {
+  function evaluateClaimRemovals(claimGifts, items, adjTotal, adjQty, configPopulated) {
     var removals = [];
-    if (!claimGifts || !claimGifts.length) return removals;
+    var rules = claimGifts || [];
     for (var i2 = 0; i2 < items.length; i2++) {
       var item = items[i2];
       var p2 = item.properties;
@@ -809,15 +820,16 @@
       var claimId = p2["_offer_id"];
       if (!claimId) continue;
       var rule = null;
-      for (var r2 = 0; r2 < claimGifts.length; r2++) {
-        if (claimGifts[r2].id === claimId) {
-          rule = claimGifts[r2];
+      for (var r2 = 0; r2 < rules.length; r2++) {
+        if (rules[r2].id === claimId) {
+          rule = rules[r2];
           break;
         }
       }
-      if (!rule || !rule.trigger) continue;
-      var currentValue = rule.trigger.type === "price" ? adjTotal : adjQty;
-      if (currentValue < rule.trigger.threshold) {
+      if (rule && rule.trigger) {
+        var currentValue = rule.trigger.type === "price" ? adjTotal : adjQty;
+        if (currentValue < rule.trigger.threshold) removals.push(item.key);
+      } else if (configPopulated) {
         removals.push(item.key);
       }
     }
@@ -898,8 +910,11 @@
     var adjTotal = adjustedTotal(items);
     var adjQty = adjustedQty(items);
     var page = window.location.pathname;
-    var offerResult = evaluateOffers(cachedConfig.offers || [], cart, adjTotal, adjQty, page, customer);
-    var claimRemovals = evaluateClaimRemovals(cachedConfig.claim_gifts || [], items, adjTotal, adjQty);
+    var cfgOffers = cachedConfig.offers || [];
+    var cfgClaims = cachedConfig.claim_gifts || [];
+    var configPopulated = cfgOffers.length > 0 || cfgClaims.length > 0;
+    var offerResult = evaluateOffers(cfgOffers, cart, adjTotal, adjQty, page, customer);
+    var claimRemovals = evaluateClaimRemovals(cfgClaims, items, adjTotal, adjQty, configPopulated);
     if (claimRemovals.length) {
       offerResult.to_remove = (offerResult.to_remove || []).concat(claimRemovals);
     }

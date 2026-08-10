@@ -165,6 +165,11 @@ export function evaluateOffers(
   // Build a set of ALL triggered offer IDs (across all pages, not just current page)
   // so gifts from cross-page offers aren't removed on navigation
   const allTriggeredOfferIds = new Set()
+  // Per-offer set of the variants each triggered auto-gift offer CURRENTLY grants
+  // (normalized numeric strings). Used to drop gift lines from a recycled/edited
+  // offer id that no longer lists that variant. Built over `eligible` (all pages)
+  // to match allTriggeredOfferIds' cross-page semantics.
+  const allTriggeredGiftVids = new Map()
   for (const offer of eligible) {
     if (offer.reward.type === 'volume_discount') {
       const qQty = countQualifyingItems(offer, cart)
@@ -172,23 +177,35 @@ export function evaluateOffers(
     } else {
       if (evaluateTrigger(offer, cart, adjustedTotal, adjustedQty)) {
         allTriggeredOfferIds.add(offer.id)
+        if (offer.reward.type === 'auto_add_gift') {
+          allTriggeredGiftVids.set(
+            offer.id,
+            new Set((offer.reward.gift_variants || []).map((v) => String(normalizeId(v))))
+          )
+        }
       }
     }
   }
 
-  // Find gift items in cart whose offer threshold is no longer met — remove them
-  // Skip claimed gifts — those persist until manually removed
+  // Remove gift lines that no longer belong to a currently-granting offer. A gift
+  // line is KEPT only when its offer is triggered AND still lists the line's
+  // variant — so a recycled/edited offer id that now grants different products
+  // drops its stale lines. Skip claimed gifts (handled by claim removal) and
+  // lines without a cartx offer id (not ours). Guard: never strip when the config
+  // has no offers, so a mis-resolved/empty config can't wipe legitimate gifts.
   const toRemove = []
-  for (const item of cart.items || []) {
-    if (item.properties?.[LINE_PROPS.FREEBIE] !== 'true') continue
-    if (item.properties?.[LINE_PROPS.CLAIMED] === 'true') continue
-    const offerId = item.properties?.[LINE_PROPS.OFFER_ID]
-    if (!offerId) {
-      toRemove.push(item.key)
-      continue
-    }
-    if (!allTriggeredOfferIds.has(offerId)) {
-      toRemove.push(item.key)
+  if (offers.length > 0) {
+    for (const item of cart.items || []) {
+      if (item.properties?.[LINE_PROPS.FREEBIE] !== 'true') continue
+      if (item.properties?.[LINE_PROPS.CLAIMED] === 'true') continue
+      const offerId = item.properties?.[LINE_PROPS.OFFER_ID]
+      if (!offerId) continue
+      const granted = allTriggeredGiftVids.get(offerId)
+      const keep =
+        allTriggeredOfferIds.has(offerId) &&
+        granted &&
+        granted.has(String(normalizeId(item.variant_id)))
+      if (!keep) toRemove.push(item.key)
     }
   }
 
