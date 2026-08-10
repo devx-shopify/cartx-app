@@ -1,6 +1,6 @@
 /* eslint-disable */
 import { h, Component } from 'preact';
-import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId } from './helpers';
+import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId, hasFreebieMarker, showsQuantitySelector } from './helpers';
 import { fireConfetti, setConfettiLottieUrl } from './confetti';
 import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLine, ensureCartxAttribute, ensureDrawerAttribute, localGiftDelta, giftIntendedQuantity } from './evaluate';
 import { isGraphqlCartEnabled } from './storefront-cart';
@@ -168,21 +168,9 @@ var HARDCODED_COUPONS = [
   { code: 'FLAT200',     accent: '₹200 OFF', savings: 'Save ₹200 on this order' },
 ];
 
-// A line is a "free gift" if ANY of its properties is a freebie marker — cartx's
-// own `_freebie`, or a third-party one whose key contains `_freebie` (e.g.
-// GoKwik's `_gokwik_freebie`). Treating all of them as freebies hides the
-// quantity selector / remove / variant switcher and shows FREE, so a shopper
-// can't bump the quantity of a gift a partner app added.
-function hasFreebieMarker(properties) {
-  if (!properties) return false;
-  for (var k in properties) {
-    if (!Object.prototype.hasOwnProperty.call(properties, k)) continue;
-    if (k.indexOf('_freebie') === -1) continue;
-    var v = properties[k];
-    if (v === 'true' || v === true) return true;
-  }
-  return false;
-}
+// `hasFreebieMarker` and `showsQuantitySelector` (the gift-line + quantity-
+// selector policy) live in ./helpers so they can be unit-tested without loading
+// the whole Preact component.
 
 // ── CartDrawer Component ────────────────────────────────────
 
@@ -2098,23 +2086,26 @@ export default class CartDrawer extends Component {
                     </div>
                   : null
                 }
-                <div class="cartmax-qty-controls">
-                  <button
-                    class="cartmax-qty-btn"
-                    onClick={() => displayQty <= 1 ? this.handleRemove(item.key) : this.queueQuantityChange(item.key, displayQty - 1)}
-                    disabled={isRemoving}
-                    aria-label={displayQty <= 1 ? ('Remove ' + item.product_title) : 'Decrease quantity'}
-                  >{displayQty <= 1 ? <IconTrash /> : <IconMinus />}</button>
-                  <span class={'cartmax-qty-value' + (isPending ? ' cartmax-qty-pending' : '')}>
-                    {displayQty}
-                  </span>
-                  <button
-                    class="cartmax-qty-btn"
-                    onClick={() => this.queueQuantityChange(item.key, displayQty + 1)}
-                    disabled={isRemoving}
-                    aria-label="Increase quantity"
-                  ><IconPlus /></button>
-                </div>
+                {showsQuantitySelector(item)
+                  ? <div class="cartmax-qty-controls">
+                      <button
+                        class="cartmax-qty-btn"
+                        onClick={() => displayQty <= 1 ? this.handleRemove(item.key) : this.queueQuantityChange(item.key, displayQty - 1)}
+                        disabled={isRemoving}
+                        aria-label={displayQty <= 1 ? ('Remove ' + item.product_title) : 'Decrease quantity'}
+                      >{displayQty <= 1 ? <IconTrash /> : <IconMinus />}</button>
+                      <span class={'cartmax-qty-value' + (isPending ? ' cartmax-qty-pending' : '')}>
+                        {displayQty}
+                      </span>
+                      <button
+                        class="cartmax-qty-btn"
+                        onClick={() => this.queueQuantityChange(item.key, displayQty + 1)}
+                        disabled={isRemoving}
+                        aria-label="Increase quantity"
+                      ><IconPlus /></button>
+                    </div>
+                  : null
+                }
               </div>
             : null
           }

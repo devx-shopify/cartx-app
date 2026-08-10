@@ -496,6 +496,25 @@
     var formatted = moneyFormat ? moneyFormat.replace(/\{\{\s*amount\s*\}\}/, amountStr).replace(/\{\{\s*amount_no_decimals\s*\}\}/, String(Math.round(amount))).replace(/\{\{\s*amount_with_comma_separator\s*\}\}/, amountStr.replace(".", ",")) : "$" + amountStr;
     return formatted;
   }
+  function hasFreebieMarker(properties) {
+    if (!properties) return false;
+    for (var k2 in properties) {
+      if (!Object.prototype.hasOwnProperty.call(properties, k2)) continue;
+      if (k2.indexOf("_freebie") === -1) continue;
+      var v2 = properties[k2];
+      if (v2 === "true" || v2 === true) return true;
+    }
+    return false;
+  }
+  function showsQuantitySelector(item) {
+    if (!item) return false;
+    var p2 = item.properties || {};
+    var isClaim = p2["_claimed"] === "true" || p2["_cartmax_claim"] === "true";
+    var isFreebie = hasFreebieMarker(p2) && !isClaim;
+    if (isFreebie || isClaim) return false;
+    var unit = item.final_price != null ? item.final_price : item.price || 0;
+    return Number(unit) > 0;
+  }
   var FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
   function trapFocus(container) {
     var focusables = container.querySelectorAll(FOCUSABLE);
@@ -2802,16 +2821,6 @@
   function IconChevronRight() {
     return /* @__PURE__ */ k("svg", { width: "28", height: "28", viewBox: "0 0 28 28", fill: "none", xmlns: "http://www.w3.org/2000/svg" }, /* @__PURE__ */ k("path", { d: "M11.6665 20.1924L10.8408 19.3667L16.2075 14L10.8408 8.63333L11.6665 7.80762L17.8589 14L11.6665 20.1924Z", fill: "currentColor" }));
   }
-  function hasFreebieMarker(properties) {
-    if (!properties) return false;
-    for (var k2 in properties) {
-      if (!Object.prototype.hasOwnProperty.call(properties, k2)) continue;
-      if (k2.indexOf("_freebie") === -1) continue;
-      var v2 = properties[k2];
-      if (v2 === "true" || v2 === true) return true;
-    }
-    return false;
-  }
   var CartDrawer = class extends C {
     constructor() {
       super();
@@ -4347,7 +4356,7 @@
           isCurrent ? /* @__PURE__ */ k(IconCheck, null) : null,
           !v2.available ? /* @__PURE__ */ k("span", { class: "cartmax-variant-oos-label" }, "Out of stock") : null
         );
-      })) : null) : null, /* @__PURE__ */ k("div", { class: "cartmax-qty-controls" }, /* @__PURE__ */ k(
+      })) : null) : null, showsQuantitySelector(item) ? /* @__PURE__ */ k("div", { class: "cartmax-qty-controls" }, /* @__PURE__ */ k(
         "button",
         {
           class: "cartmax-qty-btn",
@@ -4365,7 +4374,7 @@
           "aria-label": "Increase quantity"
         },
         /* @__PURE__ */ k(IconPlus, null)
-      ))) : null));
+      )) : null) : null));
     }
     // ── Render: Loading skeleton ──────────────────────────────
     renderLoading() {
