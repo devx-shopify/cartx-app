@@ -77,6 +77,13 @@ export function recalcTotals(cart) {
 var _tempSeq = 0;
 export function createOptimisticItem(variantId, quantity, properties, meta) {
   meta = meta || {};
+  // `unpriced` means the CALLER gave us no price at all — not that the price is
+  // zero. The distinction matters: a free gift is deliberately added with
+  // { price: 0, title, image } and must stay a normal, evaluatable line. Only
+  // window.cartx.addItem() (which receives just a variant id) produces a line
+  // with no pricing information, and evaluating that as a real 0 is what made
+  // the progress bar and gift thresholds read an empty cart.
+  var unpriced = meta.price == null;
   var unit = meta.price || 0;                 // cents
   var qty = quantity || 1;
   var line = unit * qty;
@@ -106,6 +113,9 @@ export function createOptimisticItem(variantId, quantity, properties, meta) {
     available: true,
     line_level_discount_allocations: [],
     _optimistic: true,
+    // Set only when no price was supplied. Consumers must gate on THIS, never
+    // on price === 0, or they will catch every free gift.
+    _cartx_unpriced: unpriced,
   };
 }
 

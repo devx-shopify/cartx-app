@@ -113,8 +113,38 @@
       return '';
     }
 
-    // Flag for cartx's own API calls — skip interception for these
+    // Flag for cartx's own API calls — skip interception for these.
+    //
+    // KILL SWITCH: set window.__cartxLegacyInternalGuard = true (from the theme,
+    // or in the console) to restore the old page-global behaviour if the more
+    // permissive interception below causes trouble on a live store. No redeploy
+    // needed to fall back.
     window.__cartmaxInternal = false;
+
+    var INTERNAL_HEADER = 'x-cartx-internal';
+
+    // True only for requests cartx issued itself. Reading the marker off the
+    // REQUEST means a cartx call can suppress only itself — the old global
+    // suppressed every cart mutation on the page for the duration of any cartx
+    // request, silently dropping theme add-to-carts that overlapped it.
+    function isCartxOwnRequest(input, init) {
+      try {
+        if (init && init.headers) {
+          var h = init.headers;
+          if (typeof h.get === 'function') {
+            if (h.get(INTERNAL_HEADER)) return true;
+          } else {
+            for (var k in h) {
+              if (String(k).toLowerCase() === INTERNAL_HEADER && h[k]) return true;
+            }
+          }
+        }
+        if (typeof Request !== 'undefined' && input instanceof Request) {
+          if (input.headers && input.headers.get(INTERNAL_HEADER)) return true;
+        }
+      } catch (e) { /* fall through */ }
+      return false;
+    }
 
     var originalFetch = window.fetch;
 
@@ -150,7 +180,10 @@
     window.fetch = function() {
       var url = extractUrl(arguments[0]);
       var ret = originalFetch.apply(this, arguments);
-      if (!window.__cartmaxInternal && isCartEndpoint(url)) {
+      var mine = window.__cartxLegacyInternalGuard
+        ? window.__cartmaxInternal
+        : isCartxOwnRequest(arguments[0], arguments[1]);
+      if (!mine && isCartEndpoint(url)) {
         ret.then(function() { refreshCart(url); }).catch(function() {});
       }
       return ret;
@@ -167,7 +200,11 @@
 
     XMLHttpRequest.prototype.send = function() {
       var xhr = this;
-      if (xhr._cartmaxUrl && isCartEndpoint(xhr._cartmaxUrl) && !window.__cartmaxInternal) {
+      // cartx never mutates the cart over XHR (all of its calls go through
+      // internalFetch), so anything arriving here is external by definition.
+      // The legacy global is still honoured under the kill switch.
+      var xhrMine = window.__cartxLegacyInternalGuard ? window.__cartmaxInternal : false;
+      if (xhr._cartmaxUrl && isCartEndpoint(xhr._cartmaxUrl) && !xhrMine) {
         xhr.addEventListener('load', function() { refreshCart(xhr._cartmaxUrl); });
       }
       return originalXHRSend.apply(this, arguments);

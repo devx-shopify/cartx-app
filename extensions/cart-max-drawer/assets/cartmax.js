@@ -258,10 +258,21 @@
 
   // app/drawer-src/src/helpers.js
   var _internalFetchDepth = 0;
+  var INTERNAL_HEADER = "X-Cartx-Internal";
   function internalFetch(url, opts) {
+    var o2 = Object.assign({}, opts || {});
+    var h2 = o2.headers;
+    if (h2 && typeof h2.append === "function") {
+      var copy = new Headers(h2);
+      copy.set(INTERNAL_HEADER, "1");
+      o2.headers = copy;
+    } else {
+      o2.headers = Object.assign({}, h2 || {});
+      o2.headers[INTERNAL_HEADER] = "1";
+    }
     _internalFetchDepth++;
     window.__cartmaxInternal = true;
-    return fetch(url, opts).finally(function() {
+    return fetch(url, o2).finally(function() {
       _internalFetchDepth--;
       if (_internalFetchDepth === 0) {
         window.__cartmaxInternal = false;
@@ -1931,6 +1942,7 @@
   var _tempSeq = 0;
   function createOptimisticItem(variantId, quantity, properties, meta) {
     meta = meta || {};
+    var unpriced = meta.price == null;
     var unit = meta.price || 0;
     var qty = quantity || 1;
     var line = unit * qty;
@@ -1959,7 +1971,10 @@
       url: meta.handle ? "/products/" + meta.handle + "?variant=" + variantId : null,
       available: true,
       line_level_discount_allocations: [],
-      _optimistic: true
+      _optimistic: true,
+      // Set only when no price was supplied. Consumers must gate on THIS, never
+      // on price === 0, or they will catch every free gift.
+      _cartx_unpriced: unpriced
     };
   }
   function addItemToLocalCart(cart, newItem) {
@@ -3708,7 +3723,7 @@
     _cartSignature(cart) {
       var items = cart && cart.items || [];
       var lines = items.map(function(it) {
-        return it.variant_id + ":" + (it.quantity || 0) + ":" + (it.properties ? it.properties._offer_id || "" : "");
+        return it.variant_id + ":" + (it.quantity || 0) + ":" + (it.properties ? it.properties._offer_id || "" : "") + (it._cartx_unpriced ? ":u" : "");
       }).sort().join("|");
       var codes = (cart && cart.discount_codes || []).filter(function(d2) {
         return d2.applicable;
@@ -3839,9 +3854,20 @@
         this._reconcilingGifts = false;
       }
     }
+    // True while the cart holds a placeholder line whose price we don't know yet
+    // (window.cartx.addItem gives us only a variant id). Gate on THIS, never on
+    // price === 0 — free gifts are legitimately zero and must keep evaluating.
+    _hasUnpricedLines(cart) {
+      var items = cart && cart.items || [];
+      for (var i2 = 0; i2 < items.length; i2++) {
+        if (items[i2]._cartx_unpriced) return true;
+      }
+      return false;
+    }
     async _runAjaxPromo() {
       var cart = getOptimisticCart2();
       if (!cart) return;
+      if (this._hasUnpricedLines(cart)) return;
       try {
         var result = await callEvaluate(cart);
         if (!result) return;
@@ -4079,6 +4105,9 @@
     }
     // ── Render: Progress Bar ──────────────────────────────────
     renderProgressBar() {
+      if (this._hasUnpricedLines(this.state.cart)) {
+        return /* @__PURE__ */ k("div", { id: "cartmax-progress", class: "cartmax-progress cartmax-progress-skeleton", "aria-busy": "true" }, /* @__PURE__ */ k("div", { class: "cartmax-skel cartmax-skel-line cartmax-skel-msg" }), /* @__PURE__ */ k("div", { class: "cartmax-skel cartmax-skel-track" }), /* @__PURE__ */ k("span", { class: "visually-hidden" }, "Updating rewards\u2026"));
+      }
       var result = this.state.evalResult;
       if (!result || !result.bar || !result.bar.tiers || result.bar.tiers.length === 0) {
         return null;
@@ -4292,6 +4321,9 @@
     }
     // ── Render: Line Item ─────────────────────────────────────
     renderLineItem(item) {
+      if (item._cartx_unpriced) {
+        return /* @__PURE__ */ k("div", { class: "cartmax-line-item cartmax-line-skeleton", key: item.key, "aria-busy": "true" }, /* @__PURE__ */ k("div", { class: "cartmax-line-image" }, /* @__PURE__ */ k("div", { class: "cartmax-skel cartmax-skel-img" })), /* @__PURE__ */ k("div", { class: "cartmax-line-details" }, /* @__PURE__ */ k("div", { class: "cartmax-skel cartmax-skel-line cartmax-skel-title" }), /* @__PURE__ */ k("div", { class: "cartmax-skel cartmax-skel-line cartmax-skel-price" })), /* @__PURE__ */ k("span", { class: "visually-hidden" }, "Adding item\u2026"));
+      }
       var isUpdating = this.state.updating[item.key];
       var isRemoving = this.state.removing[item.key];
       var displayQty = this.getDisplayQty(item);

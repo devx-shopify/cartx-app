@@ -2362,3 +2362,40 @@ cart-notification-component [role="dialog"] {
     height: 28px;
   }
 }
+
+/* --- Skeletons (unpriced placeholder lines) ---------------------------
+   Shown while a line added via window.cartx.addItem() is waiting on its
+   /cart/add.js round-trip. That request happens anyway, so this adds no
+   latency — it replaces a wrong-looking cart (blank title, 0 price, all
+   rewards locked) with an honestly-loading one. */
+
+.cartmax-skel {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--cartmax-border, #f0f0f0) 60%, transparent) 25%,
+    color-mix(in srgb, var(--cartmax-border, #f0f0f0) 100%, transparent) 37%,
+    color-mix(in srgb, var(--cartmax-border, #f0f0f0) 60%, transparent) 63%
+  );
+  background-size: 400% 100%;
+  border-radius: calc(var(--cartmax-radius, 6px) * 0.75);
+  animation: cartmax-skel-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes cartmax-skel-shimmer {
+  0%   { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+.cartmax-skel-img { width: 64px; height: 64px; }
+.cartmax-skel-line { height: 12px; }
+.cartmax-skel-title { width: 70%; margin-bottom: 8px; }
+.cartmax-skel-price { width: 35%; }
+.cartmax-skel-msg { width: 45%; height: 14px; margin: 0 auto 12px; }
+.cartmax-skel-track { width: 100%; height: 8px; border-radius: 999px; }
+
+.cartmax-progress-skeleton { padding: 16px 20px; }
+
+/* Respect reduced-motion: keep the placeholder, drop the animation. */
+@media (prefers-reduced-motion: reduce) {
+  .cartmax-skel { animation: none; }
+}

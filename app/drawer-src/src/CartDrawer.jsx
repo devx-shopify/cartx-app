@@ -1240,7 +1240,14 @@ export default class CartDrawer extends Component {
   _cartSignature(cart) {
     var items = (cart && cart.items) || [];
     var lines = items.map(function (it) {
-      return it.variant_id + ':' + (it.quantity || 0) + ':' + (it.properties ? (it.properties._offer_id || '') : '');
+      // The ':u' marker is what makes a placeholder line and its reconciled,
+      // priced self produce DIFFERENT signatures. Without it both hash the same
+      // (variant + qty + offer are unchanged by reconcile), so the sig guard in
+      // _maybeRunAjaxPromo swallowed the corrected evaluation and the cart was
+      // left evaluated as if it were empty.
+      return it.variant_id + ':' + (it.quantity || 0) + ':'
+        + (it.properties ? (it.properties._offer_id || '') : '')
+        + (it._cartx_unpriced ? ':u' : '');
     }).sort().join('|');
     // Include the applied discount codes: a coupon apply/remove leaves items and
     // quantities untouched, so without this the signature is identical and the
@@ -1389,9 +1396,25 @@ export default class CartDrawer extends Component {
     }
   }
 
+  // True while the cart holds a placeholder line whose price we don't know yet
+  // (window.cartx.addItem gives us only a variant id). Gate on THIS, never on
+  // price === 0 — free gifts are legitimately zero and must keep evaluating.
+  _hasUnpricedLines(cart) {
+    var items = (cart && cart.items) || [];
+    for (var i = 0; i < items.length; i++) {
+      if (items[i]._cartx_unpriced) return true;
+    }
+    return false;
+  }
+
   async _runAjaxPromo() {
     var cart = ajaxGetCart();
     if (!cart) return;
+    // Never evaluate a cart we can't price: the server would correctly compute
+    // thresholds against a phantom 0 total and report every reward locked.
+    // The sync reconciles within one /cart/add.js round-trip and the signature
+    // change (':u' above) re-triggers this with real money.
+    if (this._hasUnpricedLines(cart)) return;
     try {
       var result = await callEvaluate(cart);
       if (!result) return;
@@ -1668,6 +1691,18 @@ export default class CartDrawer extends Component {
   // ── Render: Progress Bar ──────────────────────────────────
 
   renderProgressBar() {
+    // While any line is unpriced the last eval describes a cart that no longer
+    // exists, and showing its tiers would tell the shopper their rewards are
+    // locked when they may well have just unlocked them.
+    if (this._hasUnpricedLines(this.state.cart)) {
+      return (
+        <div id="cartmax-progress" class="cartmax-progress cartmax-progress-skeleton" aria-busy="true">
+          <div class="cartmax-skel cartmax-skel-line cartmax-skel-msg" />
+          <div class="cartmax-skel cartmax-skel-track" />
+          <span class="visually-hidden">Updating rewards…</span>
+        </div>
+      );
+    }
     var result = this.state.evalResult;
     if (!result || !result.bar || !result.bar.tiers || result.bar.tiers.length === 0) {
       return null;
@@ -1934,6 +1969,23 @@ export default class CartDrawer extends Component {
   // ── Render: Line Item ─────────────────────────────────────
 
   renderLineItem(item) {
+    // Placeholder line: we know a product is being added but not what it costs
+    // or what it's called. Render its shape rather than an empty title and a
+    // confident-looking 0 — the real data lands one round-trip later.
+    if (item._cartx_unpriced) {
+      return (
+        <div class="cartmax-line-item cartmax-line-skeleton" key={item.key} aria-busy="true">
+          <div class="cartmax-line-image">
+            <div class="cartmax-skel cartmax-skel-img" />
+          </div>
+          <div class="cartmax-line-details">
+            <div class="cartmax-skel cartmax-skel-line cartmax-skel-title" />
+            <div class="cartmax-skel cartmax-skel-line cartmax-skel-price" />
+          </div>
+          <span class="visually-hidden">Adding item…</span>
+        </div>
+      );
+    }
     var isUpdating = this.state.updating[item.key];
     var isRemoving = this.state.removing[item.key];
     var displayQty = this.getDisplayQty(item);

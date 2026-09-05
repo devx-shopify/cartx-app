@@ -4,12 +4,37 @@
 
 // ── Internal fetch (bypasses cart interceptor) ──────────────
 
+// cartx must not react to its OWN cart calls. That used to be done with a
+// page-global boolean held for the lifetime of each request — which meant that
+// while any cartx request was in flight, EVERY cart mutation on the page was
+// ignored, including the theme's. A shopper whose add-to-cart happened to land
+// inside that window got no cart-changed event at all: no re-evaluate, no gift
+// reconcile, and a drawer still describing the previous cart.
+//
+// The marker now travels with the request instead, so a cartx request can only
+// ever suppress itself.
 var _internalFetchDepth = 0;
 
+export var INTERNAL_HEADER = 'X-Cartx-Internal';
+
 export function internalFetch(url, opts) {
+  var o = Object.assign({}, opts || {});
+  var h = o.headers;
+  // Headers may arrive as a plain object or a Headers instance.
+  if (h && typeof h.append === 'function') {
+    var copy = new Headers(h);
+    copy.set(INTERNAL_HEADER, '1');
+    o.headers = copy;
+  } else {
+    o.headers = Object.assign({}, h || {});
+    o.headers[INTERNAL_HEADER] = '1';
+  }
+
+  // Legacy global, kept ONLY as a fallback for the kill switch below and for
+  // any embed still running the old interception code. Harmless when unused.
   _internalFetchDepth++;
   window.__cartmaxInternal = true;
-  return fetch(url, opts).finally(function () {
+  return fetch(url, o).finally(function () {
     _internalFetchDepth--;
     if (_internalFetchDepth === 0) {
       window.__cartmaxInternal = false;
