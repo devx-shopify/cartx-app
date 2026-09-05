@@ -1341,6 +1341,9 @@
   function isCacheValid() {
     return _cachedConfig && Date.now() - _configCacheTime < CONFIG_CACHE_TTL;
   }
+  function hasConfig() {
+    return !!_cachedConfig;
+  }
   async function callEvaluate(cart) {
     var ctx = getContext();
     if (!ctx.shopId || !ctx.themeId) return null;
@@ -1750,7 +1753,7 @@
     return Object.assign({}, cart, { items, item_count: itemCount });
   }
   function dispatchLocalBar(cart) {
-    if (!cart || !isCacheValid()) return false;
+    if (!cart || !hasConfig()) return false;
     var ctx = getContext();
     var localResult = localEvaluate(_cachedConfig, cart, {
       id: ctx.customerId,

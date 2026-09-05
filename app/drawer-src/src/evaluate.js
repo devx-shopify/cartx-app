@@ -15,10 +15,26 @@ var PROXY_URL = '/apps/cartx/evaluate-cart';
 
 var _cachedConfig = null;
 var _configCacheTime = 0;
-var CONFIG_CACHE_TTL = 60000; // 60s — background refresh
+
+// The TTL guards config staleness for the paths that MUTATE the cart —
+// localGiftDelta and applyOptimisticGifts add and remove gift lines, and acting
+// on a retired offer strands gifts in real carts. Refreshed by every successful
+// evaluate response, so a shopper touching the cart keeps it warm.
+//
+// It is deliberately NOT applied to read-only work: see hasConfig().
+var CONFIG_CACHE_TTL = 60000; // 60s
 
 function isCacheValid() {
   return _cachedConfig && (Date.now() - _configCacheTime < CONFIG_CACHE_TTL);
+}
+
+// For rendering only. A paint computed from an old config is corrected by the
+// server ~1.6s later, so expiring it buys nothing and costs the shopper the
+// entire fast path: a config is only refreshed by an evaluate, so someone who
+// browses for over a minute before their FIRST add — most shoppers — would fall
+// back to waiting on the proxy for a bar we could already draw.
+function hasConfig() {
+  return !!_cachedConfig;
 }
 
 // ── Evaluate-cart API ─────────────────────────────────────
@@ -578,7 +594,8 @@ export function applyOptimisticGifts(cart) {
 // product data, so dispatching a raw local result over a server one would blank
 // the claim-gift cards until the next response.
 export function dispatchLocalBar(cart) {
-  if (!cart || !isCacheValid()) return false;
+  // hasConfig(), not isCacheValid() — this only paints; it never mutates.
+  if (!cart || !hasConfig()) return false;
   var ctx = getContext();
   var localResult = localEvaluate(_cachedConfig, cart, {
     id: ctx.customerId,
