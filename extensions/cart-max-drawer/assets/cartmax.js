@@ -1749,6 +1749,25 @@
     for (var i2 = 0; i2 < items.length; i2++) itemCount += items[i2].quantity || 0;
     return Object.assign({}, cart, { items, item_count: itemCount });
   }
+  function dispatchLocalBar(cart) {
+    if (!cart || !isCacheValid()) return false;
+    var ctx = getContext();
+    var localResult = localEvaluate(_cachedConfig, cart, {
+      id: ctx.customerId,
+      tags: ctx.customerTags
+    });
+    if (!localResult) return false;
+    if (_lastResult && _lastResult.bar) {
+      var optimistic = Object.assign({}, _lastResult, {
+        ribbon_message: localResult.ribbon_message
+      });
+      optimistic.bar = recomputeBar(_lastResult.bar, cart);
+      window.dispatchEvent(new CustomEvent("cartmax:eval-result", { detail: optimistic }));
+      return true;
+    }
+    window.dispatchEvent(new CustomEvent("cartmax:eval-result", { detail: localResult }));
+    return true;
+  }
   function waitForEvaluate() {
     if (!_evaluating && _pendingActions.length === 0 && !_pendingCart) {
       return Promise.resolve();
@@ -3807,6 +3826,12 @@
       var sig = this._cartSignature(cart);
       if (sig === this._lastPromoSig) return;
       this._lastPromoSig = sig;
+      if (!window.__cartxDisableLocalBar && !this._hasUnpricedLines(cart) && !cartHasDiscounts(cart)) {
+        try {
+          dispatchLocalBar(cart);
+        } catch (_2) {
+        }
+      }
       if (this._ajaxPromoTimer) clearTimeout(this._ajaxPromoTimer);
       this._ajaxPromoTimer = setTimeout(() => this._runAjaxPromo(), 250);
     }

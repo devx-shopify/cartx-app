@@ -2,10 +2,10 @@
 import { h, Component } from 'preact';
 import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId, hasFreebieMarker, showsQuantitySelector, giftChargedAmount } from './helpers';
 import { fireConfetti, setConfettiLottieUrl } from './confetti';
-import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLine, ensureCartxAttribute, ensureDrawerAttribute, localGiftDelta, giftIntendedQuantity } from './evaluate';
+import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLine, ensureCartxAttribute, ensureDrawerAttribute, localGiftDelta, giftIntendedQuantity, dispatchLocalBar } from './evaluate';
 import { isGraphqlCartEnabled } from './storefront-cart';
 import { initStore as gqlInitStore, subscribe as gqlSubscribe, getOptimisticCart as gqlGetCart, changeQuantity as gqlChangeQuantity, removeLine as gqlRemoveLine, addLine as gqlAddLine, applyDiscountCode as gqlApplyCoupon, removeDiscountCode as gqlRemoveCoupon, whenSettled as gqlWhenSettled } from './cart-store';
-import { isAjaxCartStoreEnabled, subscribe as ajaxSubscribe, getOptimisticCart as ajaxGetCart, init as ajaxInit, reconcileFromServer as ajaxReconcile, addLine as ajaxAddLine, changeQuantity as ajaxChangeQty, removeLine as ajaxRemoveLine, whenSettled as ajaxWhenSettled } from './ajax-cart-store';
+import { isAjaxCartStoreEnabled, subscribe as ajaxSubscribe, getOptimisticCart as ajaxGetCart, init as ajaxInit, reconcileFromServer as ajaxReconcile, addLine as ajaxAddLine, changeQuantity as ajaxChangeQty, removeLine as ajaxRemoveLine, whenSettled as ajaxWhenSettled, cartHasDiscounts } from './ajax-cart-store';
 import { tracker } from './tracker';
 import { ANALYTICS_EVENTS } from './analytics-events';
 
@@ -1339,6 +1339,26 @@ export default class CartDrawer extends Component {
     var sig = this._cartSignature(cart);
     if (sig === this._lastPromoSig) return;
     this._lastPromoSig = sig;
+
+    // Paint the bar NOW from cached config, then let the debounced server call
+    // below confirm it. Measured: the evaluate-cart round-trip is ~1.6s from
+    // India of which our server is ~6ms, so waiting on it was the entire
+    // perceived cost of a cart change.
+    //
+    // Three guards, each protecting a case where a client-side estimate would
+    // be worse than waiting:
+    //   1. kill switch — turn the whole thing off at runtime, no redeploy.
+    //   2. unpriced lines — the cart contains a placeholder we can't price;
+    //      the skeleton is showing and any local number would be fiction.
+    //   3. cartHasDiscounts — coupons, automatic and volume discounts are
+    //      computed server-side and a client `price × qty` estimate is known to
+    //      be wrong for them (see the note on cartHasDiscounts). These carts
+    //      keep the old behaviour: one correct state, slightly later.
+    if (!window.__cartxDisableLocalBar
+      && !this._hasUnpricedLines(cart)
+      && !cartHasDiscounts(cart)) {
+      try { dispatchLocalBar(cart); } catch (_) { /* never block the server path */ }
+    }
     if (this._ajaxPromoTimer) clearTimeout(this._ajaxPromoTimer);
     this._ajaxPromoTimer = setTimeout(() => this._runAjaxPromo(), 250);
   }

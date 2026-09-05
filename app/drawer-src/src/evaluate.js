@@ -562,6 +562,47 @@ export function applyOptimisticGifts(cart) {
 
 // Returns a promise that resolves when all in-flight evaluations complete.
 // Resolves immediately if nothing is running.
+// Render the progress bar from CACHED config, with no network at all.
+//
+// Why this exists: the evaluate-cart round-trip is ~1.6s from India — and only
+// ~6ms of that is our server. The rest is the Shopify app proxy hop, which we
+// cannot optimise. The non-ajax path has always computed the bar locally and
+// let the server confirm; the ajax-store path never did (the cart-changed
+// listener below returns early when the store is active), so every bar update
+// there waited on the proxy.
+//
+// Returns true when a local result was dispatched.
+//
+// IMPORTANT: this MERGES onto the last server result rather than replacing it.
+// The cached client config carries claim_gifts as { id, trigger } with no
+// product data, so dispatching a raw local result over a server one would blank
+// the claim-gift cards until the next response.
+export function dispatchLocalBar(cart) {
+  if (!cart || !isCacheValid()) return false;
+  var ctx = getContext();
+  var localResult = localEvaluate(_cachedConfig, cart, {
+    id: ctx.customerId,
+    tags: ctx.customerTags,
+  });
+  if (!localResult) return false;
+
+  if (_lastResult && _lastResult.bar) {
+    var optimistic = Object.assign({}, _lastResult, {
+      ribbon_message: localResult.ribbon_message,
+    });
+    // Recompute tier states against the SERVER's tiers, so a stale or reduced
+    // cached config can't change how many milestones exist — only how far along
+    // them the cart sits.
+    optimistic.bar = recomputeBar(_lastResult.bar, cart);
+    window.dispatchEvent(new CustomEvent('cartmax:eval-result', { detail: optimistic }));
+    return true;
+  }
+
+  // No server result yet — nothing to preserve, so the local one stands alone.
+  window.dispatchEvent(new CustomEvent('cartmax:eval-result', { detail: localResult }));
+  return true;
+}
+
 export function waitForEvaluate() {
   if (!_evaluating && _pendingActions.length === 0 && !_pendingCart) {
     return Promise.resolve();

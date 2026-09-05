@@ -288,7 +288,7 @@ export function addLine(variantId, quantity, properties, meta) {
 // True when the cart carries server-computed discounts the client can't
 // reproduce (coupons, automatic/volume discounts, line discounts). For these,
 // a client-side `price × qty` estimate would be wrong and flicker on qty change.
-function cartHasDiscounts(cart) {
+export function cartHasDiscounts(cart) {
   if (!cart) return false;
   if ((cart.total_discount || 0) > 0) return true;
   if ((cart.cart_level_discount_applications || []).length) return true;
