@@ -23,6 +23,7 @@
 import { internalFetch, fetchCart, cartUpdateAll } from './helpers';
 import {
   getCartDifference, addItemToLocalCart, createOptimisticItem, setLineQuantity,
+  lineSignature, recalcTotals,
 } from './cart-optimistic';
 
 // ── State + pub/sub ───────────────────────────────────────
@@ -154,6 +155,26 @@ export function whenSettled(timeoutMs) {
 }
 
 // Apply a local (optimistic) cart immediately, then reconcile.
+// Replace unpriced placeholder lines with the real ones returned by
+// /cart/add.js. Matched on variant + properties signature, the same identity
+// the diff uses. Only placeholders are touched: a line that already has real
+// money is left alone so this can never clobber a reconciled cart.
+function fillPlaceholders(cart, addedLines) {
+  if (!cart || !addedLines || !addedLines.length) return cart;
+  var bySig = {};
+  addedLines.forEach(function (l) { bySig[lineSignature(l)] = l; });
+
+  var touched = false;
+  var items = (cart.items || []).map(function (it) {
+    if (!it._cartx_unpriced) return it;
+    var real = bySig[lineSignature(it)];
+    if (!real) return it;
+    touched = true;
+    return Object.assign({}, it, real, { _cartx_unpriced: false });
+  });
+  return touched ? recalcTotals(Object.assign({}, cart, { items: items })) : cart;
+}
+
 function setLocalCart(localCart) {
   _state.localCart = localCart;
   notify();
@@ -237,6 +258,18 @@ async function runSync() {
         // cooldown; localCart snaps to the server cart below, dropping the line.
         if (!addRes.ok) {
           items.forEach(function (it) { markVidUnavailable(it.id); });
+        } else {
+          // The add response already carries the real price/title/image for every
+          // line it created. We used to read only `.ok` and throw the body away,
+          // then spend a whole /cart.js round-trip (measured at 710ms on a live
+          // store) re-fetching what we were just handed. Fill the placeholders
+          // from it and notify now; the /cart.js below still runs for
+          // authoritative cart-level totals, but off the critical path.
+          try {
+            var added = await addRes.json();
+            var addedLines = (added && added.items) || (added && added.id ? [added] : []);
+            if (addedLines.length) setLocalCart(fillPlaceholders(_state.localCart, addedLines));
+          } catch (_) { /* fall through to the /cart.js reconcile */ }
         }
         didAdd = true;
       }

@@ -1799,19 +1799,7 @@
         detail: { cart: evalCart }
       }));
     }
-    if (isCacheValid()) {
-      var localResult = localEvaluate(_cachedConfig, evalCart, { id: ctx.customerId, tags: ctx.customerTags });
-      if (localResult && _lastResult && _lastResult.bar) {
-        var serverBar = _lastResult.bar;
-        var optimistic = Object.assign({}, _lastResult, {
-          ribbon_message: localResult.ribbon_message
-        });
-        optimistic.bar = recomputeBar(serverBar, evalCart);
-        window.dispatchEvent(new CustomEvent("cartmax:eval-result", { detail: optimistic }));
-      } else if (localResult && !_lastResult) {
-        window.dispatchEvent(new CustomEvent("cartmax:eval-result", { detail: localResult }));
-      }
-    }
+    dispatchLocalBar(evalCart);
     _evaluating = true;
     try {
       var result = await callEvaluate(evalCart);
@@ -1852,16 +1840,7 @@
         detail: { cart: evalCart }
       }));
     }
-    if (isCacheValid()) {
-      var localResult = localEvaluate(_cachedConfig, evalCart, { id: ctx.customerId, tags: ctx.customerTags });
-      if (localResult && _lastResult && _lastResult.bar) {
-        var optimistic = Object.assign({}, _lastResult, {
-          ribbon_message: localResult.ribbon_message
-        });
-        optimistic.bar = recomputeBar(_lastResult.bar, evalCart);
-        window.dispatchEvent(new CustomEvent("cartmax:eval-result", { detail: optimistic }));
-      }
-    }
+    dispatchLocalBar(evalCart);
     _evaluating = true;
     try {
       var result = await callEvaluate(evalCart);
@@ -2450,6 +2429,22 @@
       })();
     });
   }
+  function fillPlaceholders(cart, addedLines) {
+    if (!cart || !addedLines || !addedLines.length) return cart;
+    var bySig = {};
+    addedLines.forEach(function(l2) {
+      bySig[lineSignature(l2)] = l2;
+    });
+    var touched = false;
+    var items = (cart.items || []).map(function(it) {
+      if (!it._cartx_unpriced) return it;
+      var real = bySig[lineSignature(it)];
+      if (!real) return it;
+      touched = true;
+      return Object.assign({}, it, real, { _cartx_unpriced: false });
+    });
+    return touched ? recalcTotals(Object.assign({}, cart, { items })) : cart;
+  }
   function setLocalCart2(localCart) {
     _state2.localCart = localCart;
     notify2();
@@ -2518,6 +2513,13 @@
             items.forEach(function(it) {
               markVidUnavailable(it.id);
             });
+          } else {
+            try {
+              var added = await addRes.json();
+              var addedLines = added && added.items || (added && added.id ? [added] : []);
+              if (addedLines.length) setLocalCart2(fillPlaceholders(_state2.localCart, addedLines));
+            } catch (_2) {
+            }
           }
           didAdd = true;
         }

@@ -648,24 +648,7 @@ async function runEvaluate(cart, action) {
       detail: { cart: evalCart },
     }));
   }
-  if (isCacheValid()) {
-    var localResult = localEvaluate(_cachedConfig, evalCart, { id: ctx.customerId, tags: ctx.customerTags });
-    if (localResult && _lastResult && _lastResult.bar) {
-      var serverBar = _lastResult.bar;
-      var optimistic = Object.assign({}, _lastResult, {
-        ribbon_message: localResult.ribbon_message,
-      });
-
-      // Recompute progress + tier states against the SERVER's tiers
-      // using the simulated cart value. This is always correct regardless
-      // of whether local eval has different tier count.
-      optimistic.bar = recomputeBar(serverBar, evalCart);
-
-      window.dispatchEvent(new CustomEvent('cartmax:eval-result', { detail: optimistic }));
-    } else if (localResult && !_lastResult) {
-      window.dispatchEvent(new CustomEvent('cartmax:eval-result', { detail: localResult }));
-    }
-  }
+  dispatchLocalBar(evalCart);
 
   // ── ACCURATE PATH: server eval + apply ──
   _evaluating = true;
@@ -718,16 +701,7 @@ async function runEvaluateBatch(cart, actions) {
       detail: { cart: evalCart },
     }));
   }
-  if (isCacheValid()) {
-    var localResult = localEvaluate(_cachedConfig, evalCart, { id: ctx.customerId, tags: ctx.customerTags });
-    if (localResult && _lastResult && _lastResult.bar) {
-      var optimistic = Object.assign({}, _lastResult, {
-        ribbon_message: localResult.ribbon_message,
-      });
-      optimistic.bar = recomputeBar(_lastResult.bar, evalCart);
-      window.dispatchEvent(new CustomEvent('cartmax:eval-result', { detail: optimistic }));
-    }
-  }
+  dispatchLocalBar(evalCart);
 
   _evaluating = true;
   try {
