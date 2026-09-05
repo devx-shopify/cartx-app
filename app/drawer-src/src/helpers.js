@@ -345,6 +345,19 @@ export function showsQuantitySelector(item) {
   return Number(unit) > 0;
 }
 
+// What a gift line is ACTUALLY charging the shopper, in minor units. 0 means
+// the discount landed and the line really is free. > 0 means it did NOT land —
+// e.g. a merchant discount code with "combines with product discounts" off
+// makes Shopify drop our automatic gift discount, and the shopper is charged
+// for a line we'd otherwise label FREE. Missing price fields read as 0, so
+// optimistic (not-yet-reconciled) gift lines still count as free.
+export function giftChargedAmount(item) {
+  if (!item) return 0;
+  var line = item.final_line_price != null ? item.final_line_price : item.line_price;
+  var n = Number(line || 0);
+  return n > 0 ? n : 0;
+}
+
 // ── Focus trap for accessibility ────────────────────────────
 
 var FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';

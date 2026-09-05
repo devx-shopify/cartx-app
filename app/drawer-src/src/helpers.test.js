@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest'
-import { hasFreebieMarker, showsQuantitySelector } from './helpers.js'
+import { hasFreebieMarker, showsQuantitySelector, giftChargedAmount } from './helpers.js'
 
 describe('hasFreebieMarker', () => {
   test('true for cartx _freebie', () => {
@@ -49,5 +49,30 @@ describe('showsQuantitySelector', () => {
   test('missing item / no price fields → hide (safe default)', () => {
     expect(showsQuantitySelector(null)).toBe(false)
     expect(showsQuantitySelector({ properties: {} })).toBe(false)
+  })
+})
+
+describe('giftChargedAmount', () => {
+  test('is 0 when the gift discount landed (line is genuinely free)', () => {
+    expect(giftChargedAmount({ final_line_price: 0, line_price: 0 })).toBe(0)
+  })
+
+  test('is 0 for an optimistic gift line with no price fields yet', () => {
+    expect(giftChargedAmount({ properties: { _freebie: 'true' } })).toBe(0)
+    expect(giftChargedAmount(null)).toBe(0)
+  })
+
+  test('reports the charge when the gift discount did NOT apply', () => {
+    // Real soulflower case: BUY1GET1 code had "combines with product discounts"
+    // off, so Shopify dropped our automatic gift discount and charged 262.50.
+    expect(giftChargedAmount({ final_line_price: 26250, line_price: 26250 })).toBe(26250)
+  })
+
+  test('trusts final_line_price over the pre-discount line_price', () => {
+    expect(giftChargedAmount({ final_line_price: 0, line_price: 26250 })).toBe(0)
+  })
+
+  test('falls back to line_price when final_line_price is absent', () => {
+    expect(giftChargedAmount({ line_price: 5000 })).toBe(5000)
   })
 })

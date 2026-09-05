@@ -515,6 +515,12 @@
     var unit = item.final_price != null ? item.final_price : item.price || 0;
     return Number(unit) > 0;
   }
+  function giftChargedAmount(item) {
+    if (!item) return 0;
+    var line = item.final_line_price != null ? item.final_line_price : item.line_price;
+    var n2 = Number(line || 0);
+    return n2 > 0 ? n2 : 0;
+  }
   var FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
   function trapFocus(container) {
     var focusables = container.querySelectorAll(FOCUSABLE);
@@ -4304,6 +4310,7 @@
       }
       var claimPriceUnit = isClaimed && item.properties && item.properties._claim_price ? Number(item.properties._claim_price) : 0;
       var claimPriceLine = claimPriceUnit * (item.quantity || 1);
+      var giftChargedLine = giftChargedAmount(item);
       var cls = "cartmax-line-item" + (isRemoving ? " cartmax-line-removing" : "") + (isFreebie ? " cartmax-line-freebie" : "");
       return /* @__PURE__ */ k("div", { class: cls, key: item.key }, /* @__PURE__ */ k("div", { class: "cartmax-line-image" }, item.image ? /* @__PURE__ */ k("img", { src: resizeImage(item.image, 96), alt: item.title, width: "64", height: "64", loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-line-image-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image"))), /* @__PURE__ */ k("div", { class: "cartmax-line-details" }, this._layout.show_vendor && item.vendor ? /* @__PURE__ */ k("div", { class: "cartmax-line-vendor" }, item.vendor) : null, /* @__PURE__ */ k("div", { class: "cartmax-line-title-row" }, /* @__PURE__ */ k("div", { class: "cartmax-line-title" }, lineTitle), showRemoveBtn ? /* @__PURE__ */ k(
         "button",
@@ -4318,6 +4325,12 @@
         /* @__PURE__ */ k("span", { key: "cp" }, formatMoney(claimPriceLine, curr)),
         item.original_line_price > claimPriceLine ? /* @__PURE__ */ k("span", { key: "orig", class: "cartmax-line-price-original" }, formatMoney(item.original_line_price, curr)) : null,
         // Keep the freebie identity even at a nominal price.
+        /* @__PURE__ */ k("span", { key: "giftbadge", class: "cartmax-gift-badge" }, "GIFT")
+      ] : giftChargedLine > 0 ? [
+        /* @__PURE__ */ k("span", { key: "gp" }, formatMoney(giftChargedLine, curr)),
+        item.original_line_price > giftChargedLine ? /* @__PURE__ */ k("span", { key: "gorig", class: "cartmax-line-price-original" }, formatMoney(item.original_line_price, curr)) : null,
+        // Still a gift line (no qty selector / switcher), but
+        // the shopper is being charged — show the truth.
         /* @__PURE__ */ k("span", { key: "giftbadge", class: "cartmax-gift-badge" }, "GIFT")
       ] : /* @__PURE__ */ k("span", { class: "cartmax-gift-badge" }, "FREE") : (() => {
         var compareAtUnit = this._layout.show_compare_price ? this._compareAtCache[String(item.variant_id)] : null;

@@ -1,6 +1,6 @@
 /* eslint-disable */
 import { h, Component } from 'preact';
-import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId, hasFreebieMarker, showsQuantitySelector } from './helpers';
+import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId, hasFreebieMarker, showsQuantitySelector, giftChargedAmount } from './helpers';
 import { fireConfetti, setConfettiLottieUrl } from './confetti';
 import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLine, ensureCartxAttribute, ensureDrawerAttribute, localGiftDelta, giftIntendedQuantity } from './evaluate';
 import { isGraphqlCartEnabled } from './storefront-cart';
@@ -1970,6 +1970,14 @@ export default class CartDrawer extends Component {
       ? Number(item.properties._claim_price) : 0;
     var claimPriceLine = claimPriceUnit * (item.quantity || 1);
 
+    // What Shopify is ACTUALLY charging for this line. A gift line is only
+    // "FREE" when the discount really landed. If a merchant discount code has
+    // "combines with product discounts" off, Shopify drops our automatic gift
+    // discount and the shopper IS charged for the gift — printing FREE there
+    // hides a real charge and makes the cart total look wrong. Missing price
+    // fields fall through to 0, so optimistic gift lines still render FREE.
+    var giftChargedLine = giftChargedAmount(item);
+
     var cls = 'cartmax-line-item'
       + (isRemoving ? ' cartmax-line-removing' : '')
       + (isFreebie ? ' cartmax-line-freebie' : '');
@@ -2007,7 +2015,17 @@ export default class CartDrawer extends Component {
                       // Keep the freebie identity even at a nominal price.
                       <span key="giftbadge" class="cartmax-gift-badge">GIFT</span>,
                     ]
-                  : <span class="cartmax-gift-badge">FREE</span>)
+                  : (giftChargedLine > 0
+                      ? [
+                          <span key="gp">{formatMoney(giftChargedLine, curr)}</span>,
+                          (item.original_line_price > giftChargedLine)
+                            ? <span key="gorig" class="cartmax-line-price-original">{formatMoney(item.original_line_price, curr)}</span>
+                            : null,
+                          // Still a gift line (no qty selector / switcher), but
+                          // the shopper is being charged — show the truth.
+                          <span key="giftbadge" class="cartmax-gift-badge">GIFT</span>,
+                        ]
+                      : <span class="cartmax-gift-badge">FREE</span>))
               : (() => {
                   var compareAtUnit = this._layout.show_compare_price
                     ? this._compareAtCache[String(item.variant_id)]
