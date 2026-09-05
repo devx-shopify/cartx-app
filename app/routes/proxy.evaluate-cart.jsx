@@ -8,6 +8,8 @@ import { evaluateOffers } from "../lib/evaluate/triggers.server.js";
 import { buildBar, getRibbonFromBar } from "../lib/evaluate/bar.server.js";
 import { resolveAvailableCoupons } from "../lib/evaluate/coupons.server.js";
 import { resolveClaimGifts } from "../lib/evaluate/claims.server.js";
+import { rankUpsells, computeGap } from "../lib/upsell-rank.js";
+import { loadUpsellAddRates } from "../lib/upsell-stats.server.js";
 
 function verifyProxyHmac(requestUrl) {
   const secret = process.env.SHOPIFY_API_SECRET;
@@ -114,6 +116,11 @@ export const action = async ({ request }) => {
   const adjTotal = adjustedTotal(cartItems);
   const adjQty = adjustedQty(cartItems);
 
+  // Only pay for the analytics read when a shop actually ranks by performance.
+  const upsellAddRates = config.upsells?.strategies?.performance?.enabled
+    ? await loadUpsellAddRates(shopId)
+    : {};
+
   let offerResult, bar, ribbon_message, availableCoupons, claimGifts;
   try {
     offerResult = evaluateOffers(config.offers || [], cart, adjTotal, adjQty, page, customer);
@@ -211,12 +218,19 @@ export const action = async ({ request }) => {
       enabled: true,
       heading: config.upsells.heading,
       show_on_empty_cart: config.upsells.show_on_empty_cart || false,
-      products: (config.upsells.products || []).filter((p) => {
-        const pid = p.product_id?.startsWith('gid://') ? p.product_id.split('/').pop() : String(p.product_id);
-        return !cartItems.some((item) => {
-          const itemPid = String(item.product_id).startsWith('gid://') ? String(item.product_id).split('/').pop() : String(item.product_id);
-          return itemPid === pid;
-        });
+      // Echoed so the drawer can re-rank locally as the cart changes without
+      // waiting for a server roundtrip (same inputs => same order).
+      strategies: config.upsells.strategies || {},
+      max_visible: config.upsells.max_visible || 4,
+      // Echoed so a local re-rank scores identically to the server's.
+      add_rates: upsellAddRates,
+      products: rankUpsells({
+        pool: config.upsells.products || [],
+        cartItems,
+        gap: computeGap(bar, adjTotal),
+        strategies: config.upsells.strategies,
+        addRates: upsellAddRates,
+        maxVisible: config.upsells.max_visible,
       }),
     } : null,
   });

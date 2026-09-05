@@ -175,6 +175,42 @@ export const UpsellProductSchema = z.object({
   compare_at_price: z.string().optional(),
 })
 
+export const UpsellPairingRuleSchema = z.object({
+  id: z.string().min(1),
+  // "When the cart contains any of these products…"
+  when_product_ids: z.array(z.string()).default([]),
+  // "…promote these variants." Must be variants that exist in the curated pool.
+  then_variant_ids: z.array(z.string()).default([]),
+  boost: z.number().min(0).max(10).default(1),
+})
+
+export const UpsellStrategiesSchema = z.object({
+  // Rank by how well a product closes the gap to the next gift milestone.
+  gap_filler: z.object({
+    enabled: z.boolean().default(false),
+    // How much overshoot is tolerable: 1 = a product costing twice the gap
+    // scores at the floor. Higher values are more forgiving.
+    overshoot_tolerance: z.number().min(0.1).max(10).default(1),
+    cta_template: z.string().default('Add to unlock [[reward]]'),
+  }).default({}),
+  // "Cart contains X -> promote Y", merchant-authored.
+  pairing: z.object({
+    enabled: z.boolean().default(false),
+    rules: z.array(UpsellPairingRuleSchema).default([]),
+  }).default({}),
+  // Top the pool up from Shopify's own recommendations when it runs short.
+  shopify_recs: z.object({
+    enabled: z.boolean().default(false),
+    intent: z.enum(['complementary', 'related']).default('complementary'),
+    max_fill: z.number().int().min(1).max(8).default(2),
+  }).default({}),
+  // Rank by observed add-rate, ignoring products with too little data.
+  performance: z.object({
+    enabled: z.boolean().default(false),
+    min_impressions: z.number().int().min(1).default(50),
+  }).default({}),
+}).default({})
+
 export const EvaluateCartRequestSchema = z.object({
   cart: z.object({
     items: z.array(z.any()),
@@ -319,6 +355,10 @@ export const ConfigSchema = z.object({
     heading: z.string(),
     show_on_empty_cart: z.boolean().optional(),
     products: z.array(UpsellProductSchema),
+    // Ranking strategies. Every one is opt-in: with all disabled the curated
+    // pool renders in its authored order, exactly as it did before the engine.
+    strategies: UpsellStrategiesSchema.default({}),
+    max_visible: z.number().int().min(1).max(12).default(4),
   }),
   drawer: DrawerConfigSchema,
 })

@@ -710,38 +710,154 @@
     }
   }
 
-  // app/drawer-src/src/rules.js
-  function isDiscountedItem(item) {
-    return item.properties && item.properties["_freebie"] === "true" || item.properties && item.properties["_cartmax_claim"] === "true";
-  }
+  // app/lib/upsell-rank.js
+  var FREEBIE_PROP = "_freebie";
+  var CLAIM_PROP = "_cartmax_claim";
   var CARTX_DISCOUNT_TITLES = ["cartx free gift", "cartx volume discount"];
+  var DEFAULT_MAX_VISIBLE = 4;
+  var UNLOCK_FLOOR = 0.5;
+  var PARTIAL_CEILING = 0.45;
+  function normalizeId(id) {
+    const s2 = String(id == null ? "" : id);
+    return s2.startsWith("gid://") ? s2.split("/").pop() : s2;
+  }
+  function isGiftLine(item) {
+    const props = item && item.properties || {};
+    return props[FREEBIE_PROP] === "true" || props[CLAIM_PROP] === "true";
+  }
   function externalDiscountCents(item) {
-    var allocs = item.line_level_discount_allocations || [];
-    var cents = 0;
-    for (var i2 = 0; i2 < allocs.length; i2++) {
-      var app = allocs[i2].discount_application || {};
-      var title = String(app.title || allocs[i2].title || "").toLowerCase();
-      if (CARTX_DISCOUNT_TITLES.indexOf(title) === -1) cents += allocs[i2].amount || 0;
+    const allocs = item && item.line_level_discount_allocations || [];
+    let cents = 0;
+    for (let i2 = 0; i2 < allocs.length; i2++) {
+      const alloc = allocs[i2] || {};
+      const app = alloc.discount_application || {};
+      const title = String(app.title || alloc.title || "").toLowerCase();
+      if (CARTX_DISCOUNT_TITLES.indexOf(title) === -1) cents += alloc.amount || 0;
+    }
+    return cents;
+  }
+  function adjustedTotalCents(items) {
+    const list = items || [];
+    let cents = 0;
+    for (let i2 = 0; i2 < list.length; i2++) {
+      const item = list[i2];
+      if (isGiftLine(item)) continue;
+      const gross = item.original_line_price != null ? item.original_line_price : item.line_price || 0;
+      cents += Math.max(0, gross - externalDiscountCents(item));
     }
     return cents;
   }
   function adjustedTotal(items) {
-    var cents = 0;
-    for (var i2 = 0; i2 < items.length; i2++) {
-      if (isDiscountedItem(items[i2])) continue;
-      var gross = items[i2].original_line_price || items[i2].line_price || 0;
-      cents += Math.max(0, gross - externalDiscountCents(items[i2]));
-    }
-    return cents / 100;
+    return adjustedTotalCents(items) / 100;
   }
   function adjustedQty(items) {
-    var qty = 0;
-    for (var i2 = 0; i2 < items.length; i2++) {
-      if (isDiscountedItem(items[i2])) continue;
-      qty += items[i2].quantity || 0;
+    const list = items || [];
+    let qty = 0;
+    for (let i2 = 0; i2 < list.length; i2++) {
+      if (isGiftLine(list[i2])) continue;
+      qty += list[i2].quantity || 0;
     }
     return qty;
   }
+  function computeGap(bar, currentTotal) {
+    const tiers = bar && bar.tiers || [];
+    const mode = bar && bar.mode;
+    let best = null;
+    for (let i2 = 0; i2 < tiers.length; i2++) {
+      const tier = tiers[i2];
+      const type = tier.trigger_type || (mode === "quantity" ? "quantity" : "price");
+      if (type !== "price") continue;
+      const threshold = Number(tier.threshold);
+      if (!(threshold > currentTotal)) continue;
+      if (!best || threshold < Number(best.threshold)) best = tier;
+    }
+    if (!best) return null;
+    return { gap: Number(best.threshold) - currentTotal, tier: best };
+  }
+  function scoreGapFiller(price, gap, tolerance) {
+    const p2 = Number(price);
+    const g2 = Number(gap);
+    if (!(g2 > 0) || !(p2 > 0)) return 0;
+    if (p2 < g2) return PARTIAL_CEILING * (p2 / g2);
+    const tol = Number(tolerance) > 0 ? Number(tolerance) : 1;
+    const overshoot = Math.min(1, (p2 - g2) / (g2 * tol));
+    return UNLOCK_FLOOR + (1 - UNLOCK_FLOOR) * (1 - overshoot);
+  }
+  function matchPairingRules(rules, cartItems) {
+    const boosts = {};
+    const list = rules || [];
+    const items = cartItems || [];
+    for (let i2 = 0; i2 < list.length; i2++) {
+      const rule = list[i2] || {};
+      const when = (rule.when_product_ids || []).map(normalizeId);
+      if (when.length === 0) continue;
+      const matched = items.some((item) => when.indexOf(normalizeId(item.product_id)) !== -1);
+      if (!matched) continue;
+      const boost = Number(rule.boost) > 0 ? Number(rule.boost) : 1;
+      const targets = rule.then_variant_ids || [];
+      for (let t2 = 0; t2 < targets.length; t2++) {
+        const vid = normalizeId(targets[t2]);
+        boosts[vid] = (boosts[vid] || 0) + boost;
+      }
+    }
+    return boosts;
+  }
+  function rankUpsells(input) {
+    const opts = input || {};
+    const pool = opts.pool || [];
+    const cartItems = opts.cartItems || [];
+    const strategies = opts.strategies || {};
+    const gapInfo = opts.gap || null;
+    const addRates = opts.addRates || {};
+    const maxVisible = Number(opts.maxVisible) > 0 ? Number(opts.maxVisible) : DEFAULT_MAX_VISIBLE;
+    const inCartProducts = {};
+    const inCartVariants = {};
+    for (let i2 = 0; i2 < cartItems.length; i2++) {
+      inCartProducts[normalizeId(cartItems[i2].product_id)] = true;
+      inCartVariants[normalizeId(cartItems[i2].variant_id)] = true;
+    }
+    const gapCfg = strategies.gap_filler || {};
+    const pairCfg = strategies.pairing || {};
+    const perfCfg = strategies.performance || {};
+    const pairBoosts = pairCfg.enabled ? matchPairingRules(pairCfg.rules, cartItems) : {};
+    const minImpressions = Number(perfCfg.min_impressions) > 0 ? Number(perfCfg.min_impressions) : 50;
+    const scored = [];
+    for (let i2 = 0; i2 < pool.length; i2++) {
+      const product = pool[i2];
+      const vid = normalizeId(product.variant_id);
+      const pid = normalizeId(product.product_id);
+      if (inCartProducts[pid] || inCartVariants[vid]) continue;
+      let score = 0;
+      let unlocksTier = null;
+      if (gapCfg.enabled && gapInfo && gapInfo.gap > 0) {
+        const price = Number(product.price);
+        score += scoreGapFiller(price, gapInfo.gap, gapCfg.overshoot_tolerance);
+        if (price >= gapInfo.gap) unlocksTier = gapInfo.tier;
+      }
+      if (pairCfg.enabled && pairBoosts[vid]) {
+        score += pairBoosts[vid];
+      }
+      if (perfCfg.enabled) {
+        const stat = addRates["upsell:" + vid];
+        if (stat && stat.impressions >= minImpressions) {
+          score += Math.max(0, Math.min(1, Number(stat.rate) || 0));
+        }
+      }
+      scored.push({ product, score, unlocksTier, index: i2 });
+    }
+    scored.sort((a2, b2) => b2.score - a2.score || a2.index - b2.index);
+    const out = [];
+    for (let i2 = 0; i2 < scored.length && i2 < maxVisible; i2++) {
+      const entry = scored[i2];
+      out.push(Object.assign({}, entry.product, {
+        _score: entry.score,
+        _unlocks_tier: entry.unlocksTier
+      }));
+    }
+    return out;
+  }
+
+  // app/drawer-src/src/rules.js
   function pageMatch(handles, path) {
     if (!handles || handles.length === 0) return false;
     if (handles.indexOf("/") !== -1) return true;
@@ -1584,15 +1700,9 @@
   }
   function recomputeBar(serverBar, cart) {
     if (!serverBar || !serverBar.tiers || serverBar.tiers.length === 0) return serverBar;
-    var adjTotal = 0, adjQty = 0;
     var items = cart.items || [];
-    for (var i2 = 0; i2 < items.length; i2++) {
-      var it = items[i2];
-      if (it.properties && (it.properties["_freebie"] === "true" || it.properties["_cartmax_claim"] === "true")) continue;
-      adjTotal += it.original_line_price || it.line_price || 0;
-      adjQty += it.quantity || 0;
-    }
-    adjTotal /= 100;
+    var adjTotal = adjustedTotal(items);
+    var adjQty = adjustedQty(items);
     var tiers = serverBar.tiers;
     var n2 = tiers.length;
     var mode = serverBar.mode;
@@ -2937,6 +3047,8 @@
       this._prefetchedHandles = {};
       this._upsellAvailable = {};
       this._upsellFetched = {};
+      this._recsPool = [];
+      this._recsFetched = {};
       this._cartReadSeq = 0;
       this._activeOps = /* @__PURE__ */ new Set();
       this._upsells = { card_layout: "horizontal", card_size: "medium", heading: "", btn_text: "ADD TO CART", show_compare_price: true };
@@ -5172,7 +5284,11 @@
         window.dispatchEvent(new CustomEvent("cartmax:internal-reload", { detail: { cart } }));
         window.dispatchEvent(new CustomEvent("cartmax:cart-changed", { detail: { cart } }));
         tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, {
+          // Same id the impression observer reports, so DailyStats can pair
+          // impressions with adds per product and yield an add-rate.
+          promotion_id: "upsell:" + String(variantId),
           promotion_type: "upsell",
+          promotion_name: productMeta && productMeta.title || void 0,
           variant_id: String(variantId),
           cart_total: cart.total_price,
           item_count: cart.item_count
@@ -5210,6 +5326,58 @@
         });
       });
     }
+    // Top a short curated pool up with Shopify's own recommendations. This is the
+    // storefront's unauthenticated endpoint, so there's no backend involved; it
+    // only returns useful results when the merchant has Search & Discovery set up,
+    // hence opt-in with a silent fallback to the curated pool alone.
+    _ensureUpsellRecs(strategies, cart, needed) {
+      var cfg = strategies && strategies.shopify_recs || {};
+      if (!cfg.enabled || needed <= 0) return;
+      var items = cart && cart.items || [];
+      if (items.length === 0) return;
+      var seed = null;
+      var best = -1;
+      for (var i2 = 0; i2 < items.length; i2++) {
+        var it = items[i2];
+        if (hasFreebieMarker(it.properties)) continue;
+        var value = it.final_line_price || 0;
+        if (value > best) {
+          best = value;
+          seed = it;
+        }
+      }
+      if (!seed || !seed.product_id) return;
+      var intent = cfg.intent || "complementary";
+      var key = String(seed.product_id) + ":" + intent;
+      if (this._recsFetched[key]) return;
+      this._recsFetched[key] = true;
+      var limit = Math.max(1, Math.min(8, cfg.max_fill || 2));
+      var url = "/recommendations/products.json?product_id=" + encodeURIComponent(seed.product_id) + "&limit=" + limit + "&intent=" + intent;
+      var self = this;
+      fetch(url).then(function(r2) {
+        return r2.ok ? r2.json() : null;
+      }).then(function(data) {
+        var products = data && data.products || [];
+        if (products.length === 0) return;
+        self._recsPool = products.map(function(prod) {
+          var variant = prod.variants && prod.variants[0] || {};
+          var minor = variant.price != null ? variant.price : prod.price;
+          return {
+            product_id: String(prod.id),
+            variant_id: String(variant.id || ""),
+            title: prod.title,
+            handle: prod.handle,
+            image_url: prod.featured_image || prod.images && prod.images[0] || "",
+            price: String((Number(minor) || 0) / 100),
+            _source: "shopify_recs"
+          };
+        }).filter(function(prod) {
+          return prod.variant_id;
+        });
+        if (self._recsPool.length > 0) self.setState({});
+      }).catch(function() {
+      });
+    }
     renderUpsells() {
       var result = this.state.evalResult;
       if (!result || !result.upsells || !result.upsells.enabled) return null;
@@ -5219,13 +5387,18 @@
       var cart = this.state.cart;
       var isEmpty = !cart || !cart.items || cart.items.length === 0;
       if (isEmpty && this._upsells.show_on_empty !== "always") return null;
-      var cartVariantIds = (cart && cart.items || []).map(function(i2) {
-        return String(i2.variant_id);
-      });
-      var filtered = products.filter(function(p2) {
-        var vid = String(p2.variant_id);
-        if (vid.startsWith("gid://")) vid = vid.split("/").pop();
-        return cartVariantIds.indexOf(vid) === -1;
+      var cartItems = cart && cart.items || [];
+      var strategies = upsells.strategies || {};
+      var maxVisible = upsells.max_visible || 4;
+      this._ensureUpsellRecs(strategies, cart, maxVisible - products.length);
+      var gap = computeGap(result.bar, adjustedTotal(cartItems));
+      var filtered = rankUpsells({
+        pool: products.concat(this._recsPool || []),
+        cartItems,
+        gap,
+        strategies,
+        addRates: upsells.add_rates,
+        maxVisible
       });
       if (filtered.length === 0) return null;
       this._ensureUpsellAvailability(filtered);
@@ -5236,6 +5409,7 @@
       var sizeClass = "cartmax-upsell-card--" + (u2.card_size || "medium");
       var headingText = u2.heading || "YOU MAY ALSO LIKE";
       var btnText = u2.btn_text || "ADD TO CART";
+      var unlockTpl = strategies.gap_filler && strategies.gap_filler.cta_template || "Add to unlock [[reward]]";
       var imgPx = { small: 130, medium: 180, large: 230 }[u2.card_size] || 180;
       return /* @__PURE__ */ k("div", { class: "cartmax-upsells " + layoutClass }, /* @__PURE__ */ k("div", { class: "cartmax-upsells-heading", style: { justifyContent: u2.heading_position === "center" ? "center" : "flex-start" } }, headingText), this.state.upsellError ? /* @__PURE__ */ k("div", { class: "cartmax-upsell-error" }, this.state.upsellError) : null, /* @__PURE__ */ k("div", { class: "cartmax-upsells-scroll" }, filtered.map(function(p2) {
         var vid = String(p2.variant_id);
@@ -5247,17 +5421,32 @@
           image: p2.image_url,
           price: p2.price
         };
-        return /* @__PURE__ */ k("div", { class: "cartmax-upsell-card " + sizeClass, key: p2.product_id }, p2.image_url ? /* @__PURE__ */ k("img", { class: "cartmax-upsell-img", src: resizeImage(p2.image_url, imgPx), alt: p2.title, loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-upsell-img-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image")), /* @__PURE__ */ k("div", { class: "cartmax-upsell-info" }, /* @__PURE__ */ k("div", { class: "cartmax-upsell-title" }, p2.title), /* @__PURE__ */ k("div", { class: "cartmax-upsell-price" }, /* @__PURE__ */ k("span", { class: "cartmax-upsell-sale" }, formatMoney(Number(p2.price) * 100, curr)), u2.show_compare_price && p2.compare_at_price ? /* @__PURE__ */ k("span", { class: "cartmax-upsell-compare" }, formatMoney(Number(p2.compare_at_price) * 100, curr)) : null), /* @__PURE__ */ k(
-          "button",
+        var rewardLabel = p2._unlocks_tier ? String(p2._unlocks_tier.label || "").split("\n")[0].trim() : "";
+        var unlockLabel = p2._unlocks_tier ? unlockTpl.replace(/\[\[\s*reward\s*\]\]/gi, rewardLabel || "your reward") : null;
+        return /* @__PURE__ */ k(
+          "div",
           {
-            class: "cartmax-upsell-add" + (soldOut ? " cartmax-upsell-add--soldout" : ""),
-            onClick: function() {
-              if (!soldOut) self.handleUpsellAdd(vid, productMeta);
-            },
-            disabled: isAdding || soldOut
+            class: "cartmax-upsell-card " + sizeClass + (unlockLabel ? " cartmax-upsell-card--unlocks" : ""),
+            key: vid,
+            "data-cartmax-promo-id": "upsell:" + vid,
+            "data-cartmax-promo-type": "upsell",
+            ref: function(el) {
+              self._observePromo(el);
+            }
           },
-          soldOut ? "Sold out" : isAdding ? "Adding..." : btnText
-        )));
+          p2.image_url ? /* @__PURE__ */ k("img", { class: "cartmax-upsell-img", src: resizeImage(p2.image_url, imgPx), alt: p2.title, loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-upsell-img-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image")),
+          /* @__PURE__ */ k("div", { class: "cartmax-upsell-info" }, /* @__PURE__ */ k("div", { class: "cartmax-upsell-title" }, p2.title), /* @__PURE__ */ k("div", { class: "cartmax-upsell-price" }, /* @__PURE__ */ k("span", { class: "cartmax-upsell-sale" }, formatMoney(Number(p2.price) * 100, curr)), u2.show_compare_price && p2.compare_at_price ? /* @__PURE__ */ k("span", { class: "cartmax-upsell-compare" }, formatMoney(Number(p2.compare_at_price) * 100, curr)) : null), /* @__PURE__ */ k(
+            "button",
+            {
+              class: "cartmax-upsell-add" + (soldOut ? " cartmax-upsell-add--soldout" : ""),
+              onClick: function() {
+                if (!soldOut) self.handleUpsellAdd(vid, productMeta);
+              },
+              disabled: isAdding || soldOut
+            },
+            soldOut ? "Sold out" : isAdding ? "Adding..." : unlockLabel || btnText
+          ))
+        );
       })));
     }
     // ── Checkout validation ───────────────────────────────────

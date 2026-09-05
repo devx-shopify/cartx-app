@@ -1,46 +1,10 @@
-import { FROZEN_PAGES, FROZEN_PAGE_PREFIXES, LINE_PROPS } from './constants.js'
+import { FROZEN_PAGES, FROZEN_PAGE_PREFIXES } from './constants.js'
 
-function isDiscountedItem(item) {
-  return item.properties?.[LINE_PROPS.FREEBIE] === 'true' ||
-    item.properties?.[LINE_PROPS.CARTMAX_CLAIM] === 'true'
-}
-
-// cartx's own automatic discounts are the REWARD (free gift, volume discount),
-// not a reduction in the customer's qualifying spend — they must never lower a
-// threshold (that would let the reward it grants knock itself back off). Any
-// OTHER discount (e.g. a merchant "Buy X Get Y") genuinely reduces what the
-// customer pays, so it SHOULD count. Titles must match those set in
-// discount.server.js / volume-discount.server.js.
-const CARTX_DISCOUNT_TITLES = ['cartx free gift', 'cartx volume discount']
-
-function externalDiscountCents(item) {
-  const allocs = item.line_level_discount_allocations || []
-  return allocs.reduce((sum, a) => {
-    const title = String(a?.discount_application?.title || a?.title || '').toLowerCase()
-    return CARTX_DISCOUNT_TITLES.includes(title) ? sum : sum + (a.amount || 0)
-  }, 0)
-}
-
-export function adjustedTotal(cartItems) {
-  const cents = cartItems.reduce((sum, item) => {
-    if (isDiscountedItem(item)) return sum
-    // Start from the pre-discount line price, then subtract only EXTERNAL
-    // discounts (e.g. a merchant Buy X Get Y that reflects in the cart). So a
-    // ₹999 gift threshold measures what the customer actually pays for the
-    // qualifying items, while cartx's own volume/gift discounts are ignored.
-    const gross = item.original_line_price ?? item.line_price ?? 0
-    return sum + Math.max(0, gross - externalDiscountCents(item))
-  }, 0)
-  // Shopify sends prices in cents; config thresholds are in dollars
-  return cents / 100
-}
-
-export function adjustedQty(cartItems) {
-  return cartItems.reduce((sum, item) => {
-    if (isDiscountedItem(item)) return sum
-    return sum + item.quantity
-  }, 0)
-}
+// Qualifying spend ("adjusted" totals) lives in the shared, dependency-free
+// ranking module so the server and the storefront drawer can never drift apart
+// again — they previously held three copies of this and one had already lost
+// the external-discount subtraction. See app/lib/upsell-rank.js.
+export { adjustedTotal, adjustedQty } from './upsell-rank.js'
 
 export function computeTotalSavings(cart) {
   if (!cart) return 0

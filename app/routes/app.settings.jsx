@@ -182,6 +182,8 @@ export const action = async ({ request }) => {
     config.upsells.products = [];
   }
   config.upsells.enabled = body.upsells_enabled;
+  if (body.upsell_strategies) config.upsells.strategies = body.upsell_strategies;
+  if (body.upsell_max_visible) config.upsells.max_visible = Number(body.upsell_max_visible);
   config.bottom_ribbon = body.bottom_ribbon;
   config.cross_page_removal_behavior = body.cross_page_removal_behavior;
 
@@ -447,6 +449,14 @@ export default function Settings() {
   const [editingId, setEditingId] = useState(null);
   const [upsellsEnabled, setUpsellsEnabled] = useState(data.upsells.enabled);
   const [upsellProducts, setUpsellProducts] = useState(data.upsells.products);
+  // Ranking strategies. Each is opt-in; with all off the pool renders in the
+  // order the merchant arranged it, which is the pre-engine behaviour.
+  const initialStrategies = data.upsells.strategies || {};
+  const [gapFiller, setGapFiller] = useState(!!initialStrategies.gap_filler?.enabled);
+  const [pairingOn, setPairingOn] = useState(!!initialStrategies.pairing?.enabled);
+  const [shopifyRecs, setShopifyRecs] = useState(!!initialStrategies.shopify_recs?.enabled);
+  const [performanceOn, setPerformanceOn] = useState(!!initialStrategies.performance?.enabled);
+  const [maxVisible, setMaxVisible] = useState(String(data.upsells.max_visible || 4));
   const [newProductIds, setNewProductIds] = useState(null);
   const [ribbonEnabled, setRibbonEnabled] = useState(data.bottomRibbon.enabled);
   const [oosOverride, setOosOverride] = useState(data.bottomRibbon.oos_message_override ?? "");
@@ -461,6 +471,13 @@ export default function Settings() {
     tierOrder: data.lineup.map((t) => t.id).join(","),
     upsellsEnabled: data.upsells.enabled,
     upsellProducts: data.upsells.products.map((p) => p.product_id).join(","),
+    upsellStrategies: [
+      !!data.upsells.strategies?.gap_filler?.enabled,
+      !!data.upsells.strategies?.pairing?.enabled,
+      !!data.upsells.strategies?.shopify_recs?.enabled,
+      !!data.upsells.strategies?.performance?.enabled,
+    ].join(","),
+    upsellMaxVisible: String(data.upsells.max_visible || 4),
     ribbonEnabled: data.bottomRibbon.enabled,
     oosOverride: data.bottomRibbon.oos_message_override ?? "",
     crossPageBehavior: data.crossPageRemoval,
@@ -492,11 +509,13 @@ export default function Settings() {
       currentTierOrder !== init.tierOrder ||
       upsellsEnabled !== init.upsellsEnabled ||
       currentProducts !== init.upsellProducts ||
+      [gapFiller, pairingOn, shopifyRecs, performanceOn].join(",") !== init.upsellStrategies ||
+      maxVisible !== init.upsellMaxVisible ||
       ribbonEnabled !== init.ribbonEnabled ||
       oosOverride !== init.oosOverride ||
       crossPageBehavior !== init.crossPageBehavior
     );
-  }, [pbEnabled, allCompleteMessage, lineup, upsellsEnabled, upsellProducts, newProductIds, ribbonEnabled, oosOverride, crossPageBehavior, data]);
+  }, [pbEnabled, allCompleteMessage, lineup, upsellsEnabled, upsellProducts, newProductIds, gapFiller, pairingOn, shopifyRecs, performanceOn, maxVisible, ribbonEnabled, oosOverride, crossPageBehavior, data]);
 
   useEffect(() => {
     if (fetcher.data?.ok) shopify.toast.show("Settings saved");
@@ -511,6 +530,14 @@ export default function Settings() {
       cross_page_removal_behavior: crossPageBehavior,
       tier_order: lineup.map((t) => t.id),
     };
+    const existing = data.upsells.strategies || {};
+    payload.upsell_strategies = {
+      gap_filler: { ...(existing.gap_filler || {}), enabled: gapFiller },
+      pairing: { ...(existing.pairing || {}), enabled: pairingOn },
+      shopify_recs: { ...(existing.shopify_recs || {}), enabled: shopifyRecs },
+      performance: { ...(existing.performance || {}), enabled: performanceOn },
+    };
+    payload.upsell_max_visible = Number(maxVisible) || 4;
     if (newProductIds) payload.upsell_product_ids = newProductIds;
     else payload.keep_upsell_products = true;
     fetcher.submit(JSON.stringify(payload), { method: "POST", encType: "application/json" });
@@ -523,6 +550,11 @@ export default function Settings() {
     setUpsellsEnabled(data.upsells.enabled);
     setUpsellProducts(data.upsells.products);
     setNewProductIds(null);
+    setGapFiller(!!data.upsells.strategies?.gap_filler?.enabled);
+    setPairingOn(!!data.upsells.strategies?.pairing?.enabled);
+    setShopifyRecs(!!data.upsells.strategies?.shopify_recs?.enabled);
+    setPerformanceOn(!!data.upsells.strategies?.performance?.enabled);
+    setMaxVisible(String(data.upsells.max_visible || 4));
     setRibbonEnabled(data.bottomRibbon.enabled);
     setOosOverride(data.bottomRibbon.oos_message_override ?? "");
     setCrossPageBehavior(data.crossPageRemoval);
@@ -773,6 +805,50 @@ export default function Settings() {
                     </div>
                   </div>
                 )}
+                <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--s-color-border, #e3e3e3)" }}>
+                  <s-text fontWeight="semibold">How products are chosen</s-text>
+                  <div style={{ marginBottom: 10 }}>
+                    <s-text color="subdued" variant="bodySm">
+                      Your products above are the pool. These decide which of them show, and in what order.
+                      With none selected the pool shows in the order you arranged it.
+                    </s-text>
+                  </div>
+                  <VStack gap={200}>
+                    <s-checkbox
+                      label="Close the gap to the next reward"
+                      details="Puts the cheapest product that unlocks the shopper's next milestone first, with an 'unlock' button. Needs the progress bar switched on."
+                      checked={gapFiller}
+                      onChange={(e) => setGapFiller(e.target.checked)}
+                    />
+                    <s-checkbox
+                      label="Pair with what's already in the cart"
+                      details="Promotes products you've paired to items in the cart."
+                      checked={pairingOn}
+                      onChange={(e) => setPairingOn(e.target.checked)}
+                    />
+                    <s-checkbox
+                      label="Top up from Shopify recommendations"
+                      details="Fills empty slots with Shopify's complementary products. Requires the Search & Discovery app; does nothing if it isn't set up."
+                      checked={shopifyRecs}
+                      onChange={(e) => setShopifyRecs(e.target.checked)}
+                    />
+                    <s-checkbox
+                      label="Favour what actually gets added"
+                      details="Ranks by how often each product is added once seen. Ignores products with fewer than 50 views so new ones still get a chance."
+                      checked={performanceOn}
+                      onChange={(e) => setPerformanceOn(e.target.checked)}
+                    />
+                  </VStack>
+                  <div style={{ marginTop: 12, maxWidth: 220 }}>
+                    <s-number-field
+                      label="Products shown at once"
+                      value={maxVisible}
+                      min="1"
+                      max="12"
+                      onInput={(e) => setMaxVisible(e.target.value)}
+                    />
+                  </div>
+                </div>
                 {upsellProducts.length > 6 && (
                   <div style={{ marginTop: 10 }}>
                     <s-banner tone="warning">

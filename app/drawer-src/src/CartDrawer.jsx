@@ -4,6 +4,7 @@ import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, upda
 import { fireConfetti, setConfettiLottieUrl } from './confetti';
 import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLine, ensureCartxAttribute, ensureDrawerAttribute, localGiftDelta, giftIntendedQuantity, dispatchLocalBar } from './evaluate';
 import { isGraphqlCartEnabled } from './storefront-cart';
+import { rankUpsells, computeGap, adjustedTotal } from '../../lib/upsell-rank.js';
 import { initStore as gqlInitStore, subscribe as gqlSubscribe, getOptimisticCart as gqlGetCart, changeQuantity as gqlChangeQuantity, removeLine as gqlRemoveLine, addLine as gqlAddLine, applyDiscountCode as gqlApplyCoupon, removeDiscountCode as gqlRemoveCoupon, whenSettled as gqlWhenSettled } from './cart-store';
 import { isAjaxCartStoreEnabled, subscribe as ajaxSubscribe, getOptimisticCart as ajaxGetCart, init as ajaxInit, reconcileFromServer as ajaxReconcile, addLine as ajaxAddLine, changeQuantity as ajaxChangeQty, removeLine as ajaxRemoveLine, whenSettled as ajaxWhenSettled, cartHasDiscounts } from './ajax-cart-store';
 import { tracker } from './tracker';
@@ -231,6 +232,8 @@ export default class CartDrawer extends Component {
     this._prefetchedHandles = {}; // product handle -> true, so compare-at is fetched once per session
     this._upsellAvailable = {};   // variant_id (string) -> bool; live availability for upsell cards
     this._upsellFetched = {};     // upsell handle -> true, fetched once per session
+    this._recsPool = [];          // Shopify-recommended products topping up a short pool
+    this._recsFetched = {};       // seed product + intent -> true, fetched once per session
     // Monotonic token for cart reads. A /cart.js read issued before a mutation
     // can resolve after it; we drop any read older than the latest authoritative
     // update so the count bubble never flickers back to a stale value.
@@ -3046,7 +3049,11 @@ export default class CartDrawer extends Component {
       window.dispatchEvent(new CustomEvent('cartmax:internal-reload', { detail: { cart: cart } }));
       window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: { cart: cart } }));
       tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, {
+        // Same id the impression observer reports, so DailyStats can pair
+        // impressions with adds per product and yield an add-rate.
+        promotion_id: 'upsell:' + String(variantId),
         promotion_type: 'upsell',
+        promotion_name: (productMeta && productMeta.title) || undefined,
         variant_id: String(variantId),
         cart_total: cart.total_price,
         item_count: cart.item_count,
@@ -3087,22 +3094,95 @@ export default class CartDrawer extends Component {
     });
   }
 
+  // Top a short curated pool up with Shopify's own recommendations. This is the
+  // storefront's unauthenticated endpoint, so there's no backend involved; it
+  // only returns useful results when the merchant has Search & Discovery set up,
+  // hence opt-in with a silent fallback to the curated pool alone.
+  _ensureUpsellRecs(strategies, cart, needed) {
+    var cfg = (strategies && strategies.shopify_recs) || {};
+    if (!cfg.enabled || needed <= 0) return;
+    var items = (cart && cart.items) || [];
+    if (items.length === 0) return;
+
+    // Seed from the highest-value line the shopper is actually paying for —
+    // their strongest signal of intent. Gift lines say nothing about taste.
+    var seed = null;
+    var best = -1;
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      if (hasFreebieMarker(it.properties)) continue;
+      var value = it.final_line_price || 0;
+      if (value > best) { best = value; seed = it; }
+    }
+    if (!seed || !seed.product_id) return;
+
+    var intent = cfg.intent || 'complementary';
+    var key = String(seed.product_id) + ':' + intent;
+    if (this._recsFetched[key]) return;
+    this._recsFetched[key] = true;
+
+    var limit = Math.max(1, Math.min(8, cfg.max_fill || 2));
+    var url = '/recommendations/products.json?product_id=' + encodeURIComponent(seed.product_id)
+      + '&limit=' + limit + '&intent=' + intent;
+    var self = this;
+    fetch(url)
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        var products = (data && data.products) || [];
+        if (products.length === 0) return;
+        self._recsPool = products.map(function (prod) {
+          var variant = (prod.variants && prod.variants[0]) || {};
+          // Storefront JSON prices are in minor units; the curated pool stores
+          // major units, and the ranking compares against major-unit thresholds.
+          var minor = variant.price != null ? variant.price : prod.price;
+          return {
+            product_id: String(prod.id),
+            variant_id: String(variant.id || ''),
+            title: prod.title,
+            handle: prod.handle,
+            image_url: prod.featured_image || (prod.images && prod.images[0]) || '',
+            price: String((Number(minor) || 0) / 100),
+            _source: 'shopify_recs',
+          };
+        }).filter(function (prod) { return prod.variant_id; });
+        if (self._recsPool.length > 0) self.setState({});
+      })
+      .catch(function () {});
+  }
+
   renderUpsells() {
     var result = this.state.evalResult;
     if (!result || !result.upsells || !result.upsells.enabled) return null;
     var upsells = result.upsells;
     var products = upsells.products || [];
+    // No curated pool means no upsells, even with Shopify recommendations on:
+    // recs TOP UP a merchant's pool, they never invent one. Flip this if the
+    // product decision ever changes to auto-fill from empty.
     if (products.length === 0) return null;
 
     var cart = this.state.cart;
     var isEmpty = !cart || !cart.items || cart.items.length === 0;
     if (isEmpty && this._upsells.show_on_empty !== 'always') return null;
 
-    var cartVariantIds = (cart && cart.items || []).map(function (i) { return String(i.variant_id); });
-    var filtered = products.filter(function (p) {
-      var vid = String(p.variant_id);
-      if (vid.startsWith('gid://')) vid = vid.split('/').pop();
-      return cartVariantIds.indexOf(vid) === -1;
+    // The server already ranked this pool, but the cart moves under us
+    // (optimistic qty edits, gift add/remove). Re-rank locally against the
+    // CURRENT cart with the same pure function and the same inputs, so ordering
+    // and the unlock CTA track the cart instantly instead of lagging a
+    // roundtrip. Exclusion of in-cart products happens inside rankUpsells.
+    var cartItems = (cart && cart.items) || [];
+    var strategies = upsells.strategies || {};
+    var maxVisible = upsells.max_visible || 4;
+
+    this._ensureUpsellRecs(strategies, cart, maxVisible - products.length);
+
+    var gap = computeGap(result.bar, adjustedTotal(cartItems));
+    var filtered = rankUpsells({
+      pool: products.concat(this._recsPool || []),
+      cartItems: cartItems,
+      gap: gap,
+      strategies: strategies,
+      addRates: upsells.add_rates,
+      maxVisible: maxVisible,
     });
     if (filtered.length === 0) return null;
 
@@ -3115,6 +3195,10 @@ export default class CartDrawer extends Component {
     var sizeClass = 'cartmax-upsell-card--' + (u.card_size || 'medium');
     var headingText = u.heading || 'YOU MAY ALSO LIKE';
     var btnText = u.btn_text || 'ADD TO CART';
+    // Shown instead of the generic label on a product that actually closes the
+    // gap to the next milestone — the whole point of the gap-filler strategy.
+    var unlockTpl = (strategies.gap_filler && strategies.gap_filler.cta_template)
+      || 'Add to unlock [[reward]]';
     var imgPx = { small: 130, medium: 180, large: 230 }[u.card_size] || 180;
 
     return (
@@ -3138,8 +3222,21 @@ export default class CartDrawer extends Component {
               image: p.image_url,
               price: p.price,
             };
+            // Merged milestone labels join with a newline; keep the first line.
+            var rewardLabel = p._unlocks_tier
+              ? String(p._unlocks_tier.label || '').split('\n')[0].trim()
+              : '';
+            var unlockLabel = p._unlocks_tier
+              ? unlockTpl.replace(/\[\[\s*reward\s*\]\]/gi, rewardLabel || 'your reward')
+              : null;
             return (
-              <div class={'cartmax-upsell-card ' + sizeClass} key={p.product_id}>
+              <div
+                class={'cartmax-upsell-card ' + sizeClass + (unlockLabel ? ' cartmax-upsell-card--unlocks' : '')}
+                key={vid}
+                data-cartmax-promo-id={'upsell:' + vid}
+                data-cartmax-promo-type="upsell"
+                ref={function (el) { self._observePromo(el); }}
+              >
                 {p.image_url
                   ? <img class="cartmax-upsell-img" src={resizeImage(p.image_url, imgPx)} alt={p.title} loading="lazy" />
                   : <div class="cartmax-upsell-img-placeholder"><span class="visually-hidden">No image</span></div>
@@ -3157,7 +3254,7 @@ export default class CartDrawer extends Component {
                     class={'cartmax-upsell-add' + (soldOut ? ' cartmax-upsell-add--soldout' : '')}
                     onClick={function () { if (!soldOut) self.handleUpsellAdd(vid, productMeta); }}
                     disabled={isAdding || soldOut}
-                  >{soldOut ? 'Sold out' : (isAdding ? 'Adding...' : btnText)}</button>
+                  >{soldOut ? 'Sold out' : (isAdding ? 'Adding...' : (unlockLabel || btnText))}</button>
                 </div>
               </div>
             );
