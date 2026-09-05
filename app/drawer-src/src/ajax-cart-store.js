@@ -268,7 +268,15 @@ async function runSync() {
           try {
             var added = await addRes.json();
             var addedLines = (added && added.items) || (added && added.id ? [added] : []);
-            if (addedLines.length) setLocalCart(fillPlaceholders(_state.localCart, addedLines));
+            if (addedLines.length) {
+              // Assign + notify directly rather than setLocalCart(): we are
+              // INSIDE the sync and the authoritative /cart.js is fetched a few
+              // lines below, so setLocalCart's scheduleSync() would queue a
+              // second sync and a second /cart.js for no new information. Same
+              // reason the snap at the end of this function assigns directly.
+              _state.localCart = fillPlaceholders(_state.localCart, addedLines);
+              notify();
+            }
           } catch (_) { /* fall through to the /cart.js reconcile */ }
         }
         didAdd = true;

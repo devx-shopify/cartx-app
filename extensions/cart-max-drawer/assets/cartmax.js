@@ -2520,7 +2520,10 @@
             try {
               var added = await addRes.json();
               var addedLines = added && added.items || (added && added.id ? [added] : []);
-              if (addedLines.length) setLocalCart2(fillPlaceholders(_state2.localCart, addedLines));
+              if (addedLines.length) {
+                _state2.localCart = fillPlaceholders(_state2.localCart, addedLines);
+                notify2();
+              }
             } catch (_2) {
             }
           }
