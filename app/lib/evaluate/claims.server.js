@@ -65,6 +65,9 @@ export function resolveClaimGifts(
     threshold_remaining: null,
     section_heading: rule.section_heading,
     max_claims: rule.max_claims || null,
+    // What the shopper pays per claimed item (store's major units; 0 = free).
+    // Lets the drawer show the real price instead of always "FREE".
+    claim_price: rule.claim_price ?? 0,
     _rule_id: rule.id,
     gifts: rule.claimable_variants.map((v) => {
       const vData = (rule.claimable_variant_data || []).find(

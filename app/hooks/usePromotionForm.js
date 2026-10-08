@@ -42,12 +42,22 @@ export function usePromotionForm({ type, successLabels, saveBarId = "promotion-s
     }
   }, [submitting]);
 
-  // Success → toast + navigate
+  // Success → toast + navigate. If a discount sync warned, surface that instead
+  // (the promotion was still saved).
   useEffect(() => {
     if (fetcher.data?.ok) {
       document.getElementById(saveBarId)?.hide();
-      shopify.toast.show(successLabels[type] || "Saved");
+      const warnings = fetcher.data.warnings;
+      if (warnings && warnings.length > 0) {
+        shopify.toast.show(warnings[0], { isError: true, duration: 6000 });
+      } else {
+        shopify.toast.show(successLabels[type] || "Saved");
+      }
       navigate("/app/promotions");
+    } else if (fetcher.data && fetcher.data.ok === false && fetcher.data.error) {
+      // Server rejected the save (e.g. a plan policy limit). Surface it and stay
+      // on the form so nothing is lost — the save bar remains visible.
+      shopify.toast.show(fetcher.data.error, { isError: true, duration: 6000 });
     }
   }, [fetcher.data, navigate, shopify, type, successLabels, saveBarId]);
 

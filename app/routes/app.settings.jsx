@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useLoaderData, useFetcher } from "react-router";
+import { useLoaderData, useFetcher, useOutletContext } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
+import { ThemeCopyCard, ThemeSwitcher } from "./app.jsx";
 import useConfirm from "../components/useConfirm.jsx";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
@@ -162,6 +163,7 @@ export const action = async ({ request }) => {
             ... on Product {
               id
               title
+              handle
               featuredImage { url }
               variants(first: 1) { edges { node { id price compareAtPrice } } }
             }
@@ -172,7 +174,9 @@ export const action = async ({ request }) => {
     const json = await res.json();
     config.upsells.products = (json.data?.nodes ?? []).filter(Boolean).map((node) => {
       const firstVariant = node.variants?.edges?.[0]?.node;
-      return { product_id: node.id, title: node.title, image_url: node.featuredImage?.url ?? "", variant_id: firstVariant?.id ?? "", price: firstVariant?.price ?? "0", compare_at_price: firstVariant?.compareAtPrice || undefined };
+      // handle lets the drawer fetch /products/{handle}.js for live availability
+      // (to show "Sold out" instead of the add button).
+      return { product_id: node.id, title: node.title, handle: node.handle ?? "", image_url: node.featuredImage?.url ?? "", variant_id: firstVariant?.id ?? "", price: firstVariant?.price ?? "0", compare_at_price: firstVariant?.compareAtPrice || undefined };
     });
   } else if (!body.keep_upsell_products) {
     config.upsells.products = [];
@@ -430,6 +434,7 @@ function MilestoneForm({ onAdd, submitting }) {
 export default function Settings() {
   const data = useLoaderData();
   const fetcher = useFetcher();
+  const { themes, activeThemeId, mainThemeId } = useOutletContext();
   const shopify = useAppBridge();
   const submitting = fetcher.state !== "idle";
   const [confirmFn, confirmModal] = useConfirm();
@@ -604,6 +609,9 @@ export default function Settings() {
 
       <s-page heading="Settings">
         <div style={{ maxWidth: 820, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <ThemeSwitcher themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
+          </div>
 
           {/* ── Progress Bar ─────────────────────────────── */}
           <s-section
@@ -809,6 +817,9 @@ export default function Settings() {
               <s-option value="modal">Show a confirmation modal</s-option>
             </s-select>
           </s-section>
+
+          {/* ── Copy from another theme ─────────────────── */}
+          <ThemeCopyCard themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
 
         </div>
         {confirmModal}

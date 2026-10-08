@@ -4,6 +4,38 @@
   Mounts the Preact cart drawer and installs fetch interception.
 {% endcomment %}
 
+{% comment %}
+  Critical CSS — inline so native cart drawers are hidden at FIRST PAINT,
+  before the async cartmax.css <link> applies. Without this the host theme's
+  drawer flashes on click until the stylesheet loads. Keep these selectors in
+  sync with the matching block in assets/cartmax.css.
+{% endcomment %}
+{%- comment -%} Drawer-less plans (Basic) don't include the cart drawer. Suppress
+  the ENTIRE block — interception script AND bundle — so enabling this embed on
+  Basic does nothing. Fail-open: hides only when the plan metafield is exactly
+  "basic"; absent / Pro / Enterprise always render (protects live drawer stores). {%- endcomment -%}
+{%- unless shop.metafields['$app'].plan.value == 'basic' -%}
+<style>
+  #cartmax-root { display: block !important; }
+  cart-drawer,
+  .cart-drawer:not(cart-drawer-component),
+  #cart-drawer:not(cart-drawer-component),
+  cart-notification,
+  .cart-notification,
+  dialog[is="cart-drawer"],
+  dialog#cart-drawer,
+  .cart-drawer-container,
+  cart-drawer-component > dialog,
+  cart-drawer-component aside,
+  cart-drawer-component [role="dialog"],
+  cart-drawer-component .cart-drawer__dialog,
+  cart-drawer-component .cart-drawer__overlay,
+  cart-notification-component > dialog,
+  cart-notification-component [role="dialog"] {
+    display: none !important;
+  }
+</style>
+
 <div
   id="cartmax-root"
   data-cartmax-enabled="true"
@@ -12,8 +44,11 @@
   data-customer-id="{{ customer.id }}"
   data-customer-tags="{{ customer.tags | json | escape }}"
   data-money-format="{{ shop.money_format | escape }}"
-  data-proxy-base="/apps/cartmax"
+  data-proxy-base="/apps/cartx"
   data-analytics-enabled="true"
+  data-initial-item-count="{{ cart.item_count }}"
+  data-initial-cart="{{ cart | json | escape }}"
+  data-drawer-config="{{ shop.metafields['$app'].drawer_config.value | json | escape }}"
 ></div>
 <script>
   // theme.id may not render in app embed blocks — set it from window.Shopify.theme
@@ -32,6 +67,29 @@
 <script>
   (function() {
     'use strict';
+
+    // ── Early public-API stub ─────────────────────────────────
+    // Partner apps integrate by calling window.cartx.addItem(...) (see
+    // docs/partner-cart-integration.md). This inline script runs before the
+    // drawer bundle mounts, so we expose a stub that BUFFERS calls onto _q and
+    // the real CartDrawer flushes them on mount. open/toggle set the existing
+    // open-intent flag the click handler below already honors.
+    if (!window.cartx) {
+      var _cartxQueue = [];
+      window.cartx = {
+        _q: _cartxQueue,
+        _stub: true,
+        addItem: function () {
+          _cartxQueue.push(['addItem', [].slice.call(arguments)]);
+          return Promise.resolve();
+        },
+        open: function () { window.__cartmaxOpenIntent = true; },
+        toggle: function () { window.__cartmaxOpenIntent = true; },
+        close: function () {},
+        refresh: function () {},
+        isOpen: function () { return false; },
+      };
+    }
 
     // Match both /cart/add.js AND /cart/add (Dawn uses the non-.js form)
     var CART_PATTERNS = ['/cart/add', '/cart/update', '/cart/change', '/cart/clear'];
@@ -55,42 +113,83 @@
       return '';
     }
 
-    // Flag for cartx's own API calls — skip interception for these
+    // Flag for cartx's own API calls — skip interception for these.
+    //
+    // KILL SWITCH: set window.__cartxLegacyInternalGuard = true (from the theme,
+    // or in the console) to restore the old page-global behaviour if the more
+    // permissive interception below causes trouble on a live store. No redeploy
+    // needed to fall back.
     window.__cartmaxInternal = false;
 
-    // Patch window.fetch
-    var originalFetch = window.fetch;
-    var _cartmaxFetching = false;
+    var INTERNAL_HEADER = 'x-cartx-internal';
 
+    // True only for requests cartx issued itself. Reading the marker off the
+    // REQUEST means a cartx call can suppress only itself — the old global
+    // suppressed every cart mutation on the page for the duration of any cartx
+    // request, silently dropping theme add-to-carts that overlapped it.
+    function isCartxOwnRequest(input, init) {
+      try {
+        if (init && init.headers) {
+          var h = init.headers;
+          if (typeof h.get === 'function') {
+            if (h.get(INTERNAL_HEADER)) return true;
+          } else {
+            for (var k in h) {
+              if (String(k).toLowerCase() === INTERNAL_HEADER && h[k]) return true;
+            }
+          }
+        }
+        if (typeof Request !== 'undefined' && input instanceof Request) {
+          if (input.headers && input.headers.get(INTERNAL_HEADER)) return true;
+        }
+      } catch (e) { /* fall through */ }
+      return false;
+    }
+
+    var originalFetch = window.fetch;
+
+    // Coalesced cart refresh. After ANY external cart mutation we re-fetch
+    // /cart.js and broadcast `cartmax:cart-changed` with the latest state.
+    // Overlapping mutations are NEVER dropped: if a refresh is already running,
+    // we flag a trailing one so the FINAL cart is always dispatched. (The old
+    // single-flight `_cartmaxFetching` guard SKIPPED any cart op that overlapped
+    // an in-flight refetch — on busy stores with multiple apps + a theme that
+    // fires several cart calls per add, that silently swallowed the first add,
+    // so the drawer didn't open and the progress bar didn't update until the
+    // next interaction.)
+    var _refreshing = false;
+    var _refreshQueued = false;
+    function refreshCart(srcUrl) {
+      if (_refreshing) { _refreshQueued = true; return; }
+      _refreshing = true;
+      originalFetch.call(window, '/cart.js')
+        .then(function(r) { return r.json(); })
+        .then(function(cart) {
+          window.dispatchEvent(new CustomEvent('cartmax:cart-changed', {
+            detail: { source: 'intercept', url: srcUrl, cart: cart }
+          }));
+        })
+        .catch(function(err) { console.error('[CartMax] cart refresh failed:', err); })
+        .finally(function() {
+          _refreshing = false;
+          if (_refreshQueued) { _refreshQueued = false; refreshCart(srcUrl); }
+        });
+    }
+
+    // Patch window.fetch — observe external cart mutations, then refresh.
     window.fetch = function() {
       var url = extractUrl(arguments[0]);
-      // Don't intercept our own calls (internal cart ops or /cart.js refetch)
-      if (_cartmaxFetching || window.__cartmaxInternal) {
-        return originalFetch.apply(this, arguments);
+      var ret = originalFetch.apply(this, arguments);
+      var mine = window.__cartxLegacyInternalGuard
+        ? window.__cartmaxInternal
+        : isCartxOwnRequest(arguments[0], arguments[1]);
+      if (!mine && isCartEndpoint(url)) {
+        ret.then(function() { refreshCart(url); }).catch(function() {});
       }
-      if (isCartEndpoint(url)) {
-        console.log('[CartMax] Intercepted fetch:', url);
-        return originalFetch.apply(this, arguments).then(function(response) {
-          _cartmaxFetching = true;
-          originalFetch.call(window, '/cart.js').then(function(r) {
-            return r.json();
-          }).then(function(cart) {
-            console.log('[CartMax] Dispatching cart-changed event', cart);
-            window.dispatchEvent(new CustomEvent('cartmax:cart-changed', {
-              detail: { source: 'fetch', url: url, cart: cart }
-            }));
-          }).catch(function(err) {
-            console.error('[CartMax] Error fetching cart:', err);
-          }).finally(function() {
-            _cartmaxFetching = false;
-          });
-          return response;
-        });
-      }
-      return originalFetch.apply(this, arguments);
+      return ret;
     };
 
-    // Patch XMLHttpRequest
+    // Patch XMLHttpRequest — same coalesced refresh on load.
     var originalXHROpen = XMLHttpRequest.prototype.open;
     var originalXHRSend = XMLHttpRequest.prototype.send;
 
@@ -101,18 +200,12 @@
 
     XMLHttpRequest.prototype.send = function() {
       var xhr = this;
-      if (xhr._cartmaxUrl && isCartEndpoint(xhr._cartmaxUrl)) {
-        console.log('[CartMax] Intercepted XHR:', xhr._cartmaxUrl);
-        xhr.addEventListener('load', function() {
-          // Fetch fresh cart state
-          originalFetch.call(window, '/cart.js').then(function(r) {
-            return r.json();
-          }).then(function(cart) {
-            window.dispatchEvent(new CustomEvent('cartmax:cart-changed', {
-              detail: { source: 'xhr', url: xhr._cartmaxUrl, cart: cart }
-            }));
-          }).catch(function() {});
-        });
+      // cartx never mutates the cart over XHR (all of its calls go through
+      // internalFetch), so anything arriving here is external by definition.
+      // The legacy global is still honoured under the kill switch.
+      var xhrMine = window.__cartxLegacyInternalGuard ? window.__cartmaxInternal : false;
+      if (xhr._cartmaxUrl && isCartEndpoint(xhr._cartmaxUrl) && !xhrMine) {
+        xhr.addEventListener('load', function() { refreshCart(xhr._cartmaxUrl); });
       }
       return originalXHRSend.apply(this, arguments);
     };
@@ -125,13 +218,59 @@
       }
     });
 
-    console.log('[CartMax] Fetch interception installed');
+    // ── Early cart-icon click interception ────────────────────
+    // This runs inline at page parse — BEFORE the deferred cartmax.js bundle
+    // and before the host theme registers its own click handlers. Capturing
+    // here is what prevents the native drawer from ever opening (the cause of
+    // the "black old drawer flashes then cartx opens" layout shift). If the
+    // bundle is already mounted we open immediately; otherwise we record the
+    // intent and Preact opens on mount. Keep this selector list in sync with
+    // CART_ICON_SELECTORS in CartDrawer.jsx.
+    var CART_ICON_SELECTORS = [
+      'a[href="/cart"]',
+      'a[href="/cart/"]',
+      'a[href^="/cart?"]',
+      '[data-cart-icon]',
+      '[data-cart-trigger]',
+      '[data-cart-link]',
+      '#cart-icon-bubble',
+      '#cart-bubble',
+      '#CartBubble',
+      'cart-icon-bubble',
+      '[aria-controls*="cart-drawer"]',
+      '[aria-controls*="CartDrawer"]',
+      '[aria-controls*="Cart-drawer"]',
+      'cart-drawer-component > button'
+    ].join(', ');
+
+    window.__cartmaxOpenIntent = false;
+    window.__cartmaxTrigger = null;
+
+    document.addEventListener('click', function(e) {
+      var link = e.target.closest && e.target.closest(CART_ICON_SELECTORS);
+      if (!link) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') {
+        e.stopImmediatePropagation();
+      }
+      window.__cartmaxTrigger = link;
+      if (window.__cartmaxReady && window.cartx && typeof window.cartx.open === 'function') {
+        window.cartx.open();
+      } else {
+        // Bundle not mounted yet — Preact will honor this on mount.
+        window.__cartmaxOpenIntent = true;
+      }
+    }, true);
+
+    console.log('[CartMax] Fetch + click interception installed');
   })();
 </script>
 
 {{ 'cartmax.css' | asset_url | stylesheet_tag }}
 <script src="{{ 'cartmax.js' | asset_url }}" defer></script>
 <!-- cache-bust: v2 -->
+{%- endunless -%}
 
 {% schema %}
 {

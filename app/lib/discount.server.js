@@ -1,4 +1,7 @@
 import prisma from "../db.server.js";
+import { syncVolumeDiscountConfig } from "./volume-discount.server.js";
+import { getActivePlan, planOfferLimit } from "./billing.server.js";
+import { captureException } from "./sentry.server.js";
 
 const DISCOUNT_STORE_KEY = "__freebie_discount__";
 const DISCOUNT_TITLE = "cartx free gift";
@@ -158,6 +161,19 @@ export async function ensureFreebieDiscount(admin, shopId, functionConfig) {
   const metafieldValue =
     functionConfig ?? buildFunctionConfig(null, null);
 
+  // Self-heal: adopt an orphaned discount with our title rather than creating a
+  // duplicate (Shopify rejects that with "Title must be unique").
+  const orphanId = await findExistingDiscount(admin);
+  if (orphanId) {
+    await updateDiscountMetafield(admin, orphanId, metafieldValue);
+    await saveDiscountRecord(shopId, {
+      discountId: orphanId,
+      functionConfig: metafieldValue,
+      adoptedAt: new Date().toISOString(),
+    });
+    return { discountId: orphanId, created: false, adopted: true };
+  }
+
   const res = await admin.graphql(
     `#graphql
     mutation createDiscount($discount: DiscountAutomaticAppInput!) {
@@ -198,6 +214,19 @@ export async function ensureFreebieDiscount(admin, shopId, functionConfig) {
   const json = await res.json();
   const errors = json.data?.discountAutomaticAppCreate?.userErrors ?? [];
   if (errors.length > 0) {
+    // Unique-title race: adopt the existing discount instead of failing.
+    if (errors.some((e) => /unique/i.test(e.message))) {
+      const raced = await findExistingDiscount(admin);
+      if (raced) {
+        await updateDiscountMetafield(admin, raced, metafieldValue);
+        await saveDiscountRecord(shopId, {
+          discountId: raced,
+          functionConfig: metafieldValue,
+          adoptedAt: new Date().toISOString(),
+        });
+        return { discountId: raced, created: false, adopted: true };
+      }
+    }
     throw new Error(
       "Failed to create discount: " + errors.map((e) => e.message).join(", ")
     );
@@ -213,6 +242,42 @@ export async function ensureFreebieDiscount(admin, shopId, functionConfig) {
   });
 
   return { discountId, created: true };
+}
+
+/**
+ * Find an existing freebie discount by title and return its numeric id, or null.
+ * Lets us adopt an orphaned discount (local record lost, but it still exists in
+ * Shopify) instead of failing the unique-title create.
+ */
+async function findExistingDiscount(admin) {
+  try {
+    const res = await admin.graphql(
+      `#graphql
+      query findFreebieDiscount($query: String!) {
+        discountNodes(first: 25, query: $query) {
+          nodes {
+            id
+            discount {
+              __typename
+              ... on DiscountAutomaticApp { title }
+            }
+          }
+        }
+      }`,
+      { variables: { query: `title:'${DISCOUNT_TITLE}'` } }
+    );
+    const json = await res.json();
+    const nodes = json.data?.discountNodes?.nodes ?? [];
+    const match = nodes.find(
+      (n) =>
+        n.discount?.__typename === "DiscountAutomaticApp" &&
+        n.discount?.title === DISCOUNT_TITLE
+    );
+    return match ? String(match.id).split("/").pop() : null;
+  } catch (err) {
+    console.error("[cartx] findExistingDiscount (freebie) failed:", err);
+    return null;
+  }
 }
 
 /**
@@ -272,7 +337,7 @@ async function updateDiscountMetafield(admin, discountId, functionConfig) {
   const metafieldId = metaJson.data?.discountNode?.metafield?.id;
 
   if (metafieldId) {
-    await admin.graphql(
+    const res = await admin.graphql(
       `#graphql
       mutation updateMetafield($metafields: [MetafieldsSetInput!]!) {
         metafieldsSet(metafields: $metafields) {
@@ -294,6 +359,15 @@ async function updateDiscountMetafield(admin, discountId, functionConfig) {
         },
       }
     );
+    // The metafield write is what actually configures the discount Function —
+    // a silent failure leaves a live discount with stale config, so surface it.
+    const json = await res.json();
+    const errors = json.data?.metafieldsSet?.userErrors ?? [];
+    if (errors.length > 0) {
+      throw new Error(
+        `Failed to update discount metafield: ${errors.map((e) => e.message).join("; ")}`,
+      );
+    }
   }
 }
 
@@ -508,4 +582,53 @@ export async function updateFreebieDiscountConfig(
   });
 
   return { ok: true };
+}
+
+/**
+ * Sync the freebie + volume Shopify discounts after a promotion is saved.
+ *
+ * These are secondary effects: the promotion config is already persisted by the
+ * time this runs, so a Shopify API failure here must never crash the save. Each
+ * sync is isolated; failures are logged, reported to Sentry, and returned as
+ * human-readable warnings the UI can surface. The next save retries the sync.
+ *
+ * @returns {Promise<string[]>} warnings (empty when everything succeeded)
+ */
+export async function syncDiscounts(admin, shopId, config, type) {
+  const warnings = [];
+
+  if (type === "offer" || type === "claim-gift") {
+    try {
+      await syncFreebieDiscountFromConfig(admin, shopId, config);
+    } catch (err) {
+      console.error("[cartx] freebie discount sync failed:", err);
+      captureException(err, { tags: { area: "freebie_discount_sync" }, extra: { shopId } });
+      warnings.push(
+        "Your promotion was saved, but the free-gift discount couldn't sync with Shopify. It will retry on the next save."
+      );
+    }
+  }
+
+  if (type === "offer") {
+    // Cap how many volume offers actually go live by the plan's active-offer
+    // limit (Basic = 3). Fail-open to no cap so a plan-query hiccup never
+    // silently drops a paying store's offers.
+    let volumeLimit = Infinity;
+    try {
+      volumeLimit = planOfferLimit(await getActivePlan(admin, shopId));
+    } catch (err) {
+      console.error("[cartx] plan lookup for volume cap failed:", err);
+    }
+    try {
+      await syncVolumeDiscountConfig(admin, shopId, config.offers, volumeLimit);
+    } catch (err) {
+      console.error("[cartx] volume discount sync failed:", err);
+      captureException(err, { tags: { area: "volume_discount_sync" }, extra: { shopId } });
+      warnings.push(
+        "Your promotion was saved, but the volume discount couldn't sync with Shopify. It will retry on the next save."
+      );
+    }
+  }
+
+  return warnings;
 }

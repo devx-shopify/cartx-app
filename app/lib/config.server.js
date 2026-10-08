@@ -62,6 +62,35 @@ function invalidateCache(shopId, themeId) {
   _configCache.delete(cacheKey(shopId, themeId))
 }
 
+// ── In-memory theme-list cache ────────────────────────────
+// getAllThemes() is called from the /app parent-route loader, so it runs on
+// EVERY admin page navigation. On a shop with ~100 themes that is several
+// paginated GraphQL round-trips per page view. Cache the list briefly: cartx
+// never creates or deletes themes, so the only staleness is a theme the
+// merchant just made in Shopify, which appears after the TTL.
+
+const THEMES_CACHE_TTL = 60_000 // 60 seconds
+const THEMES_CACHE_MAX = 100    // max shops held; prevents unbounded growth
+const _themesCache = new Map()
+
+function getCachedThemes(shopId) {
+  const entry = _themesCache.get(shopId)
+  if (!entry) return null
+  if (Date.now() - entry.ts > THEMES_CACHE_TTL) {
+    _themesCache.delete(shopId)
+    return null
+  }
+  return entry.themes
+}
+
+function setCachedThemes(shopId, themes) {
+  if (_themesCache.size >= THEMES_CACHE_MAX) {
+    const firstKey = _themesCache.keys().next().value
+    _themesCache.delete(firstKey)
+  }
+  _themesCache.set(shopId, { themes, ts: Date.now() })
+}
+
 // ── Public API ────────────────────────────────────────────
 
 export async function loadConfig(shopId, themeId) {
@@ -157,32 +186,103 @@ export async function getShopAndTheme(admin, session, preferredThemeId) {
   }
 }
 
-/** Fetch all themes for the shop */
-export async function getAllThemes(admin) {
-  try {
-    const res = await admin.graphql(
-      `#graphql
-        query {
-          themes(first: 50) {
-            nodes {
-              id
-              name
-              role
-            }
-          }
-        }`
-    )
-    const json = await res.json()
-    return (json.data?.themes?.nodes ?? []).map((t) => ({
-      id: t.id.startsWith('gid://') ? t.id.split('/').pop() : t.id,
-      gid: t.id,
-      name: t.name,
-      role: t.role,
-    }))
-  } catch (err) {
-    console.error('[cartx] getAllThemes error:', err)
-    return []
+const THEMES_PAGE_SIZE = 50 // page size already proven against this API
+const THEMES_MAX_PAGES = 20 // hard stop at 1000 themes, so a bad cursor can't loop forever
+
+const ALL_THEMES_QUERY = `#graphql
+  query CartxAllThemes($first: Int!, $after: String) {
+    themes(first: $first, after: $after) {
+      nodes {
+        id
+        name
+        role
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }`
+
+/**
+ * Fetch EVERY theme for the shop, following cursors.
+ *
+ * This used to be a single `themes(first: 50)` with no pagination, which broke
+ * two ways on shops with more themes than that: the extra themes were simply
+ * unreachable in the admin UI (and cartx config is per-theme, so unreachable =
+ * unconfigurable), and — worse — the caller derives the live theme via
+ * `themes.find(t => t.role === 'MAIN')`. If MAIN sat past the cap, that returned
+ * undefined and `mainThemeId` silently degraded to the string 'default', so no
+ * row rendered the "Live" badge and the follow-live-theme preference could
+ * never be reset.
+ *
+ * Sorted MAIN-first then by name so the live theme is always the first row.
+ * Results are cached per shop for THEMES_CACHE_TTL.
+ */
+export async function getAllThemes(admin, shopId) {
+  if (shopId) {
+    const cached = getCachedThemes(shopId)
+    if (cached) return cached
   }
+
+  const themes = []
+  let cursor = null
+  let complete = true
+
+  try {
+    for (let page = 0; page < THEMES_MAX_PAGES; page++) {
+      const res = await admin.graphql(ALL_THEMES_QUERY, {
+        variables: { first: THEMES_PAGE_SIZE, after: cursor },
+      })
+      const json = await res.json()
+      const conn = json.data?.themes
+      if (!conn) {
+        complete = false
+        break
+      }
+
+      for (const t of conn.nodes ?? []) {
+        themes.push({
+          id: t.id.startsWith('gid://') ? t.id.split('/').pop() : t.id,
+          name: t.name,
+          role: t.role,
+        })
+      }
+
+      if (!conn.pageInfo?.hasNextPage) break
+      cursor = conn.pageInfo.endCursor
+      if (!cursor) {
+        complete = false
+        break
+      }
+      // Ran out of page budget with more still to fetch.
+      if (page === THEMES_MAX_PAGES - 1) complete = false
+    }
+  } catch (err) {
+    // Return whatever pages already succeeded rather than throwing the lot
+    // away — a partial list still lets the merchant work.
+    console.error('[cartx] getAllThemes error:', err)
+    complete = false
+    if (themes.length === 0) return []
+  }
+
+  // MAIN first, then by name. The id tiebreaker keeps the order stable across
+  // requests when names collide — a 100-theme shop is full of duplicate names,
+  // and without it rows can swap places between renders.
+  themes.sort((a, b) => {
+    if (a.role === 'MAIN' && b.role !== 'MAIN') return -1
+    if (b.role === 'MAIN' && a.role !== 'MAIN') return 1
+    return (
+      (a.name || '').localeCompare(b.name || '') ||
+      String(a.id).localeCompare(String(b.id))
+    )
+  })
+
+  // Only cache a COMPLETE fetch. Caching a partial list would pin a truncated
+  // set of themes for the whole TTL after one transient API blip — the same
+  // "half the themes don't exist" failure this function exists to fix.
+  if (shopId && complete && themes.length > 0) setCachedThemes(shopId, themes)
+  return themes
 }
 
 const PREFERENCE_KEY = '__preference__'
@@ -225,4 +325,14 @@ export async function patchConfig(shopId, themeId, path, value) {
 
   await saveConfig(shopId, themeId, config)
   return config
+}
+
+/** Theme IDs that have a saved config for this shop (excludes the preference
+ *  sentinel). Used by webhook product-sync to walk every theme's config. */
+export async function listConfigThemeIds(shopId) {
+  const rows = await prisma.themeConfig.findMany({
+    where: { shopId },
+    select: { themeId: true },
+  })
+  return rows.map((r) => r.themeId).filter((t) => t !== PREFERENCE_KEY)
 }

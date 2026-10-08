@@ -98,6 +98,7 @@ export default function MarketingShell({ children }) {
           <nav style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
             <HashLink hash="features" style={navLinkStyle}>Features</HashLink>
             <HashLink hash="how" style={navLinkStyle}>How it works</HashLink>
+            <Link to="/guide" style={navLinkStyle}>Guide</Link>
             <Link to="/privacy" style={navLinkStyle}>Privacy</Link>
           </nav>
         </div>
@@ -150,6 +151,7 @@ export default function MarketingShell({ children }) {
               }}>Product</div>
               <HashLink hash="features" style={footerLinkStyle}>Features</HashLink>
               <HashLink hash="how" style={footerLinkStyle}>How it works</HashLink>
+              <Link to="/guide" style={footerLinkStyle}>User guide</Link>
             </div>
             <div>
               <div style={{

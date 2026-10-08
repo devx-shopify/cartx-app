@@ -4,8 +4,24 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - '**.md'
+    # Only deploy Fly when SERVER code actually changes. The drawer + extensions
+    # are served by Shopify's CDN (via `shopify app deploy`), NOT by Fly — the
+    # Dockerfile only runs `react-router build`, it doesn't bundle the drawer.
+    # So extension/drawer-only pushes must not trigger a wasted Fly rebuild.
+    # Allowlist of Fly-relevant paths; app/drawer-src/** is under app/ but builds
+    # into the extension, so it's explicitly excluded.
+    paths:
+      - 'app/**'
+      - '!app/drawer-src/**'
+      - 'prisma/**'
+      - 'scripts/**'
+      - 'Dockerfile'
+      - 'fly.toml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.*'
+      - 'react-router.config.*'
+      - '.github/workflows/fly-deploy.yml'
   workflow_dispatch:
 
 jobs:

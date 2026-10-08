@@ -2,6 +2,19 @@
  * Shared GraphQL helpers for admin routes.
  */
 
+/**
+ * Build a display title from a product + variant title, dropping Shopify's
+ * "Default Title" placeholder that single-variant products carry on their one
+ * (default) variant. Without this, freebies/gifts for no-variant products show
+ * up as "Default Title". Mirrors the drawer's GraphQL cart mapper.
+ */
+export function variantDisplayTitle(productTitle, variantTitle, fallback = '') {
+  const pt = (productTitle || '').trim();
+  const vt = (variantTitle || '').trim();
+  if (vt && vt !== 'Default Title') return pt ? `${pt} - ${vt}` : vt;
+  return pt || (fallback || '').trim();
+}
+
 export async function fetchVariantData(admin, variantIds) {
   if (!variantIds || variantIds.length === 0) return {};
 
@@ -19,7 +32,7 @@ export async function fetchVariantData(admin, variantIds) {
             title
             displayName
             image { url }
-            product { title, featuredMedia { preview { image { url } } } }
+            product { id, title, featuredMedia { preview { image { url } } } }
           }
         }
       }`,
@@ -31,9 +44,14 @@ export async function fetchVariantData(admin, variantIds) {
       if (!node || !node.id) continue;
       const numericId = node.id.split('/').pop();
       const image = node.image?.url || node.product?.featuredMedia?.preview?.image?.url || '';
-      const title = node.displayName || node.product?.title || '';
-      map[node.id] = { title, image };
-      map[numericId] = { title, image };
+      const title = variantDisplayTitle(node.product?.title, node.title, node.displayName);
+      // product_id lets webhooks map a deleted/updated product back to this
+      // snapshot (products/delete only gives a product id, but offers store
+      // variant ids).
+      const product_id = node.product?.id ? node.product.id.split('/').pop() : '';
+      const entry = { title, image, product_id };
+      map[node.id] = entry;
+      map[numericId] = entry;
     }
     return map;
   } catch (err) {
@@ -45,6 +63,6 @@ export async function fetchVariantData(admin, variantIds) {
 export function enrichVariantData(variantIds, variantDataMap) {
   return variantIds.map((vid) => {
     const d = variantDataMap[vid] || {};
-    return { variant_id: vid, title: d.title || '', image: d.image || '' };
+    return { variant_id: vid, product_id: d.product_id || '', title: d.title || '', image: d.image || '' };
   });
 }

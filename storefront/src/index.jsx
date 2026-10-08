@@ -150,9 +150,9 @@ class CartxDrawer extends Component {
       this.announce('Cart updated');
     } catch (e) {
       await this.loadCart();
-      var done = Object.assign({}, this.state.updating);
+      done = Object.assign({}, this.state.updating);
       delete done[lineKey];
-      var pending = Object.assign({}, this.state.pendingQty);
+      pending = Object.assign({}, this.state.pendingQty);
       delete pending[lineKey];
       this.setState({ updating: done, pendingQty: pending });
     }
@@ -191,9 +191,9 @@ class CartxDrawer extends Component {
         this.announce('Item removed from cart');
       } catch (e) {
         await this.loadCart();
-        var done = Object.assign({}, this.state.updating);
+        done = Object.assign({}, this.state.updating);
         delete done[lineKey];
-        var rem = Object.assign({}, this.state.removing);
+        rem = Object.assign({}, this.state.removing);
         delete rem[lineKey];
         this.setState({ updating: done, removing: rem });
       }
@@ -207,7 +207,7 @@ class CartxDrawer extends Component {
 
   getDisplayQty(item) {
     // Show pending (debounced) qty if exists, otherwise actual
-    if (this.state.pendingQty.hasOwnProperty(item.key)) {
+    if (Object.prototype.hasOwnProperty.call(this.state.pendingQty, item.key)) {
       return this.state.pendingQty[item.key];
     }
     return item.quantity;
@@ -217,7 +217,7 @@ class CartxDrawer extends Component {
     var isUpdating = this.state.updating[item.key];
     var isRemoving = this.state.removing[item.key];
     var displayQty = this.getDisplayQty(item);
-    var hasPending = this.state.pendingQty.hasOwnProperty(item.key);
+    var hasPending = Object.prototype.hasOwnProperty.call(this.state.pendingQty, item.key);
     var currency = this._currency;
     var lineItemClass = 'cartmax-line-item' + (isRemoving ? ' cartmax-line-removing' : '');
 

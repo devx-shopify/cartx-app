@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Outlet, useLoaderData, useRouteError, useFetcher, useRevalidator } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
+import { useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import {
   getAllThemes,
@@ -11,18 +12,27 @@ import {
   saveConfig,
   getShopAndTheme,
 } from "../lib/config.server.js";
-import { getActivePlan, ensureStoreRecord } from "../lib/billing.server.js";
+import { getActivePlan, ensureStoreRecord, syncShopSettings } from "../lib/billing.server.js";
+import ThemeSearchList, { THEME_ROLE_LABELS } from "../components/ThemeSearchList.jsx";
+import { syncPlanMetafield } from "../lib/drawer-metafield.server.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const shopId = session.shop;
-  const themes = await getAllThemes(admin);
+  const themes = await getAllThemes(admin, shopId);
   const selectedThemeId = await getSelectedTheme(shopId);
   const mainTheme = themes.find((t) => t.role === "MAIN");
   const activeThemeId = selectedThemeId || mainTheme?.id || "default";
 
   // Ensure store record exists in DB (for legacy/billing tracking)
   await ensureStoreRecord(shopId);
+  // Sync currency + timezone so analytics formats money correctly and the
+  // rollup cron buckets events into the merchant's local days. Best-effort.
+  try {
+    await syncShopSettings(admin, shopId);
+  } catch {
+    // Non-fatal — dashboard falls back to USD/UTC until the next load.
+  }
 
   let planData = { plan: "free", isLegacy: false, features: { discount_function: false, theme_switcher: false } };
   try {
@@ -30,9 +40,13 @@ export const loader = async ({ request }) => {
   } catch {
     // Default to free if billing query fails
   }
-
-  // eslint-disable-next-line no-undef
-  const isAdmin = shopId === process.env.ADMIN_SHOP;
+  // Mirror the plan tier to a storefront-readable metafield so the drawer theme
+  // block can suppress itself on drawer-less plans (Basic). Best-effort.
+  try {
+    await syncPlanMetafield(admin, planData.plan);
+  } catch {
+    // Non-fatal — the block fails open (renders) if the metafield is stale/absent.
+  }
 
   return {
     // eslint-disable-next-line no-undef
@@ -41,7 +55,6 @@ export const loader = async ({ request }) => {
     activeThemeId,
     mainThemeId: mainTheme?.id || "default",
     planData,
-    isAdmin,
   };
 };
 
@@ -65,11 +78,19 @@ export const action = async ({ request }) => {
 
     const sourceConfig = await loadConfig(shopId, sourceThemeId);
     const targetConfig = await loadConfig(shopId, currentThemeId);
-    targetConfig.offers = structuredClone(sourceConfig.offers);
-    targetConfig.coupons = structuredClone(sourceConfig.coupons);
-    targetConfig.claim_gifts = structuredClone(sourceConfig.claim_gifts);
+    // Copy the FULL merchant configuration — promotions AND settings — so
+    // applying a theme is a one-click clone, not manual re-entry. Everything a
+    // merchant configures lives under these keys.
+    const COPY_KEYS = [
+      "offers", "coupons", "claim_gifts",
+      "drawer", "progress_bar", "upsells", "bottom_ribbon",
+      "cross_page_removal_behavior",
+    ];
+    for (const key of COPY_KEYS) {
+      if (sourceConfig[key] !== undefined) targetConfig[key] = structuredClone(sourceConfig[key]);
+    }
     await saveConfig(shopId, currentThemeId, targetConfig);
-    return { ok: true, toast: "Promotions copied" };
+    return { ok: true, toast: "Settings & promotions copied" };
   }
 
   if (body._action === "copy_drawer") {
@@ -91,39 +112,42 @@ export const action = async ({ request }) => {
   return { ok: false };
 };
 
-const ROLE_LABELS = {
-  MAIN: "Live",
-  UNPUBLISHED: "Draft",
-  DEMO: "Trial",
-  DEVELOPMENT: "Dev",
-};
-
 export function ThemeSwitcher({ themes, activeThemeId, mainThemeId }) {
   const fetcher = useFetcher();
   const revalidator = useRevalidator();
   const [open, setOpen] = useState(false);
-  const [showCopy, setShowCopy] = useState(false);
-  const [copySource, setCopySource] = useState("");
   const ref = useRef(null);
+  const triggerRef = useRef(null);
 
   const busy = fetcher.state !== "idle" || revalidator.state === "loading";
-  const copying = busy && fetcher.formData;
 
   useEffect(() => {
     function handleClickOutside(e) {
       if (ref.current && !ref.current.contains(e.target)) {
         setOpen(false);
-        setShowCopy(false);
       }
     }
-    if (open) document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    function handleKeydown(e) {
+      // Escape closes and returns focus to the trigger. There was no keyboard
+      // way out of this panel before.
+      if (e.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus?.();
+      }
+    }
+    if (open) {
+      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleKeydown);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeydown);
+    };
   }, [open]);
 
   useEffect(() => {
     if (fetcher.data?.toast) {
       setOpen(false);
-      setShowCopy(false);
       revalidator.revalidate();
     }
   }, [fetcher.data, revalidator]);
@@ -136,30 +160,25 @@ export function ThemeSwitcher({ themes, activeThemeId, mainThemeId }) {
     );
     setTimeout(() => revalidator.revalidate(), 300);
     setOpen(false);
-    setShowCopy(false);
   }
 
-  function handleCopy() {
-    if (!copySource) return;
-    fetcher.submit(
-      JSON.stringify({ _action: "copy_promotions", source_theme_id: copySource }),
-      { method: "POST", encType: "application/json", action: "/app" }
-    );
-  }
-
-  if (themes.length <= 1) return null;
+  // Null-guard as well as length-guard: getAllThemes returns [] on API failure,
+  // and this used to throw on an undefined array (unlike ThemeCopyCard).
+  if (!themes || themes.length <= 1) return null;
 
   const isMain = activeThemeId === mainThemeId;
   const activeTheme = themes.find((t) => t.id === activeThemeId);
-  const otherThemes = themes.filter((t) => t.id !== activeThemeId);
 
   return (
     <div style={{ position: "relative" }} ref={ref}>
+      {/* aria-haspopup is "dialog", not "menu" — the panel now contains a
+          search textbox, which a menu is not allowed to hold. */}
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => { if (!busy) { setOpen(!open); setShowCopy(false); } }}
+        onClick={() => { if (!busy) setOpen(!open); }}
         disabled={busy}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={`Theme: ${activeTheme?.name || "Default"}`}
         style={{
@@ -198,7 +217,10 @@ export function ThemeSwitcher({ themes, activeThemeId, mainThemeId }) {
               color: "#7a5a00",
             }}
           >
-            Draft
+            {/* Was hardcoded "Draft", which mislabels DEVELOPMENT and DEMO
+                themes. Those were unreachable while the theme list was capped
+                at 50, so the fix above is what exposes it. */}
+            {THEME_ROLE_LABELS[activeTheme?.role] || "Draft"}
           </span>
         )}
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -208,109 +230,284 @@ export function ThemeSwitcher({ themes, activeThemeId, mainThemeId }) {
 
       {open && (
         <div
+          role="dialog"
+          aria-label="Switch theme"
           style={{
             position: "absolute",
             top: "calc(100% + 8px)",
             right: 0,
-            width: 280,
-            background: "#fff",
-            border: "1px solid #e3e3e3",
+            // Wider than the old 280 to fit name + role badge + the id subtext.
+            width: 340,
+            // Token-based so the panel follows Shopify admin dark mode. It used
+            // to hardcode #fff/#e3e3e3 and stayed white while the trigger
+            // button (which already used tokens) went dark.
+            background: "var(--s-color-bg-surface, #ffffff)",
+            border: "1px solid var(--s-color-border, #e3e3e3)",
             borderRadius: 12,
             boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
-            overflow: "hidden",
+            // NO `overflow: hidden` here — that, with no maxHeight, is what
+            // made the list run off the bottom of the viewport unreachably.
+            // ThemeSearchList owns the scroll region now.
             zIndex: 50,
           }}
         >
-          <div style={{ padding: "10px 12px", borderBottom: "1px solid #e3e3e3" }}>
-            <div style={{ fontWeight: 600, fontSize: 13, color: "#1a1a1a" }}>Switch theme</div>
-            <div style={{ fontSize: 12, color: "#6d7175", marginTop: 2 }}>Select which theme to configure</div>
+          <div
+            style={{
+              padding: "10px 12px",
+              borderBottom: "1px solid var(--s-color-border, #e3e3e3)",
+            }}
+          >
+            <div style={{ fontWeight: 600, fontSize: 13, color: "var(--s-color-text, #1a1a1a)" }}>
+              Switch theme
+            </div>
+            <div
+              style={{
+                fontSize: 12,
+                color: "var(--s-color-text-secondary, #6d7175)",
+                marginTop: 2,
+              }}
+            >
+              Select which theme to configure
+            </div>
           </div>
 
-          {themes.map((t) => {
-            const selected = t.id === activeThemeId;
-            const live = t.id === mainThemeId;
-            return (
-              <div
-                key={t.id}
-                onClick={() => selectTheme(t.id)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  padding: "10px 12px",
-                  cursor: "pointer",
-                  background: selected ? "#f1f8ff" : "transparent",
-                  borderBottom: "1px solid #e3e3e3",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontWeight: 500, fontSize: 13, color: "#1a1a1a" }}>{t.name}</span>
-                  <s-badge tone={live ? "success" : "warning"}>
-                    {live ? "Live" : ROLE_LABELS[t.role] || t.role}
-                  </s-badge>
-                </div>
-                {selected && (
-                  <svg width="14" height="14" fill="none" stroke="var(--s-color-text-brand)" strokeWidth="2.5" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                  </svg>
-                )}
-              </div>
-            );
-          })}
-
-          <s-divider />
-          {!showCopy ? (
-            <div
-              onClick={() => { setShowCopy(true); setCopySource(otherThemes[0]?.id || ""); }}
-              style={{ padding: "10px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500, color: "#2c6ecb" }}
-            >
-              Copy promotions from another theme
-            </div>
-          ) : (
-            <s-box padding="300">
-              <s-stack direction="block" gap="200">
-                <s-text color="subdued" style={{ fontSize: 12 }}>
-                  Copy all promotions into <strong>{activeTheme?.name}</strong> from:
-                </s-text>
-                <s-select label="" value={copySource} onChange={(e) => setCopySource(e.target.value)}>
-                  {otherThemes.map((t) => (
-                    <s-option key={t.id} value={t.id}>
-                      {t.name} ({t.id === mainThemeId ? "Live" : ROLE_LABELS[t.role] || t.role})
-                    </s-option>
-                  ))}
-                </s-select>
-                <s-banner tone="warning">
-                  This will replace all existing promotions on {activeTheme?.name}.
-                </s-banner>
-                <s-stack gap="200">
-                  <s-button variant="primary" onClick={handleCopy} {...(copying ? { loading: true, disabled: true } : {})} disabled={!copySource}>
-                    {copying ? "Copying..." : "Copy promotions"}
-                  </s-button>
-                  <s-button onClick={() => setShowCopy(false)}>Cancel</s-button>
-                </s-stack>
-              </s-stack>
-            </s-box>
-          )}
+          <ThemeSearchList
+            themes={themes}
+            activeThemeId={activeThemeId}
+            mainThemeId={mainThemeId}
+            onSelect={selectTheme}
+            pinIds={[mainThemeId, activeThemeId]}
+            focusSearchOnOpen
+            ariaLabel="Themes"
+            emptyLabel="No themes match your search."
+            renderTrailing={(t, isActive) =>
+              isActive ? (
+                <svg
+                  width="14"
+                  height="14"
+                  fill="none"
+                  stroke="var(--s-color-text-brand)"
+                  strokeWidth="2.5"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  style={{ flexShrink: 0 }}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
+              ) : null
+            }
+          />
         </div>
       )}
     </div>
   );
 }
 
+// Distinct from useConfirm's module-scope "confirm-dialog" id — two s-modals
+// sharing an id would make shopify.modal.show() ambiguous, and the Settings
+// page mounts both.
+const COPY_SOURCE_MODAL_ID = "cartx-copy-source-picker";
+
+// Roomy "copy config from another theme" card — lives on the Settings page (the
+// theme dropdown was too cramped for it). Copies the full merchant config
+// (promotions + settings) into the theme currently being edited.
+export function ThemeCopyCard({ themes, activeThemeId, mainThemeId }) {
+  const fetcher = useFetcher();
+  const revalidator = useRevalidator();
+  const shopify = useAppBridge();
+  const [copySource, setCopySource] = useState("");
+
+  const busy = fetcher.state !== "idle" || revalidator.state === "loading";
+  const copying = busy && fetcher.formData;
+
+  useEffect(() => {
+    if (fetcher.data?.toast) revalidator.revalidate();
+  }, [fetcher.data, revalidator]);
+
+  if (!themes || themes.length <= 1) return null;
+
+  const activeTheme = themes.find((t) => t.id === activeThemeId);
+  const otherThemes = themes.filter((t) => t.id !== activeThemeId);
+  // No implicit default. This was `copySource || otherThemes[0]?.id`, which
+  // pre-armed the button with whichever theme happened to sort first — and
+  // "Copy everything" irreversibly replaces ALL promotions and settings on the
+  // active theme. That coupled a destructive action to list order, so changing
+  // the sort would silently change what an untouched click destroys. Now the
+  // button stays disabled until the merchant picks a source explicitly.
+  const source = copySource;
+  const sourceTheme = otherThemes.find((t) => t.id === source);
+
+  function handleCopy() {
+    if (!source) return;
+    fetcher.submit(
+      JSON.stringify({ _action: "copy_promotions", source_theme_id: source }),
+      { method: "POST", encType: "application/json", action: "/app" }
+    );
+  }
+
+  return (
+    <s-section heading="Copy from another theme">
+      <s-stack direction="block" gap="300">
+        <s-text color="subdued">
+          Copy all promotions and settings — offers, coupons, gifts, drawer design,
+          progress bar, upsells, and ribbon — from another theme into the theme
+          you're currently editing (<strong>{activeTheme?.name || "current"}</strong>).
+          Switch the target theme from the theme selector on the Home page.
+        </s-text>
+        {/* A compact labelled field, not an inline list. This is a settings
+            card, so the picker has to read as one form control regardless of
+            whether the shop has 6 themes or 600 — the searchable list lives in
+            a modal (same pattern as the Home setup-guide picker). */}
+        <div>
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              color: "var(--s-color-text, #1a1a1a)",
+              marginBottom: 6,
+            }}
+          >
+            Copy from
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              padding: "10px 12px",
+              border: "1px solid var(--s-color-border, #e3e3e3)",
+              borderRadius: 8,
+              background: "var(--s-color-bg-surface, #ffffff)",
+            }}
+          >
+            {sourceTheme ? (
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  <span
+                    style={{
+                      fontWeight: 500,
+                      fontSize: 13,
+                      color: "var(--s-color-text, #1a1a1a)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {sourceTheme.name}
+                  </span>
+                  {sourceTheme.id === mainThemeId ? (
+                    <s-badge tone="success">Live</s-badge>
+                  ) : (
+                    <s-badge>{THEME_ROLE_LABELS[sourceTheme.role] || sourceTheme.role}</s-badge>
+                  )}
+                </span>
+                <span
+                  style={{
+                    display: "block",
+                    marginTop: 2,
+                    fontSize: 11,
+                    fontVariantNumeric: "tabular-nums",
+                    color: "var(--s-color-text-secondary, #6d7175)",
+                  }}
+                >
+                  {sourceTheme.id}
+                </span>
+              </span>
+            ) : (
+              <s-text color="subdued">No theme selected</s-text>
+            )}
+            <s-button onClick={() => shopify.modal.show(COPY_SOURCE_MODAL_ID)}>
+              {sourceTheme ? "Change" : "Choose theme"}
+            </s-button>
+          </div>
+        </div>
+        {source && (
+          <s-banner tone="warning">
+            This replaces all existing promotions and settings on{" "}
+            <strong>{activeTheme?.name || "the current theme"}</strong> with those from{" "}
+            <strong>{sourceTheme?.name || source}</strong>.
+          </s-banner>
+        )}
+        <div>
+          <s-button variant="primary" onClick={handleCopy} {...(copying ? { loading: true, disabled: true } : {})} disabled={!source}>
+            {copying ? "Copying…" : "Copy everything"}
+          </s-button>
+        </div>
+      </s-stack>
+
+      <s-modal id={COPY_SOURCE_MODAL_ID} heading="Copy from which theme?">
+        <s-paragraph>
+          Pick the theme whose promotions and settings you want to copy into{" "}
+          <strong>{activeTheme?.name || "the current theme"}</strong>.
+        </s-paragraph>
+        <div
+          style={{
+            marginTop: 14,
+            border: "1px solid var(--s-color-border, #e3e3e3)",
+            borderRadius: 10,
+            overflow: "hidden",
+          }}
+        >
+          <ThemeSearchList
+            themes={otherThemes}
+            activeThemeId={source}
+            mainThemeId={mainThemeId}
+            onSelect={(id) => {
+              setCopySource(id);
+              shopify.modal.hide(COPY_SOURCE_MODAL_ID);
+            }}
+            pinIds={[mainThemeId]}
+            ariaLabel="Copy from theme"
+            searchPlaceholder="Search by name or ID…"
+            emptyLabel="No themes match your search."
+            maxHeight="min(420px, 50vh)"
+            renderTrailing={(t, isSelected) =>
+              isSelected ? (
+                <svg
+                  width="14"
+                  height="14"
+                  fill="none"
+                  stroke="var(--s-color-text-brand)"
+                  strokeWidth="2.5"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  style={{ flexShrink: 0 }}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
+              ) : null
+            }
+          />
+        </div>
+        <s-button
+          slot="footer-secondary"
+          onClick={() => shopify.modal.hide(COPY_SOURCE_MODAL_ID)}
+        >
+          Cancel
+        </s-button>
+      </s-modal>
+    </s-section>
+  );
+}
+
 export default function App() {
-  const { apiKey, themes, activeThemeId, mainThemeId, planData, isAdmin } = useLoaderData();
+  const { apiKey, themes, activeThemeId, mainThemeId, planData } = useLoaderData();
 
   return (
     <AppProvider embedded apiKey={apiKey}>
       <s-app-nav>
         <s-link href="/app">Home</s-link>
-        <s-link href="/app/cart-customizer">Customize Cart</s-link>
+        {/* The cart drawer isn't part of drawer-less plans (Basic) — hide its
+            customizer. `allowsDrawer` is carried on planData (spread from PLANS);
+            undefined on Pro/Free/Enterprise ⇒ shown. */}
+        {planData?.allowsDrawer !== false && (
+          <s-link href="/app/cart-customizer">Customize Cart</s-link>
+        )}
         <s-link href="/app/promotions">Promotions</s-link>
         <s-link href="/app/analytics">Analytics</s-link>
         <s-link href="/app/settings">Settings</s-link>
-        {!planData.isLegacy && <s-link href="/app/billing">Plans</s-link>}
-        {isAdmin && <s-link href="/app/internal">Admin</s-link>}
+        <s-link href="/app/billing">Plans</s-link>
       </s-app-nav>
       <Outlet context={{ themes, activeThemeId, mainThemeId, planData }} />
     </AppProvider>

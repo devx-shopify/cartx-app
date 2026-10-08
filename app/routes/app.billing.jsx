@@ -10,13 +10,14 @@ import {
   cancelSubscription,
   clearEnterpriseStatus,
   PLANS,
+  ENTERPRISE_CONTACT_EMAIL,
 } from "../lib/billing.server.js";
 import VStack from "../components/VStack.jsx";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const planData = await getActivePlan(admin, session.shop);
-  return { planData };
+  return { planData, enterpriseContactEmail: ENTERPRISE_CONTACT_EMAIL };
 };
 
 export const action = async ({ request }) => {
@@ -94,6 +95,7 @@ export const action = async ({ request }) => {
 // Client-safe plan display data
 const CLIENT_PLANS = {
   free: { name: "Free", amount: 0, amountAnnual: 0, trialDays: 0 },
+  basic: { name: "Basic", amount: 50, amountAnnual: 480, trialDays: 7 },
   pro: { name: "Pro", amount: 150, amountAnnual: 1440, trialDays: 7 },
   enterprise: { name: "Enterprise", isEnterprise: true },
 };
@@ -101,14 +103,18 @@ const CLIENT_PLANS = {
 // Normal stores see a single Pro card (+ an Enterprise contact note). Stores
 // the team has put on Enterprise also see their Enterprise plan and Pro.
 const ANNUAL_DISCOUNT_PCT = 20;
-const ENTERPRISE_EMAIL = "ansh.varshney@devxlabs.ai";
 
 const FEATURE_LIST = [
   { key: "drawer", label: "Cart drawer (progress bar, upsells, coupons)" },
   { key: "promotions", label: "Unlimited promotions" },
-  { key: "discount_function", label: "Automatic gift discounts at checkout" },
+  { key: "discount_function", label: "Automatic discounts at checkout" },
   { key: "theme_switcher", label: "Multi-theme configuration" },
 ];
+
+// Per-plan label overrides for the feature checklist (display only).
+const FEATURE_LABEL_OVERRIDES = {
+  basic: { promotions: "Up to 3 volume-discount offers" },
+};
 
 const ENTERPRISE_EXTRAS = [
   "Custom pricing & invoicing",
@@ -121,6 +127,12 @@ const PLAN_FEATURES = {
     drawer: true,
     promotions: true,
     discount_function: false,
+    theme_switcher: false,
+  },
+  basic: {
+    drawer: false,
+    promotions: true, // capped — label overridden to "Up to 3…"
+    discount_function: true,
     theme_switcher: false,
   },
   pro: {
@@ -138,7 +150,7 @@ const PLAN_FEATURES = {
 };
 
 export default function BillingPage() {
-  const { planData } = useLoaderData();
+  const { planData, enterpriseContactEmail } = useLoaderData();
   const fetcher = useFetcher();
   const shopify = useAppBridge();
 
@@ -159,11 +171,11 @@ export default function BillingPage() {
   // immediately obvious what they're paying for.
   const [billingCycle, setBillingCycle] = useState(currentCycle);
 
-  // Approved Enterprise stores (pending-approval returns earlier) see their
-  // Enterprise plan as current plus Pro as a downgrade option. Everyone else
-  // sees a single Pro card; Enterprise is contact-sales only (note below).
+  // Pro is always first, Enterprise always second — regardless of plan/amount.
+  // For enterprise stores the Enterprise card shows their cartx-set price + a
+  // cancel option; for everyone else it's a contact-only card (email to upgrade).
   const isEnterpriseStore = planData.isLegacy;
-  const planOrder = isEnterpriseStore ? ["enterprise", "pro"] : ["pro"];
+  const planOrder = ["basic", "pro", "enterprise"];
 
   useEffect(() => {
     if (!submitting) setActivePlanAction(null);
@@ -236,7 +248,11 @@ export default function BillingPage() {
             style={{
               display: "grid",
               gridTemplateColumns:
-                planOrder.length > 1 ? "1fr 1fr" : "minmax(0, 440px)",
+                planOrder.length > 2
+                  ? "repeat(3, minmax(0, 1fr))"
+                  : planOrder.length > 1
+                    ? "1fr 1fr"
+                    : "minmax(0, 440px)",
               justifyContent: "center",
               gap: 16,
             }}
@@ -310,30 +326,38 @@ export default function BillingPage() {
 
                     <div style={{ marginBottom: 4 }}>
                       {isEnterprise ? (
-                        <>
-                          <span
-                            style={{
-                              fontSize: 32,
-                              fontWeight: 700,
-                              color: "#1a1a1a",
-                            }}
-                          >
-                            {planData.amount > 0
-                              ? `$${planData.amount}`
-                              : "Free"}
-                          </span>
-                          {planData.amount > 0 && (
+                        isEnterpriseStore ? (
+                          <>
                             <span
                               style={{
-                                fontSize: 14,
-                                color: "#6d7175",
-                                marginLeft: 2,
+                                fontSize: 32,
+                                fontWeight: 700,
+                                color: "#1a1a1a",
                               }}
                             >
-                              /mo
+                              {planData.amount > 0
+                                ? `$${planData.amount}`
+                                : "Free"}
                             </span>
-                          )}
-                        </>
+                            {planData.amount > 0 && (
+                              <span
+                                style={{
+                                  fontSize: 14,
+                                  color: "#6d7175",
+                                  marginLeft: 2,
+                                }}
+                              >
+                                /mo
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span
+                            style={{ fontSize: 32, fontWeight: 700, color: "#1a1a1a" }}
+                          >
+                            Custom
+                          </span>
+                        )
                       ) : billingCycle === "annual" ? (
                         <>
                           <span
@@ -420,6 +444,9 @@ export default function BillingPage() {
                     >
                       {FEATURE_LIST.map((feat) => {
                         const has = PLAN_FEATURES[planKey][feat.key];
+                        const label =
+                          FEATURE_LABEL_OVERRIDES[planKey]?.[feat.key] ||
+                          feat.label;
                         return (
                           <div
                             key={feat.key}
@@ -457,7 +484,7 @@ export default function BillingPage() {
                                 color: has ? "#1a1a1a" : "#8c8c8c",
                               }}
                             >
-                              {feat.label}
+                              {label}
                             </span>
                           </div>
                         );
@@ -499,18 +526,31 @@ export default function BillingPage() {
 
                     <div style={{ marginTop: "auto", paddingTop: 24 }}>
                       {isEnterprise ? (
-                        <s-button
-                          tone="critical"
-                          onClick={handleCancel}
-                          fullWidth
-                          {...(activePlanAction === "free"
-                            ? { loading: true, disabled: true }
-                            : submitting
-                              ? { disabled: true }
-                              : {})}
-                        >
-                          Cancel subscription
-                        </s-button>
+                        isEnterpriseStore ? (
+                          <s-button
+                            tone="critical"
+                            onClick={handleCancel}
+                            fullWidth
+                            {...(activePlanAction === "free"
+                              ? { loading: true, disabled: true }
+                              : submitting
+                                ? { disabled: true }
+                                : {})}
+                          >
+                            Cancel subscription
+                          </s-button>
+                        ) : (
+                          <div style={{ textAlign: "center", fontSize: 13, color: "#6d7175" }}>
+                            Email{" "}
+                            <a
+                              href={`mailto:${enterpriseContactEmail}?subject=${encodeURIComponent("Enterprise plan for my store")}`}
+                              style={{ color: "#2c6ecb", fontWeight: 500 }}
+                            >
+                              {enterpriseContactEmail}
+                            </a>
+                            {" "}to upgrade
+                          </div>
+                        )
                       ) : isCurrent ? (
                         billingCycle !== currentCycle ? (
                           <s-button
@@ -566,22 +606,6 @@ export default function BillingPage() {
             })}
           </div>
 
-          {!isEnterpriseStore && (
-            <div
-              style={{ textAlign: "center", fontSize: 13, color: "#6d7175" }}
-            >
-              {`Running a high-volume store? We offer custom `}
-              <strong style={{ color: "#1a1a1a" }}>Enterprise</strong>
-              {` pricing — email `}
-              <a
-                href={`mailto:${ENTERPRISE_EMAIL}`}
-                style={{ color: "#2c6ecb", fontWeight: 500 }}
-              >
-                {ENTERPRISE_EMAIL}
-              </a>
-              {` and we'll set up a custom plan for your store.`}
-            </div>
-          )}
         </VStack>
       </div>
     </s-page>

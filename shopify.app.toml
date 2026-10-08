@@ -30,6 +30,14 @@ api_version = "2026-07"
   uri = "/webhooks/orders/create"
 
   [[webhooks.subscriptions]]
+  topics = [ "products/update" ]
+  uri = "/webhooks/products/update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "products/delete" ]
+  uri = "/webhooks/products/delete"
+
+  [[webhooks.subscriptions]]
   compliance_topics = [ "customers/data_request" ]
   uri = "/webhooks/customers/data-request"
 
@@ -43,12 +51,34 @@ api_version = "2026-07"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_themes,read_products,write_products,read_discounts,write_discounts,read_customers,read_content,read_orders"
+scopes = "read_themes,read_products,write_products,read_discounts,write_discounts,read_customers,read_content,read_orders,unauthenticated_read_checkouts,unauthenticated_write_checkouts,unauthenticated_read_product_listings,unauthenticated_read_product_inventory"
+
+# App-owned shop metafield holding the drawer styling, exposed to the storefront
+# so the theme app extension (app-embed.liquid) can inline it and the drawer can
+# apply styling on first paint (no proxy round-trip → no default→custom flash).
+# Value is written by app/lib/drawer-metafield.server.js; this declares the schema
+# + storefront read access. Read in Liquid as shop.metafields['$app'].drawer_config.
+[shop.metafields.app.drawer_config]
+name = "cartx drawer config"
+description = "Storefront drawer styling (managed by cartx)."
+type = "json"
+access.storefront = "public_read"
+
+# App-owned shop metafield holding the merchant's cartx plan tier, exposed to the
+# storefront so the drawer theme block (app-embed.liquid) can suppress itself on
+# drawer-less plans (Basic). Written by app/lib/drawer-metafield.server.js on each
+# admin load. Read in Liquid as shop.metafields['$app'].plan. Fail-open: the block
+# only hides when this equals "basic", so an absent/other value always renders.
+[shop.metafields.app.plan]
+name = "cartx plan"
+description = "Merchant's cartx plan tier (managed by cartx)."
+type = "single_line_text_field"
+access.storefront = "public_read"
 
 [auth]
 redirect_urls = [ "https://cartx.fly.dev/auth/callback" ]
 
 [app_proxy]
 url = "https://cartx.fly.dev/proxy"
-subpath = "cartmax"
+subpath = "cartx"
 prefix = "apps"

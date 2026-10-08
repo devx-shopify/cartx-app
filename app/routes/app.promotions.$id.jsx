@@ -1,4 +1,4 @@
-import { useLoaderData } from "react-router";
+import { useLoaderData, useOutletContext } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
@@ -10,9 +10,12 @@ import {
 import { fetchVariantData, enrichVariantData } from "../lib/graphql.server.js";
 import {
   migrateLegacyDiscountRules,
-  syncFreebieDiscountFromConfig,
+  syncDiscounts,
 } from "../lib/discount.server.js";
-import { syncVolumeDiscountConfig } from "../lib/volume-discount.server.js";
+import {
+  getActivePlan,
+  offerRewardPolicyError,
+} from "../lib/billing.server.js";
 import { usePromotionForm } from "../hooks/usePromotionForm.js";
 import OfferForm from "../components/OfferForm.jsx";
 import CouponForm from "../components/CouponForm.jsx";
@@ -57,10 +60,19 @@ export const action = async ({ request, params }) => {
   const type = body._type;
   delete body._type;
 
+  // Plan policy (Basic only; other plans unrestricted). Guard reward-type switches.
+  // Offer COUNT isn't hard-blocked — over-limit offers just don't apply at
+  // checkout, and the promotions page shows an upgrade note.
+  const planData = await getActivePlan(admin, session.shop);
+  if (type === "offer") {
+    const rewardErr = offerRewardPolicyError(planData, body.reward?.type);
+    if (rewardErr) return rewardErr;
+  }
+
   if (type === "offer") {
     const idx = config.offers.findIndex((o) => o.id === params.id);
     if (idx === -1) throw new Response("Offer not found", { status: 404 });
-    if (body.reward?.type === "auto_add_gift" && body.reward.add_mode === "display") {
+    if (body.reward?.type === "auto_add_gift") {
       const vids = body.reward.gift_variants || [];
       const variantDataMap = await fetchVariantData(admin, vids);
       body.reward.gift_variant_data = enrichVariantData(vids, variantDataMap);
@@ -80,17 +92,10 @@ export const action = async ({ request, params }) => {
 
   await saveConfig(shopId, themeId, config);
 
-  // Keep the freebie Shopify Function in sync (auto-installs on first need).
-  if (type === "offer" || type === "claim-gift") {
-    await syncFreebieDiscountFromConfig(admin, session.shop, config);
-  }
+  // Discount syncs are secondary effects — never let one crash the save.
+  const warnings = await syncDiscounts(admin, session.shop, config, type);
 
-  // Sync volume discount config if an offer was updated
-  if (type === "offer") {
-    await syncVolumeDiscountConfig(admin, session.shop, config.offers);
-  }
-
-  return { ok: true };
+  return { ok: true, warnings };
 };
 
 const TYPE_HEADINGS = {
@@ -107,6 +112,7 @@ const SUCCESS_LABELS = {
 
 export default function EditPromotion() {
   const { type, data, variantDataMap } = useLoaderData();
+  const { planData } = useOutletContext();
   const { formRef, submitting, handleSubmit, handleSave, handleDiscard } = usePromotionForm({ type, successLabels: SUCCESS_LABELS });
 
   return (
@@ -116,7 +122,7 @@ export default function EditPromotion() {
         <button id="discard-action" onClick={handleDiscard}></button>
       </ui-save-bar>
 
-      {type === "offer" && <OfferForm ref={formRef} offer={data} variantDataMap={variantDataMap} onSubmit={handleSubmit} submitting={submitting} />}
+      {type === "offer" && <OfferForm ref={formRef} offer={data} variantDataMap={variantDataMap} onSubmit={handleSubmit} submitting={submitting} allowedRewardTypes={planData?.offerRewardTypes} />}
       {type === "coupon" && <CouponForm ref={formRef} coupon={data} onSubmit={handleSubmit} submitting={submitting} />}
       {type === "claim-gift" && <ClaimGiftForm ref={formRef} claimGift={data} variantDataMap={variantDataMap} onSubmit={handleSubmit} submitting={submitting} />}
     </s-page>

@@ -7,7 +7,7 @@
 import { ANALYTICS_BOUNDS } from './analytics-events';
 
 var SESSION_KEY = 'cartx_session_id';
-var DEFAULT_PROXY_BASE = '/apps/cartmax';
+var DEFAULT_PROXY_BASE = '/apps/cartx';
 var ENDPOINT_PATH = '/analytics';
 
 function safeSessionStorage() {

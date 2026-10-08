@@ -1,4 +1,5 @@
 import db from '../db.server.js'
+import { loadPromotionMeta } from './promotion-meta.server.js'
 import {
   ANALYTICS_EVENTS,
   ANALYTICS_SOURCES,
@@ -245,6 +246,10 @@ export async function attributeOrder(shopId, order) {
   }
 
   const rows = []
+  // Shop-wide order row. Carries the order subtotal and whether any cartx promo
+  // fired, so the rollup can compute de-duplicated shop metrics (attributed vs
+  // non-promo orders/revenue) without double-counting multi-promo orders.
+  const attributed = groups.size > 0
   rows.push({
     shopId,
     event: ANALYTICS_EVENTS.ORDER_COMPLETED,
@@ -253,9 +258,14 @@ export async function attributeOrder(shopId, order) {
     customerId,
     cartTotal: totalCents,
     revenue: totalCents,
-    metadata: orderIdMeta,
+    subtotal: orderSubtotalCents,
+    metadata: { ...orderIdMeta, attributed },
     occurredAt,
   })
+
+  // Snapshot the promotion display name so attributed-order rows stay labeled
+  // even if the promotion is later deleted (see Issue 3).
+  const promoMeta = await loadPromotionMeta(shopId)
 
   for (const [offerId, bucket] of groups.entries()) {
     // GWP / claim-gift: matched lines are all freebies → credit promotion
@@ -270,6 +280,7 @@ export async function attributeOrder(shopId, order) {
       source: ANALYTICS_SOURCES.SERVER,
       promotionId: offerId,
       promotionType: bucket.claim ? 'claim-gift' : 'offer',
+      promotionName: promoMeta.get(offerId)?.name ?? null,
       customerId,
       cartTotal: totalCents,
       revenue: attribution,

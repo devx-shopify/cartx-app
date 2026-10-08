@@ -9,6 +9,43 @@ import {
 // query stays cheap.
 const DEFAULT_WINDOW_HOURS = 26
 
+// Retry a DB operation on transient connection errors. Fly Postgres can briefly
+// drop connections (deploys, failover, restart under load); a short retry keeps
+// one blip from failing an entire shop's rollup and falsely tripping the alert.
+function isTransientDbError(err) {
+  const code = err?.code
+  if (code === 'P1001' || code === 'P1017' || code === 'P1008') return true
+  if ((err?.name || '') === 'PrismaClientInitializationError') return true
+  return /closed the connection|reach database server|connection reset|terminating connection/i.test(
+    String(err?.message || ''),
+  )
+}
+
+async function withRetry(fn, { attempts = 3, baseDelayMs = 500 } = {}) {
+  let lastErr
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastErr = err
+      if (i === attempts - 1 || !isTransientDbError(err)) throw err
+      await new Promise((r) => setTimeout(r, baseDelayMs * (i + 1)))
+    }
+  }
+  throw lastErr
+}
+
+// Read the shop's IANA timezone (synced onto Store from Shopify shop settings).
+// Falls back to UTC when not yet populated — the merchant just hasn't opened the
+// admin app since the field was added.
+async function getShopTimezone(shopId) {
+  const store = await db.store.findUnique({
+    where: { storeDomain: shopId },
+    select: { ianaTimezone: true },
+  })
+  return store?.ianaTimezone || 'UTC'
+}
+
 /**
  * Roll up AnalyticsEvent rows into DailyStats for one shop.
  *
@@ -24,16 +61,20 @@ export async function rollupShop(shopId, opts = {}) {
   const started = Date.now()
   const until = opts.until ?? new Date()
   const since = opts.since ?? new Date(until.getTime() - DEFAULT_WINDOW_HOURS * 3600 * 1000)
+  const tz = opts.tz ?? (await getShopTimezone(shopId))
 
   // Single GROUP BY query: (date, promotionId, event) -> count + revenue.
-  // We use UTC days here; shop timezone normalization can layer on later.
+  // Days are bucketed in the shop's local timezone: interpret the naive
+  // timestamp as UTC, convert to the shop tz, then truncate to the day.
   const rows = await db.$queryRaw`
     SELECT
-      to_char(date_trunc('day', "occurredAt"), 'YYYY-MM-DD') AS date,
+      to_char(date_trunc('day', ("occurredAt" AT TIME ZONE 'UTC') AT TIME ZONE ${tz}), 'YYYY-MM-DD') AS date,
       COALESCE("promotionId", ${SHOP_WIDE_PROMOTION_ID}) AS "promotionId",
       "event",
       COUNT(*)::int AS count,
-      COALESCE(SUM("revenue"), 0)::bigint AS revenue
+      COALESCE(SUM("revenue"), 0)::bigint AS revenue,
+      MAX("promotionName") AS "promotionName",
+      MAX("promotionType") AS "promotionType"
     FROM "AnalyticsEvent"
     WHERE "shopId" = ${shopId}
       AND "occurredAt" >= ${since}
@@ -54,12 +95,17 @@ export async function rollupShop(shopId, opts = {}) {
       b = {
         date: row.date,
         promotionId: row.promotionId,
+        promotionName: null, promotionType: null,
         impressions: 0, claims: 0, removals: 0,
         upsellAdds: 0, couponApplies: 0,
         checkouts: 0, orders: 0, revenue: 0,
+        attributedOrders: 0, attributedRevenue: 0,
+        nonPromoOrders: 0, nonPromoRevenue: 0,
       }
       buckets.set(key, b)
     }
+    if (row.promotionName && !b.promotionName) b.promotionName = row.promotionName
+    if (row.promotionType && !b.promotionType) b.promotionType = row.promotionType
     const n = row.count
     const r = Number(row.revenue)
     switch (row.event) {
@@ -80,6 +126,48 @@ export async function rollupShop(shopId, opts = {}) {
     }
   }
 
+  // De-duplicated shop-level metrics, computed per day from `order_completed`
+  // rows (exactly one per order). Split by whether any cartx promo fired
+  // (metadata.attributed), summing the order *subtotal* (falling back to
+  // total_price for rows written before subtotal capture). Because each order
+  // is one row, COUNT is already a distinct-order count — no multi-promo
+  // double-counting. Written onto the `_shop` bucket.
+  const shopRows = await db.$queryRaw`
+    SELECT
+      to_char(date_trunc('day', ("occurredAt" AT TIME ZONE 'UTC') AT TIME ZONE ${tz}), 'YYYY-MM-DD') AS date,
+      COUNT(*) FILTER (WHERE COALESCE(("metadata"->>'attributed')::boolean, false))::int AS attr_orders,
+      COALESCE(SUM(COALESCE("subtotal", "revenue")) FILTER (WHERE COALESCE(("metadata"->>'attributed')::boolean, false)), 0)::bigint AS attr_revenue,
+      COUNT(*) FILTER (WHERE NOT COALESCE(("metadata"->>'attributed')::boolean, false))::int AS nonpromo_orders,
+      COALESCE(SUM(COALESCE("subtotal", "revenue")) FILTER (WHERE NOT COALESCE(("metadata"->>'attributed')::boolean, false)), 0)::bigint AS nonpromo_revenue
+    FROM "AnalyticsEvent"
+    WHERE "shopId" = ${shopId}
+      AND "event" = ${EVENTS.ORDER_COMPLETED}
+      AND "occurredAt" >= ${since}
+      AND "occurredAt" <= ${until}
+    GROUP BY date
+  `
+  for (const row of shopRows) {
+    const key = `${row.date}:${SHOP_WIDE_PROMOTION_ID}`
+    let b = buckets.get(key)
+    if (!b) {
+      b = {
+        date: row.date,
+        promotionId: SHOP_WIDE_PROMOTION_ID,
+        promotionName: null, promotionType: null,
+        impressions: 0, claims: 0, removals: 0,
+        upsellAdds: 0, couponApplies: 0,
+        checkouts: 0, orders: 0, revenue: 0,
+        attributedOrders: 0, attributedRevenue: 0,
+        nonPromoOrders: 0, nonPromoRevenue: 0,
+      }
+      buckets.set(key, b)
+    }
+    b.attributedOrders = row.attr_orders
+    b.attributedRevenue = Number(row.attr_revenue)
+    b.nonPromoOrders = row.nonpromo_orders
+    b.nonPromoRevenue = Number(row.nonpromo_revenue)
+  }
+
   // UPSERT each bucket. The unique key is (shopId, date, promotionId).
   await db.$transaction(
     Array.from(buckets.values()).map((b) =>
@@ -89,14 +177,23 @@ export async function rollupShop(shopId, opts = {}) {
           impressions: b.impressions, claims: b.claims, removals: b.removals,
           upsellAdds: b.upsellAdds, couponApplies: b.couponApplies,
           checkouts: b.checkouts, orders: b.orders, revenue: b.revenue,
+          attributedOrders: b.attributedOrders, attributedRevenue: b.attributedRevenue,
+          nonPromoOrders: b.nonPromoOrders, nonPromoRevenue: b.nonPromoRevenue,
+          // Only overwrite the label when this window actually carried one, so a
+          // later window with deleted-promo (null) rows can't erase a good name.
+          ...(b.promotionName ? { promotionName: b.promotionName } : {}),
+          ...(b.promotionType ? { promotionType: b.promotionType } : {}),
         },
         create: {
           shopId,
           date: b.date,
           promotionId: b.promotionId,
+          promotionName: b.promotionName, promotionType: b.promotionType,
           impressions: b.impressions, claims: b.claims, removals: b.removals,
           upsellAdds: b.upsellAdds, couponApplies: b.couponApplies,
           checkouts: b.checkouts, orders: b.orders, revenue: b.revenue,
+          attributedOrders: b.attributedOrders, attributedRevenue: b.attributedRevenue,
+          nonPromoOrders: b.nonPromoOrders, nonPromoRevenue: b.nonPromoRevenue,
         },
       }),
     ),
@@ -111,17 +208,19 @@ export async function rollupShop(shopId, opts = {}) {
  */
 export async function rollupAllShops({ windowHours = DEFAULT_WINDOW_HOURS } = {}) {
   const since = new Date(Date.now() - windowHours * 3600 * 1000)
-  const distinct = await db.analyticsEvent.findMany({
-    where: { createdAt: { gte: since } },
-    select: { shopId: true },
-    distinct: ['shopId'],
-  })
+  const distinct = await withRetry(() =>
+    db.analyticsEvent.findMany({
+      where: { createdAt: { gte: since } },
+      select: { shopId: true },
+      distinct: ['shopId'],
+    }),
+  )
 
   let totalBuckets = 0
   let totalFailed = 0
   for (const { shopId } of distinct) {
     try {
-      const result = await rollupShop(shopId, { since })
+      const result = await withRetry(() => rollupShop(shopId, { since }))
       totalBuckets += result.buckets
       console.log(`[cartx][rollup] ${shopId}: ${result.buckets} buckets in ${result.ms}ms`)
     } catch (err) {

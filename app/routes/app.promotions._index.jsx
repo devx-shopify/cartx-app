@@ -13,9 +13,12 @@ import {
 } from "../lib/config.server.js";
 import {
   migrateLegacyDiscountRules,
-  syncFreebieDiscountFromConfig,
+  syncDiscounts,
 } from "../lib/discount.server.js";
-import { syncVolumeDiscountConfig } from "../lib/volume-discount.server.js";
+import {
+  getActivePlan,
+  planOfferLimit,
+} from "../lib/billing.server.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -23,18 +26,29 @@ export const loader = async ({ request }) => {
   const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
 
-  const promotions = [];
-  for (const offer of config.offers) {
-    promotions.push({ id: offer.id, type: "offer", name: offer.name, enabled: offer.enabled, trigger: triggerSummary(offer) });
-  }
-  for (const coupon of config.coupons) {
-    promotions.push({ id: coupon.id, type: "coupon", name: coupon.is_automatic ? coupon.title : coupon.code, enabled: coupon.enabled, trigger: coupon.display_message || coupon.type_label || "Discount" });
-  }
-  for (const gift of config.claim_gifts) {
-    promotions.push({ id: gift.id, type: "claim-gift", name: gift.name, enabled: gift.enabled, trigger: gift.trigger ? (gift.trigger.type === "price" ? `Rs.${gift.trigger.threshold} cart total` : `${gift.trigger.threshold} items`) : "No trigger" });
+  // Resolve the plan's active-offer limit HERE (this page's own loader) so the
+  // upgrade note is driven by fresh, authoritative data — not the parent layout's
+  // outlet-context planData, which can go stale. Over-limit offers aren't blocked
+  // or drafted; they simply don't apply at checkout (buildVolumeDiscountConfig).
+  let offerLimit = Infinity;
+  try {
+    offerLimit = planOfferLimit(await getActivePlan(admin, session.shop));
+  } catch (err) {
+    console.error("[cartx] plan lookup for offer note failed:", err);
   }
 
-  return { promotions };
+  const promotions = [];
+  for (const offer of config.offers) {
+    promotions.push({ id: offer.id, type: "offer", name: offer.name, enabled: offer.enabled, trigger: triggerSummary(offer), needsAttention: offer._needs_attention || null });
+  }
+  for (const coupon of config.coupons) {
+    promotions.push({ id: coupon.id, type: "coupon", name: coupon.is_automatic ? coupon.title : coupon.code, enabled: coupon.enabled, trigger: coupon.display_message || coupon.type_label || "Discount", needsAttention: null });
+  }
+  for (const gift of config.claim_gifts) {
+    promotions.push({ id: gift.id, type: "claim-gift", name: gift.name, enabled: gift.enabled, trigger: gift.trigger ? (gift.trigger.type === "price" ? `Rs.${gift.trigger.threshold} cart total` : `${gift.trigger.threshold} items`) : "No trigger", needsAttention: gift._needs_attention || null });
+  }
+
+  return { promotions, offerLimit: Number.isFinite(offerLimit) ? offerLimit : null };
 };
 
 function triggerSummary(offer) {
@@ -52,8 +66,29 @@ export const action = async ({ request }) => {
   const config = await loadConfig(shopId, themeId);
   await migrateLegacyDiscountRules(config, session.shop);
   const body = await request.json();
-  const { intent, id, type } = body;
 
+  // Bulk path: { intent: "bulk-toggle"|"bulk-delete", items: [{ id, type }], enabled?: boolean }
+  if (body.items) {
+    const { intent, items, enabled } = body;
+    for (const { id, type } of items) {
+      if (intent === "bulk-delete") {
+        if (type === "offer") config.offers = config.offers.filter((o) => o.id !== id);
+        else if (type === "coupon") config.coupons = config.coupons.filter((c) => c.id !== id);
+        else if (type === "claim-gift") config.claim_gifts = config.claim_gifts.filter((g) => g.id !== id);
+      } else if (intent === "bulk-toggle") {
+        if (type === "offer") { const o = config.offers.find((o) => o.id === id); if (o) o.enabled = enabled; }
+        else if (type === "coupon") { const c = config.coupons.find((c) => c.id === id); if (c) c.enabled = enabled; }
+        else if (type === "claim-gift") { const g = config.claim_gifts.find((g) => g.id === id); if (g) g.enabled = enabled; }
+      }
+    }
+    await saveConfig(shopId, themeId, config);
+    const affectedTypes = [...new Set(items.map((i) => i.type))];
+    const warnings = (await Promise.all(affectedTypes.map((t) => syncDiscounts(admin, session.shop, config, t)))).flat();
+    return { ok: true, warnings };
+  }
+
+  // Single-item path
+  const { intent, id, type } = body;
   if (type === "offer") {
     if (intent === "delete") config.offers = config.offers.filter((o) => o.id !== id);
     else if (intent === "toggle") { const offer = config.offers.find((o) => o.id === id); if (offer) offer.enabled = !offer.enabled; }
@@ -68,15 +103,10 @@ export const action = async ({ request }) => {
 
   await saveConfig(shopId, themeId, config);
 
-  // Sync the freebie discount function whenever offers or claim gifts change.
-  if (type === "offer" || type === "claim-gift") {
-    await syncFreebieDiscountFromConfig(admin, session.shop, config);
-  }
-  if (type === "offer") {
-    await syncVolumeDiscountConfig(admin, session.shop, config.offers);
-  }
+  // Discount syncs are secondary effects — never let one crash the action.
+  const warnings = await syncDiscounts(admin, session.shop, config, type);
 
-  return { ok: true };
+  return { ok: true, warnings };
 };
 
 const TYPE_LABELS = { offer: "Offer", coupon: "Coupon", "claim-gift": "Claim Gift" };
@@ -120,13 +150,24 @@ function EmptyPromotions({ hasSearch, navigate }) {
 const PAGE_SIZE = 10;
 
 export default function PromotionsIndex() {
-  const { promotions } = useLoaderData();
+  const { promotions, offerLimit: loaderOfferLimit } = useLoaderData();
   const fetcher = useFetcher();
   const shopify = useAppBridge();
   const [searchParams] = useSearchParams();
-  const { themes, activeThemeId, mainThemeId, planData } = useOutletContext();
+  const { themes, activeThemeId, mainThemeId } = useOutletContext();
   const [confirmFn, confirmModal] = useConfirm();
   const navigate = useNavigate();
+
+  // Plan's active-offer limit from THIS page's own loader (fresh & authoritative).
+  // Not enforced — over-limit offers simply don't apply at checkout — but we show
+  // an upgrade note when the store has more active offers than its plan runs.
+  const offerLimit = loaderOfferLimit ?? Infinity;
+  const activeOfferCount = promotions.filter((p) => p.type === "offer" && p.enabled).length;
+  const overOfferLimit = Number.isFinite(offerLimit) && activeOfferCount > offerLimit;
+
+  function goCreate() {
+    navigate("/app/promotions/new?type=offer");
+  }
 
   const initialTab = searchParams.get("tab") || "all";
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -180,29 +221,32 @@ export default function PromotionsIndex() {
     else setSelected(paged.map((p) => p.id));
   }
 
-  async function bulkActivate() {
-    for (const id of selected) {
-      const promo = filtered.find((p) => p.id === id);
-      if (promo && !promo.enabled) submitAction("toggle", id, promo.type);
-    }
+  function bulkActivate() {
+    const items = selected
+      .map((id) => filtered.find((p) => p.id === id))
+      .filter((p) => p && !p.enabled)
+      .map(({ id, type }) => ({ id, type }));
+    if (items.length > 0) fetcher.submit(JSON.stringify({ intent: "bulk-toggle", enabled: true, items }), { method: "POST", encType: "application/json" });
     setSelected([]);
   }
 
-  async function bulkDeactivate() {
-    for (const id of selected) {
-      const promo = filtered.find((p) => p.id === id);
-      if (promo && promo.enabled) submitAction("toggle", id, promo.type);
-    }
+  function bulkDeactivate() {
+    const items = selected
+      .map((id) => filtered.find((p) => p.id === id))
+      .filter((p) => p && p.enabled)
+      .map(({ id, type }) => ({ id, type }));
+    if (items.length > 0) fetcher.submit(JSON.stringify({ intent: "bulk-toggle", enabled: false, items }), { method: "POST", encType: "application/json" });
     setSelected([]);
   }
 
   async function bulkDelete() {
     const yes = await confirmFn({ title: "Delete selected", message: `Are you sure you want to delete ${selected.length} promotion(s)? This action cannot be undone.`, confirmLabel: "Delete", destructive: true });
     if (!yes) return;
-    for (const id of selected) {
-      const promo = filtered.find((p) => p.id === id);
-      if (promo) submitAction("delete", id, promo.type);
-    }
+    const items = selected
+      .map((id) => filtered.find((p) => p.id === id))
+      .filter(Boolean)
+      .map(({ id, type }) => ({ id, type }));
+    if (items.length > 0) fetcher.submit(JSON.stringify({ intent: "bulk-delete", items }), { method: "POST", encType: "application/json" });
     setSelected([]);
   }
 
@@ -211,13 +255,41 @@ export default function PromotionsIndex() {
 
   return (
     <s-page heading="Promotions">
-      <s-button slot="primary-action" variant="primary" onClick={() => navigate("/app/promotions/new?type=offer")}>
+      <s-button slot="primary-action" variant="primary" onClick={goCreate}>
         Create promotion
       </s-button>
+
+      {/* Informational only — over-limit offers still show as active here, but only
+          the plan's first N apply at checkout (buildVolumeDiscountConfig). */}
+      {overOfferLimit && (
+        <s-banner tone="warning" heading={`Only ${offerLimit} of your ${activeOfferCount} active offers apply at checkout`}>
+          <s-stack direction="block" gap="200">
+            <s-text>
+              Your plan runs up to {offerLimit} volume-discount offers. The extra {activeOfferCount - offerLimit} stay listed here but are paused at checkout. Upgrade to Pro to run them all.
+            </s-text>
+            <s-button variant="primary" onClick={() => navigate("/app/billing")}>Upgrade to Pro</s-button>
+          </s-stack>
+        </s-banner>
+      )}
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
         <ThemeSwitcher themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
       </div>
+
+      {/* Auto-drafted promotions (a product they used was deleted) */}
+      {promotions.some((p) => p.needsAttention) && (
+        <s-banner tone="warning" heading="Some promotions were turned off automatically">
+          <s-stack direction="block" gap="100">
+            <s-text>
+              A product used by these promotions was deleted, so they were moved to draft to
+              avoid a broken cart. Re-select a product and re-enable them:
+            </s-text>
+            {promotions.filter((p) => p.needsAttention).map((p) => (
+              <s-text key={p.id}>• {p.name || p.type}</s-text>
+            ))}
+          </s-stack>
+        </s-banner>
+      )}
 
       {/* Full-page empty state when no promotions exist */}
       {promotions.length === 0 && (
@@ -228,7 +300,7 @@ export default function PromotionsIndex() {
             <div style={{ fontSize: 14, color: "#6d7175", marginBottom: 24, maxWidth: 400, margin: "0 auto 24px" }}>
               Add offers, coupons, or claim gifts to increase your average order value and delight your customers.
             </div>
-            <s-button variant="primary" onClick={() => navigate("/app/promotions/new?type=offer")}>
+            <s-button variant="primary" onClick={goCreate}>
               Create promotion
             </s-button>
           </div>

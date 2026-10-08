@@ -54,6 +54,44 @@ async function verifyDiscount(admin, discountId) {
   }
 }
 
+// ── Find existing discount by title ─────────────────────
+//
+// Shopify enforces a unique title per automatic discount. If we ever lose our
+// local record (DB reset, reinstall, a failed save after a successful create),
+// the discount still lives in Shopify — so a fresh create would fail with
+// "Title must be unique". This lets us find and adopt that orphan instead.
+async function findExistingDiscount(admin) {
+  try {
+    const res = await admin.graphql(
+      `#graphql
+      query findVolumeDiscount($query: String!) {
+        discountNodes(first: 25, query: $query) {
+          nodes {
+            id
+            discount {
+              __typename
+              ... on DiscountAutomaticApp { title }
+            }
+          }
+        }
+      }`,
+      { variables: { query: `title:'${DISCOUNT_TITLE}'` } }
+    );
+    const json = await res.json();
+    const nodes = json.data?.discountNodes?.nodes ?? [];
+    // The search is fuzzy, so match the exact title in code to be safe.
+    const match = nodes.find(
+      (n) =>
+        n.discount?.__typename === "DiscountAutomaticApp" &&
+        n.discount?.title === DISCOUNT_TITLE
+    );
+    return match ? normalizeId(match.id) : null;
+  } catch (err) {
+    console.error("[cartx] findExistingDiscount failed:", err);
+    return null;
+  }
+}
+
 // ── Update metafield ────────────────────────────────────
 
 async function updateMetafield(admin, discountId, functionConfig) {
@@ -61,7 +99,7 @@ async function updateMetafield(admin, discountId, functionConfig) {
     ? discountId
     : `gid://shopify/DiscountAutomaticNode/${discountId}`;
 
-  await admin.graphql(
+  const res = await admin.graphql(
     `#graphql
     mutation updateMetafield($metafields: [MetafieldsSetInput!]!) {
       metafieldsSet(metafields: $metafields) {
@@ -81,6 +119,15 @@ async function updateMetafield(admin, discountId, functionConfig) {
       },
     }
   );
+  // The metafield write configures the discount Function — surface a failed
+  // write instead of leaving a live discount with stale config.
+  const json = await res.json();
+  const errors = json.data?.metafieldsSet?.userErrors ?? [];
+  if (errors.length > 0) {
+    throw new Error(
+      `Failed to update volume discount metafield: ${errors.map((e) => e.message).join("; ")}`,
+    );
+  }
 }
 
 // ── Public API ──────────────────────────────────────────
@@ -92,10 +139,17 @@ function normalizeId(id) {
 
 /**
  * Build function config JSON from the app's offers.
+ *
+ * `limit` caps how many active volume offers are actually synced to the Function
+ * — the plan's active-offer cap (Basic = 3). Defaults to Infinity (no cap) so
+ * Pro/Enterprise/Free are unaffected. Enforcing here (not just in the admin)
+ * closes the gap where offers created on an unlimited plan stay functionally
+ * live after moving to a capped plan.
  */
-export function buildVolumeDiscountConfig(offers) {
+export function buildVolumeDiscountConfig(offers, limit = Infinity) {
   const volumeOffers = (offers || [])
     .filter((o) => o.enabled && o.reward?.type === "volume_discount")
+    .slice(0, limit)
     .map((o) => ({
       offer_id: o.id,
       variant_ids: (o.source?.product_variant_ids || []).map(normalizeId),
@@ -114,8 +168,8 @@ export function buildVolumeDiscountConfig(offers) {
  * Ensure the volume discount exists.
  * Uses functionHandle (newer API) instead of functionId.
  */
-export async function ensureVolumeDiscount(admin, shopId, offers) {
-  const functionConfig = buildVolumeDiscountConfig(offers);
+export async function ensureVolumeDiscount(admin, shopId, offers, limit = Infinity) {
+  const functionConfig = buildVolumeDiscountConfig(offers, limit);
 
   const existing = await loadRecord(shopId);
   if (existing?.discountId) {
@@ -126,6 +180,19 @@ export async function ensureVolumeDiscount(admin, shopId, offers) {
       return { discountId: existing.discountId, created: false };
     }
     await deleteRecord(shopId);
+  }
+
+  // Self-heal: adopt an orphaned discount with our title rather than trying to
+  // create a duplicate (which Shopify rejects with "Title must be unique").
+  const orphanId = await findExistingDiscount(admin);
+  if (orphanId) {
+    await updateMetafield(admin, orphanId, functionConfig);
+    await saveRecord(shopId, {
+      discountId: orphanId,
+      functionConfig,
+      adoptedAt: new Date().toISOString(),
+    });
+    return { discountId: orphanId, created: false, adopted: true };
   }
 
   // Create discount using functionHandle (newer Discount API)
@@ -163,6 +230,20 @@ export async function ensureVolumeDiscount(admin, shopId, offers) {
   const json = await res.json();
   const errors = json.data?.discountAutomaticAppCreate?.userErrors ?? [];
   if (errors.length > 0) {
+    // Fallback for a unique-title race: another request (or a stale orphan we
+    // missed above) already owns the title. Find and adopt it instead of erroring.
+    if (errors.some((e) => /unique/i.test(e.message))) {
+      const raced = await findExistingDiscount(admin);
+      if (raced) {
+        await updateMetafield(admin, raced, functionConfig);
+        await saveRecord(shopId, {
+          discountId: raced,
+          functionConfig,
+          adoptedAt: new Date().toISOString(),
+        });
+        return { discountId: raced, created: false, adopted: true };
+      }
+    }
     console.error("[cartx] Failed to create volume discount:", errors);
     throw new Error("Failed to create volume discount: " + errors.map((e) => e.message).join(", "));
   }
@@ -175,7 +256,7 @@ export async function ensureVolumeDiscount(admin, shopId, offers) {
 /**
  * Sync volume discount config after saving offers.
  */
-export async function syncVolumeDiscountConfig(admin, shopId, offers) {
+export async function syncVolumeDiscountConfig(admin, shopId, offers, limit = Infinity) {
   const hasVolumeOffers = (offers || []).some(
     (o) => o.enabled && o.reward?.type === "volume_discount"
   );
@@ -188,7 +269,7 @@ export async function syncVolumeDiscountConfig(admin, shopId, offers) {
     return;
   }
 
-  await ensureVolumeDiscount(admin, shopId, offers);
+  await ensureVolumeDiscount(admin, shopId, offers, limit);
 }
 
 /**

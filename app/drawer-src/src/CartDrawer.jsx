@@ -1,8 +1,11 @@
 /* eslint-disable */
 import { h, Component } from 'preact';
-import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, simulateCouponRemove } from './helpers';
+import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId, hasFreebieMarker, showsQuantitySelector, giftChargedAmount } from './helpers';
 import { fireConfetti, setConfettiLottieUrl } from './confetti';
-import { waitForEvaluate } from './evaluate';
+import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLine, ensureCartxAttribute, ensureDrawerAttribute, localGiftDelta, giftIntendedQuantity, dispatchLocalBar } from './evaluate';
+import { isGraphqlCartEnabled } from './storefront-cart';
+import { initStore as gqlInitStore, subscribe as gqlSubscribe, getOptimisticCart as gqlGetCart, changeQuantity as gqlChangeQuantity, removeLine as gqlRemoveLine, addLine as gqlAddLine, applyDiscountCode as gqlApplyCoupon, removeDiscountCode as gqlRemoveCoupon, whenSettled as gqlWhenSettled } from './cart-store';
+import { isAjaxCartStoreEnabled, subscribe as ajaxSubscribe, getOptimisticCart as ajaxGetCart, init as ajaxInit, reconcileFromServer as ajaxReconcile, addLine as ajaxAddLine, changeQuantity as ajaxChangeQty, removeLine as ajaxRemoveLine, whenSettled as ajaxWhenSettled, cartHasDiscounts } from './ajax-cart-store';
 import { tracker } from './tracker';
 import { ANALYTICS_EVENTS } from './analytics-events';
 
@@ -165,6 +168,10 @@ var HARDCODED_COUPONS = [
   { code: 'FLAT200',     accent: '₹200 OFF', savings: 'Save ₹200 on this order' },
 ];
 
+// `hasFreebieMarker` and `showsQuantitySelector` (the gift-line + quantity-
+// selector policy) live in ./helpers so they can be unit-tested without loading
+// the whole Preact component.
+
 // ── CartDrawer Component ────────────────────────────────────
 
 export default class CartDrawer extends Component {
@@ -173,6 +180,7 @@ export default class CartDrawer extends Component {
     this.state = {
       visible: false,
       open: false,
+      styled: false,     // true once merchant styling is applied — gates reveal so the drawer never paints with default styling first
       cart: null,
       loading: true,
       updating: {},
@@ -195,6 +203,8 @@ export default class CartDrawer extends Component {
     this._triggerElement = null;
     this._drawerRef = null;
     this._debounceTimers = {};
+    this._actionBuffer = {};              // key -> qty; coalesces rapid qty/remove clicks into one reconcile
+    this._actionFlushTimer = null;        // shared debounce timer for the buffer above
     this._processingTimeout = null;
     this._removingTombstones = {};       // key -> snapshotted item, kept in DOM during fade
     this._tombstoneTimers = {};          // key -> setTimeout handle
@@ -218,6 +228,16 @@ export default class CartDrawer extends Component {
     this._layout = { drawer_position: 'right', image_style: 'rounded', qty_style: 'bordered', show_vendor: false, show_variant_switcher: true, show_remove_btn: true, show_payment_icons: true, show_compare_price: true };
     this._variantCache = {}; // product_id -> variants[]
     this._compareAtCache = {}; // variant_id (string) -> compare_at_price (cents, per unit)
+    this._prefetchedHandles = {}; // product handle -> true, so compare-at is fetched once per session
+    this._upsellAvailable = {};   // variant_id (string) -> bool; live availability for upsell cards
+    this._upsellFetched = {};     // upsell handle -> true, fetched once per session
+    // Monotonic token for cart reads. A /cart.js read issued before a mutation
+    // can resolve after it; we drop any read older than the latest authoritative
+    // update so the count bubble never flickers back to a stale value.
+    this._cartReadSeq = 0;
+    // In-flight cart mutation promises (variant switch, etc.). Checkout awaits
+    // these so it never navigates with a pre-mutation cart (old variant).
+    this._activeOps = new Set();
     this._upsells = { card_layout: 'horizontal', card_size: 'medium', heading: '', btn_text: 'ADD TO CART', show_compare_price: true };
     this._announcement = { text: '', type: 'static' };
     this._progressBar = { track_thickness: 'normal', milestone_icon_svg: '', completed_icon_svg: '' };
@@ -227,17 +247,101 @@ export default class CartDrawer extends Component {
   }
 
   componentDidMount() {
+    // GraphQL cart path (Phase D) — gated; default off. When on, reads/writes
+    // for qty + remove route through the optimistic store instead of AJAX.
+    this._graphqlCart = isGraphqlCartEnabled();
+    // AJAX optimistic cart store — gated; default off. When on, ALL cart
+    // reads/writes route through the store (the standard local-cart + resync
+    // model, AJAX transport). Mutually exclusive with the GraphQL path.
+    this._ajaxStore = !this._graphqlCart && isAjaxCartStoreEnabled();
+
+    var rootEl = document.getElementById('cartmax-root');
+    this._lastKnownItemCount = rootEl
+      ? parseInt(rootEl.dataset.initialItemCount || '0', 10)
+      : 0;
+
+    // Hydrate from the server-rendered cart inlined by app-embed.liquid
+    // (data-initial-cart). This lets the drawer paint its items instantly on
+    // first open — no /cart.js round-trip on the critical path. The shape of
+    // Liquid's `cart | json` matches /cart.js closely enough for first render;
+    // loadCart() refreshes/reconciles in the background. Compare-at prefetch is
+    // intentionally deferred (see _deferPrefetchCompareAt) to keep first paint cheap.
+    if (rootEl && rootEl.dataset.initialCart) {
+      try {
+        var initialCart = JSON.parse(rootEl.dataset.initialCart);
+        if (initialCart && typeof initialCart.item_count === 'number') {
+          initialCart = this._stabiliseOrder(initialCart);
+          this._currency = initialCart.currency || this._currency;
+          this.state.cart = initialCart;   // pre-mount: avoid an extra render
+          this.state.loading = false;
+          this._lastKnownItemCount = initialCart.item_count;
+          this._deferPrefetchCompareAt(initialCart.items || []);
+        }
+      } catch (_) { /* malformed JSON — fall back to loadCart() */ }
+    }
+
+    // ── Apply merchant styling as early as possible (avoid the flash) ──
+    // Source 1 (best): config inlined server-side by app-embed.liquid
+    // (data-drawer-config). When present this styles the element before first
+    // paint — zero flash, no network.
+    if (rootEl && rootEl.dataset.drawerConfig) {
+      try {
+        var inlineDrawer = JSON.parse(rootEl.dataset.drawerConfig);
+        if (inlineDrawer && Object.keys(inlineDrawer).length) {
+          this._maybeApplyDrawer(inlineDrawer);
+        }
+      } catch (_) { /* malformed/empty — fall through to cache / server */ }
+    }
+    // Source 2 (fallback): last-known config cached in localStorage. Styles the
+    // element on mount for repeat visitors, so the drawer opens already-styled
+    // even if the inlined config isn't available.
+    this._applyCachedDrawerCfg();
+
+    // If neither source styled us yet (true first visit), the `styled` gate
+    // below keeps the drawer hidden until the server eval-result applies real
+    // styling — so it never paints with default styling first. Long fallback is
+    // a last-resort reveal in case styling never arrives (e.g. network failure).
+    this._styleFallbackTimer = setTimeout(() => {
+      if (!this.state.styled) this.setState({ styled: true });
+    }, 5000);
+
     this._onCartChanged = (e) => {
+      // GraphQL path owns cart state; ignore AJAX-pipeline cart updates so the
+      // two don't fight over state.cart (the half-wired "item flashes" glitch).
+      if (this._graphqlCart) return;
+      // AJAX store path: an external cart change (theme ATC, other app) is the
+      // authoritative server baseline — fold it into the store, which re-renders
+      // via its subscription. Keep the auto-open + lastKnown bookkeeping here.
+      if (this._ajaxStore) {
+        if (e.detail && e.detail.cart) {
+          ajaxReconcile(e.detail.cart);
+          if (this._behavior.auto_open_on_add && e.detail.cart.item_count > this._lastKnownItemCount) {
+            this.openDrawer();
+          }
+          this._lastKnownItemCount = e.detail.cart.item_count;
+        } else if (this._behavior.auto_open_on_add) {
+          this.openDrawer();
+        }
+        return;
+      }
       if (e.detail && e.detail.cart) {
-        var cart = this._stabiliseOrder(e.detail.cart);
+        // Merge in any optimistic gift the just-changed cart now qualifies for,
+        // so an auto-add gift shows the instant the threshold is crossed (in
+        // lockstep with the progress bar) rather than after the server add.
+        var cart = applyOptimisticGifts(this._stabiliseOrder(e.detail.cart));
         this._currency = cart.currency || this._currency;
+        this._cartReadSeq++;   // authoritative cart — supersede any in-flight loadCart
         this.setState({ cart: cart, loading: false });
         updateCartCount(cart.item_count);
-        this._prefetchCompareAtPrices(cart.items || []);
+        this._deferPrefetchCompareAt(cart.items || []);
+        if (this._behavior.auto_open_on_add && cart.item_count > this._lastKnownItemCount) {
+          this.openDrawer();
+        }
+        this._lastKnownItemCount = cart.item_count;
       } else {
         this.loadCart();
+        if (this._behavior.auto_open_on_add) this.openDrawer();
       }
-      if (this._behavior.auto_open_on_add) this.openDrawer();
     };
 
     this._onEvalResult = (e) => {
@@ -256,8 +360,17 @@ export default class CartDrawer extends Component {
     };
 
     this._onInternalReload = (e) => {
+      if (this._graphqlCart) return;   // GraphQL store owns cart state
+      if (this._ajaxStore) return;     // AJAX store owns cart state
       if (e.detail && e.detail.cart) {
         var newCart = this._stabiliseOrder(e.detail.cart);
+
+        // Guard: never blank the drawer with a transient empty/partial cart
+        // while another edit is still buffered — a corrective reconcile is
+        // already on its way. Without this, an in-flight reconcile that lands
+        // with 0 items flips `hasItems` false and the whole body flashes empty.
+        if (this._isTransientEmpty(newCart)) return;
+
         var newEval = e.detail.evalResult || this.state.evalResult;
         this._currency = newCart.currency || this._currency;
         if (e.detail.evalResult) {
@@ -300,6 +413,7 @@ export default class CartDrawer extends Component {
           removing: Object.keys(removing).length > 0 ? removing : this.state.removing,
           pendingQty: {},
         });
+        this._cartReadSeq++;   // authoritative cart — supersede any in-flight loadCart
         updateCartCount(newCart.item_count);
         this.announce('Cart updated');
         this._clearProcessingTimeout();
@@ -307,10 +421,20 @@ export default class CartDrawer extends Component {
     };
 
     this._onOptimisticUpdate = (e) => {
+      if (this._graphqlCart) return;   // GraphQL store owns cart state
+      if (this._ajaxStore) return;     // AJAX store owns cart state
       if (e.detail && e.detail.cart) {
-        var optimisticCart = this._stabiliseOrder(e.detail.cart);
+        var optimisticCart = applyOptimisticGifts(this._stabiliseOrder(e.detail.cart));
+        if (this._isTransientEmpty(optimisticCart)) return;
         this._currency = optimisticCart.currency || this._currency;
-        this.setState({ cart: optimisticCart, pendingQty: {} });
+        // Keep any qty still buffered (debounce not yet flushed) so a fast
+        // follow-up click isn't reverted by this reconcile snapshot.
+        var keepPending = {};
+        Object.keys(this._actionBuffer).forEach((k) => {
+          if (this.state.pendingQty.hasOwnProperty(k)) keepPending[k] = this.state.pendingQty[k];
+        });
+        this._cartReadSeq++;   // optimistic cart — supersede any in-flight loadCart
+        this.setState({ cart: optimisticCart, pendingQty: keepPending });
         updateCartCount(optimisticCart.item_count);
       }
     };
@@ -326,11 +450,93 @@ export default class CartDrawer extends Component {
     window.addEventListener('cartmax:optimistic-update', this._onOptimisticUpdate);
     window.addEventListener('cartmax:gift-unavailable', this._onGiftUnavailable);
 
+    // GraphQL cart path (Phase D, gated): subscribe to the optimistic store so
+    // the drawer renders the GraphQL cart, init it, then seed from the existing
+    // AJAX cart so a returning shopper's items carry over. Writes (qty/remove)
+    // route to the store in queueQuantityChange/handleRemove. The AJAX path
+    // above stays wired but the store's reads win once it settles.
+    if (this._graphqlCart) {
+      this._unsubGql = gqlSubscribe(() => {
+        var c = gqlGetCart();
+        if (c) {
+          this.setState({ cart: c, loading: false });
+          updateCartCount(c.item_count);   // keep the theme bubble in sync with the GraphQL cart
+          this._maybeRunGqlPromo(c);
+        }
+      });
+      // Seed inside init so the GraphQL cart never renders empty before its
+      // items land (the "item flashes away" glitch).
+      gqlInitStore(this.state.cart).catch(() => {});
+      // Phase E: take over the theme's add-to-cart so adds go to the GraphQL
+      // cart (not the separate AJAX cart).
+      this._installAtcTakeover();
+    }
+
+    // AJAX cart store: subscribe so the drawer renders the store's optimistic
+    // cart, and seed it from the cart we already hydrated. External mutations
+    // (theme ATC, other apps) fold in via _onCartChanged → ajaxReconcile.
+    if (this._ajaxStore) {
+      // Tell evaluate.js to stand down: the store drives eval + gift reconcile,
+      // so evaluate.js must NOT also apply gifts via its own /cart/* calls.
+      try { window.__cartxAjaxCartStoreActive = true; } catch (_) { /* noop */ }
+      this._unsubAjax = ajaxSubscribe((state) => {
+        var c = ajaxGetCart();
+        if (c) {
+          // cartSyncing dims the total while the single-flight sync settles, so
+          // the money reads as "updating" rather than laggy (Option 1).
+          this.setState({ cart: c, loading: false, cartSyncing: !!(state && state.loading) });
+          updateCartCount(c.item_count);
+          // Prefetch compare-at (strike-through) prices for the current lines —
+          // /cart.js doesn't carry compare_at_price, so without this a
+          // just-added product shows its plain price until the variant switcher
+          // happens to fetch the product. Deferred + deduped per handle/session,
+          // so it never blocks and fires at most one /products/{handle}.js per
+          // product regardless of how often the store notifies.
+          this._deferPrefetchCompareAt(c.items || []);
+          this._maybeRunAjaxPromo(c);
+        }
+      });
+      ajaxInit(this.state.cart);
+      // The Liquid-embedded initial cart (data-initial-cart) lacks /cart.js-only
+      // fields — notably discount_codes — so an ALREADY-applied discount code
+      // wouldn't render as a chip until the first mutation forced a /cart.js.
+      // Pull a fresh /cart.js once on mount and reconcile the store with it.
+      fetchCart().then((c) => { if (c) ajaxReconcile(c); }).catch(function () { /* keep initial cart */ });
+    }
+
     window.__cartmaxReady = true;
-    if (window.__cartmaxQueue && window.__cartmaxQueue.length > 0) {
+
+    // Flush cart changes the inline interceptor buffered before this bundle
+    // mounted. We REPLAY the buffered event through the normal cart-changed
+    // pipeline rather than handling it ad-hoc, so a pre-mount (cold-start) add is
+    // processed IDENTICALLY to a post-mount one: _onCartChanged syncs state and
+    // auto-opens, and evaluate.js re-runs the promo/progress-bar eval. (The old
+    // path only called loadCart() + opened, which skipped the eval — so the first
+    // add could leave the progress bar stale.) Each cart-changed carries the full
+    // cart, so replaying the latest buffered one is sufficient.
+    var queued = (window.__cartmaxQueue || []).slice();
+    window.__cartmaxQueue = [];
+    var lastWithCart = null;
+    for (var qi = queued.length - 1; qi >= 0; qi--) {
+      if (queued[qi] && queued[qi].detail && queued[qi].detail.cart) { lastWithCart = queued[qi]; break; }
+    }
+    if (lastWithCart) {
+      window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: lastWithCart.detail }));
+    } else if (queued.length > 0) {
+      // Buffered change(s) without a cart payload — fall back to a reload.
+      this.loadCart();
+    } else if (window.__cartmaxOpenIntent) {
+      // User clicked the cart icon before this bundle mounted. The inline
+      // handler recorded the intent; honor it now. We already have cart state
+      // (hydrated above) so this opens with items visible immediately.
+      window.__cartmaxOpenIntent = false;
+      if (window.__cartmaxTrigger) this._triggerElement = window.__cartmaxTrigger;
       this.loadCart();
       this.openDrawer();
-      window.__cartmaxQueue = [];
+    } else if (this.state.cart) {
+      // Hydrated from inline cart but not opening — reconcile against the live
+      // cart in the background so a stale server-rendered snapshot self-heals.
+      this.loadCart();
     }
 
     // ── Analytics tracker ────────────────────────────────────
@@ -340,7 +546,7 @@ export default class CartDrawer extends Component {
       tracker.init({
         shopId: rootEl.dataset.shopId || '',
         customerId: rootEl.dataset.customerId || null,
-        proxyBase: rootEl.dataset.proxyBase || '/apps/cartmax',
+        proxyBase: rootEl.dataset.proxyBase || '/apps/cartx',
         enabled: analyticsEnabled,
       });
     }
@@ -361,14 +567,40 @@ export default class CartDrawer extends Component {
       : null;
 
     // ── Public API for third-party apps ──────────────────
+    // Cooperative integration contract: partner apps call window.cartx.addItem()
+    // (or dispatch a `cartx:add` CustomEvent) instead of POSTing /cart/add
+    // themselves. We route the add into whichever cart is canonical (AJAX or the
+    // GraphQL store), so the partner never needs to know our cart engine.
+    // See docs/partner-cart-integration.md.
     var self = this;
+    // Preserve any addItem/open calls the partner made before we mounted — the
+    // early stub in app-embed.liquid buffers them on window.cartx._q.
+    var pendingQueue = (window.cartx && window.cartx._q) || [];
     window.cartx = {
-      open: function () { self.loadCart(); self.openDrawer(); },
+      open: function () {
+        // Adopt the trigger captured by the inline click handler so focus
+        // returns to the cart icon on close.
+        if (window.__cartmaxTrigger) self._triggerElement = window.__cartmaxTrigger;
+        self.loadCart();
+        self.openDrawer();
+      },
       close: function () { self.close(); },
       toggle: function () { self.state.open ? self.close() : (self.loadCart(), self.openDrawer()); },
       refresh: function () { self.loadCart(); window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: {} })); },
       isOpen: function () { return self.state.open; },
+      addItem: function (payload) { return self.addItemPublic(payload); },
     };
+    // Listen for the decoupled event contract too (no load-order dependency).
+    this._onPublicAdd = function (e) { self.addItemPublic((e && e.detail) || {}); };
+    window.addEventListener('cartx:add', this._onPublicAdd);
+    // Flush anything buffered by the pre-mount stub.
+    pendingQueue.forEach(function (entry) {
+      var method = entry[0];
+      var args = entry[1] || [];
+      if (window.cartx && typeof window.cartx[method] === 'function') {
+        try { window.cartx[method].apply(window.cartx, args); } catch (_) { /* ignore */ }
+      }
+    });
 
     // Cart icon selectors — broadened to cover Dawn, Refresh, Sense, Origin,
     // Horizon, and other modern Shopify themes that wrap the icon in a
@@ -393,23 +625,13 @@ export default class CartDrawer extends Component {
       'cart-drawer-component > button',
     ].join(', ');
 
-    // Cart icon click — open drawer. Capture phase + stopImmediatePropagation
-    // so a host theme's own listener (e.g. Horizon's cart-drawer-component)
-    // never gets a chance to fire.
-    this._onDocClick = (e) => {
-      var link = e.target.closest(CART_ICON_SELECTORS);
-      if (link) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (typeof e.stopImmediatePropagation === 'function') {
-          e.stopImmediatePropagation();
-        }
-        this._triggerElement = link;
-        this.loadCart();
-        this.openDrawer();
-      }
-    };
-    document.addEventListener('click', this._onDocClick, true);
+    // Cart icon click is intercepted by the inline capture-phase handler in
+    // app-embed.liquid (runs before this bundle loads, so it beats the host
+    // theme). That handler calls window.cartx.open() once we're mounted, or
+    // sets window.__cartmaxOpenIntent for us to honor on mount (below). We
+    // deliberately do NOT register a second document click listener here —
+    // the inline one already stopImmediatePropagation()s, and a duplicate
+    // would double-fire loadCart().
 
     // Cart icon hover — prefetch cart data so open is instant
     this._onDocMouseover = (e) => {
@@ -495,18 +717,25 @@ export default class CartDrawer extends Component {
   }
 
   componentWillUnmount() {
+    if (this._unsubGql) this._unsubGql();
+    if (this._unsubAjax) this._unsubAjax();
+    if (this._onAtcSubmit) document.removeEventListener('submit', this._onAtcSubmit, true);
+    if (this._onPublicAdd) window.removeEventListener('cartx:add', this._onPublicAdd);
+    if (this._openRevealTimer) clearTimeout(this._openRevealTimer);
+    if (this._gqlPromoTimer) clearTimeout(this._gqlPromoTimer);
     window.removeEventListener('cartmax:cart-changed', this._onCartChanged);
     window.removeEventListener('cartmax:eval-result', this._onEvalResult);
     window.removeEventListener('cartmax:internal-reload', this._onInternalReload);
     window.removeEventListener('cartmax:optimistic-update', this._onOptimisticUpdate);
     window.removeEventListener('cartmax:gift-unavailable', this._onGiftUnavailable);
-    document.removeEventListener('click', this._onDocClick, true);
     document.removeEventListener('mouseover', this._onDocMouseover);
     document.removeEventListener('keydown', this._onDocKeydown);
     if (this._horizonObserver) this._horizonObserver.disconnect();
     if (this._scrollLockObserver) this._scrollLockObserver.disconnect();
     if (this._promoObserver) this._promoObserver.disconnect();
     Object.values(this._debounceTimers).forEach(clearTimeout);
+    if (this._actionFlushTimer) clearTimeout(this._actionFlushTimer);
+    if (this._styleFallbackTimer) clearTimeout(this._styleFallbackTimer);
     Object.values(this._tombstoneTimers || {}).forEach(clearTimeout);
     Object.values(this._errorTimers || {}).forEach(clearTimeout);
     if (this._upsellErrorTimer) clearTimeout(this._upsellErrorTimer);
@@ -534,8 +763,32 @@ export default class CartDrawer extends Component {
     this._appliedDrawerHash = hash;
     applyDrawerSettings(drawer);
     this._applyDrawerConfig(drawer);
+    this._cacheDrawerCfg(drawer);
+    if (!this.state.styled) this.setState({ styled: true });
     var beh = drawer.behavior;
     if (beh && beh.confetti_lottie_url) setConfettiLottieUrl(beh.confetti_lottie_url);
+  }
+
+  // Cache the drawer config per shop so the next page load can style the drawer
+  // on mount (before it opens), making repeat views flash-free without waiting
+  // on the server round-trip.
+  _drawerCfgKey() {
+    var root = document.getElementById('cartmax-root');
+    var shop = (root && root.dataset.shopId)
+      || (window.Shopify && window.Shopify.shop)
+      || 'default';
+    return 'cartx:drawerCfg:' + shop;
+  }
+
+  _cacheDrawerCfg(drawer) {
+    try { localStorage.setItem(this._drawerCfgKey(), JSON.stringify(drawer)); } catch (_) {}
+  }
+
+  _applyCachedDrawerCfg() {
+    try {
+      var raw = localStorage.getItem(this._drawerCfgKey());
+      if (raw) this._maybeApplyDrawer(JSON.parse(raw));
+    } catch (_) { /* no/!valid cache — server eval-result will style it */ }
   }
 
   _applyDrawerConfig(drawer) {
@@ -594,6 +847,7 @@ export default class CartDrawer extends Component {
       animation_style: beh.animation_style || 'slide',
       close_on_overlay_click: beh.close_on_overlay_click !== false,
       close_on_esc: beh.close_on_esc !== false,
+      checkout_js: beh.checkout_js || '',
     };
     this._confettiEnabled = beh.confetti !== false;
     this._injectCustomCSS(drawer.advanced && drawer.advanced.custom_css);
@@ -748,17 +1002,63 @@ export default class CartDrawer extends Component {
   // ── Cart data ─────────────────────────────────────────────
 
   async loadCart() {
+    // GraphQL path owns the cart — never refetch /cart.js (the separate AJAX
+    // cart), which would overwrite the store's cart with stale items and mix in
+    // AJAX line keys. The store + its subscription are the source of truth.
+    if (this._graphqlCart) return;
+    // AJAX store owns the cart the same way — reconcile happens inside the store.
+    if (this._ajaxStore) return;
     if (!this.state.cart) {
       this.setState({ loading: true });
     }
+    // Claim the latest read token. If a newer cart update (an interceptor
+    // cart-changed, a reconcile, or another loadCart) lands before this /cart.js
+    // resolves, this read is stale and must NOT paint — otherwise the count
+    // bubble flickers back to the pre-mutation value (0 → 1 → 0 → 1 on add).
+    var seq = ++this._cartReadSeq;
     try {
       var cart = this._stabiliseOrder(await fetchCart());
+      if (seq !== this._cartReadSeq) return;
       this._currency = cart.currency || this._currency;
       this.setState({ cart: cart, loading: false });
       updateCartCount(cart.item_count);
-      this._prefetchCompareAtPrices(cart.items || []);
+      this._deferPrefetchCompareAt(cart.items || []);
     } catch (err) {
-      this.setState({ loading: false });
+      if (seq === this._cartReadSeq) this.setState({ loading: false });
+    }
+  }
+
+  // ── Cart-mutation tracking ────────────────────────────────
+  // Register an in-flight cart mutation (variant switch, etc.) so checkout can
+  // wait for it to commit before navigating. Self-clears on settle.
+  _trackOp(promise) {
+    this._activeOps.add(promise);
+    var clear = () => { this._activeOps.delete(promise); };
+    promise.then(clear, clear);
+    return promise;
+  }
+
+  // Resolves once no cart mutations are in flight (re-checks, since one op can
+  // kick off another). Used by checkout so the server cart reflects the latest
+  // edit — e.g. a just-selected variant — before we leave for /checkout.
+  whenCartIdle() {
+    if (this._activeOps.size === 0) return Promise.resolve();
+    var self = this;
+    return Promise.all(Array.from(this._activeOps).map((p) => p.catch(() => {})))
+      .then(() => (self._activeOps.size === 0 ? undefined : self.whenCartIdle()));
+  }
+
+  // Run compare-at prefetch off the first-paint path. These /products/{handle}.js
+  // requests only feed strike-through prices, which are not needed for the
+  // initial render, so we wait for the browser to be idle (or a short timeout)
+  // before firing them. Keeps the cart-open critical path free of extra fetches.
+  _deferPrefetchCompareAt(items) {
+    if (!items || !items.length) return;
+    var run = () => this._prefetchCompareAtPrices(items);
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(run, { timeout: 2000 });
+    } else {
+      setTimeout(run, 300);
     }
   }
 
@@ -768,13 +1068,19 @@ export default class CartDrawer extends Component {
     items.forEach((item) => {
       if (!item.handle || seen[item.handle]) return;
       seen[item.handle] = true;
+      // Already fetched this product this session — compare-at prices don't
+      // change mid-session, so never re-fetch /products/{handle}.js on every
+      // cart change (that was firing a request per line after each add/qty tick).
+      if (this._prefetchedHandles[item.handle]) return;
       var cached = this._variantCache[String(item.product_id)];
       if (cached && cached.length) {
+        this._prefetchedHandles[item.handle] = true;
         cached.forEach((v) => {
           if (v.compare_at_price) this._compareAtCache[String(v.id)] = v.compare_at_price;
         });
         return;
       }
+      this._prefetchedHandles[item.handle] = true;
       fetch('/products/' + item.handle + '.js')
         .then((r) => r.json())
         .then((p) => {
@@ -811,6 +1117,18 @@ export default class CartDrawer extends Component {
       });
     });
     document.body.style.overflow = 'hidden';
+    // If the host theme's cart handler ran too (our capture-phase interception
+    // was bypassed), it may have left a scroll-lock class on body/html. cartx is
+    // taking over the drawer, so clear it — otherwise the page stays unscrollable.
+    this._clearThemeScrollLock();
+    // Fail-safe: never leave the drawer open-but-invisible if the `styled` gate
+    // hasn't resolved yet (slow/empty styling source). Reveal shortly after open.
+    if (!this.state.styled) {
+      if (this._openRevealTimer) clearTimeout(this._openRevealTimer);
+      this._openRevealTimer = setTimeout(() => {
+        if (!this.state.styled) this.setState({ styled: true });
+      }, 350);
+    }
     this.announce('Cart opened');
     window.dispatchEvent(new CustomEvent('cartmax:drawer-opened'));
 
@@ -822,6 +1140,320 @@ export default class CartDrawer extends Component {
     });
   }
 
+  // Strip common theme scroll-lock classes the host theme may have added to
+  // body/html when its (now-suppressed) cart drawer "opened". cartx owns the
+  // cart, so when our drawer opens or closes the page must scroll normally.
+  _clearThemeScrollLock() {
+    var CLASSES = ['overflow-hidden', 'no-scroll', 'scroll-lock', 'cart-drawer-open'];
+    [document.body, document.documentElement].forEach(function (el) {
+      if (!el) return;
+      for (var i = 0; i < CLASSES.length; i++) el.classList.remove(CLASSES[i]);
+    });
+  }
+
+  // ── Phase E: theme add-to-cart takeover ──────────────────
+  // Capture-phase submit listener on the theme's ATC forms. The native
+  // /cart/add targets the SEPARATE AJAX cart, so we preventDefault it and route
+  // the add into the GraphQL cart (store.addLine) instead, then open the drawer.
+  // Reads variant id, quantity and line-item properties straight from the form,
+  // so it works without per-theme markup knowledge for standard ATC forms.
+  // (Themes whose ATC is a pure JS button with no form submit need a per-theme
+  // click adapter — a follow-up.)
+  _installAtcTakeover() {
+    this._onAtcSubmit = (e) => {
+      var form = e.target;
+      if (!form || form.nodeName !== 'FORM') return;
+      if ((form.getAttribute('action') || '').indexOf('/cart/add') === -1) return;
+      var fd;
+      try { fd = new FormData(form); } catch (_) { return; }
+      var variantId = fd.get('id');
+      if (!variantId) return;   // not a standard single-variant ATC form — let it through
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+      var qty = parseInt(fd.get('quantity') || '1', 10) || 1;
+      var props = {};
+      fd.forEach(function (val, key) {
+        if (key.indexOf('properties[') === 0 && key.charAt(key.length - 1) === ']') {
+          var pk = key.slice(11, -1);
+          if (pk) props[pk] = val;
+        }
+      });
+      gqlAddLine(variantId, qty, props, {});
+      this.openDrawer();
+    };
+    document.addEventListener('submit', this._onAtcSubmit, true);   // capture, before theme handlers
+  }
+
+  // Public add entry point — used by window.cartx.addItem() and the `cartx:add`
+  // event. Partner apps call this so their add lands in cartx's cart regardless
+  // of which engine (AJAX or GraphQL store) is canonical. Returns a Promise.
+  // payload: { id|variant_id, quantity, properties, source?, open? }
+  addItemPublic(payload) {
+    payload = payload || {};
+    var id = payload.id || payload.variant_id || payload.variantId;
+    if (!id) {
+      console.warn('[cartx] addItem: missing variant id', payload);
+      return Promise.reject(new Error('cartx.addItem: missing variant id'));
+    }
+    id = String(normalizeVariantId(id));
+    var qty = parseInt(payload.quantity != null ? payload.quantity : payload.qty, 10) || 1;
+    var props = payload.properties || {};
+    if (payload.source) {
+      props = Object.assign({}, props);
+      props._cartx_source = String(payload.source);   // optional attribution
+    }
+    var self = this;
+    var shouldOpen = payload.open != null
+      ? !!payload.open
+      : (this._behavior && this._behavior.auto_open_on_add !== false);
+
+    if (this._graphqlCart) {
+      gqlAddLine(id, qty, props, {});
+      if (shouldOpen) this.openDrawer();
+      return gqlWhenSettled ? gqlWhenSettled() : Promise.resolve();
+    }
+    if (this._ajaxStore) {
+      ajaxAddLine(id, qty, props, {});
+      if (shouldOpen) this.openDrawer();
+      return ajaxWhenSettled ? ajaxWhenSettled() : Promise.resolve();
+    }
+    return internalFetch('/cart/add.js', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: id, quantity: qty, properties: props }),
+    }).then(function (r) { return r.json(); }).then(function (line) {
+      self.loadCart();
+      if (shouldOpen) self.openDrawer();
+      window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: { source: 'api' } }));
+      return line;
+    });
+  }
+
+  // ── GraphQL promo pipeline (Phase D: bar + gift auto-add) ──
+  // The evaluate-cart proxy computes the bar/ribbon/coupons/gifts from whatever
+  // cart we POST it. For the GraphQL path we feed it the mapped GraphQL cart,
+  // render the bar via the existing `eval-result` event, and route its gift
+  // to_add/to_remove through the STORE (not AJAX). Triggered only when the cart
+  // item signature changes (so gift reconciliation converges, no eval loop) and
+  // debounced so rapid edits collapse into one proxy call.
+  _cartSignature(cart) {
+    var items = (cart && cart.items) || [];
+    var lines = items.map(function (it) {
+      // The ':u' marker is what makes a placeholder line and its reconciled,
+      // priced self produce DIFFERENT signatures. Without it both hash the same
+      // (variant + qty + offer are unchanged by reconcile), so the sig guard in
+      // _maybeRunAjaxPromo swallowed the corrected evaluation and the cart was
+      // left evaluated as if it were empty.
+      return it.variant_id + ':' + (it.quantity || 0) + ':'
+        + (it.properties ? (it.properties._offer_id || '') : '')
+        + (it._cartx_unpriced ? ':u' : '');
+    }).sort().join('|');
+    // Include the applied discount codes: a coupon apply/remove leaves items and
+    // quantities untouched, so without this the signature is identical and the
+    // promo eval (which recomputes total_savings + coupon availability) is
+    // skipped — leaving the footer "you saved {amount}" stale until a qty change.
+    var codes = ((cart && cart.discount_codes) || [])
+      .filter(function (d) { return d.applicable; })
+      .map(function (d) { return d.code; })
+      .sort()
+      .join(',');
+    return lines + '#' + codes;
+  }
+
+  _maybeRunGqlPromo(cart) {
+    var sig = this._cartSignature(cart);
+    if (sig === this._lastPromoSig) return;   // no item change → no re-eval
+    this._lastPromoSig = sig;
+    if (this._gqlPromoTimer) clearTimeout(this._gqlPromoTimer);
+    this._gqlPromoTimer = setTimeout(() => this._runGqlPromo(), 250);
+  }
+
+  async _runGqlPromo() {
+    var cart = gqlGetCart();
+    if (!cart) return;
+    try {
+      var result = await callEvaluate(cart);
+      if (!result) return;
+      // Bar / ribbon / coupons / savings (reuses the existing handler).
+      window.dispatchEvent(new CustomEvent('cartmax:eval-result', {
+        detail: Object.assign({}, result, { _server: true }),
+      }));
+      this._reconcileGqlGifts(result, cart);
+    } catch (err) {
+      console.error('[cartx] gql promo eval failed:', err);
+    }
+  }
+
+  // Hard idempotency guard: force each cartx gift (variant + _offer_id) to its
+  // configured quantity. Keeps the first line (reduced to giftIntendedQuantity if
+  // inflated) and removes any EXTRA lines of the same gift. Guarantees "one gift,
+  // correct amount" however duplicates/over-quantities arise — races, a sold-out
+  // retry, or a manual/hacked add. Only touches cartx gift lines (_freebie +
+  // _offer_id) and only collapses the SAME variant+offer, so distinct gifts of a
+  // "pick N" claim offer are untouched. removeFn/changeQtyFn are the active cart
+  // store's mutators (ajax or gql). Runs every reconcile → self-heals + converges.
+  _normalizeGiftQuantities(cart, removeFn, changeQtyFn) {
+    var items = (cart && cart.items) || [];
+    var seen = {};
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      var p = it.properties;
+      if (!p || p['_freebie'] !== 'true' || !p['_offer_id']) continue;
+      var key = String(normalizeVariantId(it.variant_id)) + '|' + p['_offer_id'];
+      if (seen[key]) {
+        removeFn(it.key);                                   // extra line — drop it
+      } else {
+        seen[key] = true;
+        var intended = giftIntendedQuantity(p['_offer_id']);
+        if ((it.quantity || 0) > intended) changeQtyFn(it.key, intended); // cap inflated line
+      }
+    }
+  }
+
+  // Add/remove automatic gift lines on the GraphQL cart to match the eval result.
+  // Idempotent: only adds a gift not already present, only removes listed lines.
+  // Each store mutation re-triggers eval; it converges once gifts are settled.
+  _reconcileGqlGifts(result, cart) {
+    this._normalizeGiftQuantities(cart, gqlRemoveLine, gqlChangeQuantity);
+    (result.to_remove || []).forEach(function (key) { gqlRemoveLine(key); });
+    var items = (cart && cart.items) || [];
+    (result.to_add || []).forEach(function (item) {
+      var vid = String(normalizeVariantId(item.variant_id));
+      var offerId = item.properties && item.properties._offer_id;
+      var present = items.some(function (it) {
+        return String(it.variant_id) === vid && it.properties && it.properties._offer_id === offerId;
+      });
+      if (!present) gqlAddLine(vid, item.quantity || 1, item.properties || {}, {});
+    });
+  }
+
+  // On each store cart change: (1) reconcile auto-gift lines INSTANTLY from
+  // local eval (add newly-triggered gifts with their real title/image, pull
+  // gifts whose threshold is no longer met), then (2) run the server eval,
+  // debounced, purely for the bar/ribbon/coupons + the cartx marker. The gift
+  // add/remove no longer waits on the server round-trip (fixes the "gift not
+  // removed below threshold" bug + the "Free gift" skeleton).
+  _maybeRunAjaxPromo(cart) {
+    this._reconcileLocalGifts(cart);
+    var sig = this._cartSignature(cart);
+    if (sig === this._lastPromoSig) return;
+    this._lastPromoSig = sig;
+
+    // Paint the bar NOW from cached config, then let the debounced server call
+    // below confirm it. Measured: the evaluate-cart round-trip is ~1.6s from
+    // India of which our server is ~6ms, so waiting on it was the entire
+    // perceived cost of a cart change.
+    //
+    // Three guards, each protecting a case where a client-side estimate would
+    // be worse than waiting:
+    //   1. kill switch — turn the whole thing off at runtime, no redeploy.
+    //   2. unpriced lines — the cart contains a placeholder we can't price;
+    //      the skeleton is showing and any local number would be fiction.
+    //   3. cartHasDiscounts — coupons, automatic and volume discounts are
+    //      computed server-side and a client `price × qty` estimate is known to
+    //      be wrong for them (see the note on cartHasDiscounts). These carts
+    //      keep the old behaviour: one correct state, slightly later.
+    if (!window.__cartxDisableLocalBar
+      && !this._hasUnpricedLines(cart)
+      && !cartHasDiscounts(cart)) {
+      try { dispatchLocalBar(cart); } catch (_) { /* never block the server path */ }
+    }
+    if (this._ajaxPromoTimer) clearTimeout(this._ajaxPromoTimer);
+    this._ajaxPromoTimer = setTimeout(() => this._runAjaxPromo(), 250);
+  }
+
+  // Instant, local auto-gift reconcile through the store. Idempotent: only adds
+  // a gift not already present, only removes lines local eval flagged — so the
+  // subsequent store notify converges (no loop).
+  _reconcileLocalGifts(cart) {
+    // Re-entrancy guard: ajaxRemoveLine/ajaxAddLine notify subscribers
+    // SYNCHRONOUSLY, which re-enters this method mid-loop — causing duplicate
+    // removeLine calls and racing /cart/update.js syncs (the 422s). Apply the
+    // whole plan in one pass; the next (post-notify) reconcile converges.
+    if (this._reconcilingGifts) return;
+    var plan = localGiftDelta(cart);
+    if (!plan) return;
+    var self = this;
+    var items = (cart && cart.items) || [];
+    this._reconcilingGifts = true;
+    try {
+      // Force every cartx gift to its configured quantity (removes duplicate lines
+      // and caps inflated ones) before applying the add/remove plan.
+      this._normalizeGiftQuantities(cart, ajaxRemoveLine, ajaxChangeQty);
+
+      // Clear the optimistic "claimed" flag for any gift we auto-remove, so its
+      // claim card reverts to "Claim gift" instead of a stuck, disabled
+      // "Claimed" button once the shopper drops below (and later crosses back
+      // above) the threshold. Mirrors handleClaimRemove's cleanup for the auto
+      // removal path.
+      if (plan.to_remove && plan.to_remove.length) {
+        var nextClaimed = null;
+        plan.to_remove.forEach(function (key) {
+          var line = items.find(function (it) { return it.key === key; });
+          if (!line) return;
+          var vid = String(normalizeVariantId(line.variant_id));
+          var ck = 'claim_' + vid, ok = 'offer_' + vid;
+          if (self.state.claimed[ck] || self.state.claimed[ok]) {
+            if (!nextClaimed) nextClaimed = Object.assign({}, self.state.claimed);
+            delete nextClaimed[ck];
+            delete nextClaimed[ok];
+          }
+        });
+        if (nextClaimed) self.setState({ claimed: nextClaimed });
+      }
+      (plan.to_remove || []).forEach(function (key) { ajaxRemoveLine(key); });
+      (plan.to_add || []).forEach(function (g) {
+        var vid = String(normalizeVariantId(g.variant_id));
+        var offerId = g.properties && g.properties._offer_id;
+        var present = items.some(function (it) {
+          return String(normalizeVariantId(it.variant_id)) === vid && it.properties && it.properties._offer_id === offerId;
+        });
+        if (!present) ajaxAddLine(vid, g.quantity || 1, g.properties || {}, { price: 0, title: g.title, product_title: g.title, image: g.image });
+      });
+    } finally {
+      this._reconcilingGifts = false;
+    }
+  }
+
+  // True while the cart holds a placeholder line whose price we don't know yet
+  // (window.cartx.addItem gives us only a variant id). Gate on THIS, never on
+  // price === 0 — free gifts are legitimately zero and must keep evaluating.
+  _hasUnpricedLines(cart) {
+    var items = (cart && cart.items) || [];
+    for (var i = 0; i < items.length; i++) {
+      if (items[i]._cartx_unpriced) return true;
+    }
+    return false;
+  }
+
+  async _runAjaxPromo() {
+    var cart = ajaxGetCart();
+    if (!cart) return;
+    // Never evaluate a cart we can't price: the server would correctly compute
+    // thresholds against a phantom 0 total and report every reward locked.
+    // The sync reconciles within one /cart/add.js round-trip and the signature
+    // change (':u' above) re-triggers this with real money.
+    if (this._hasUnpricedLines(cart)) return;
+    try {
+      var result = await callEvaluate(cart);
+      if (!result) return;
+      // Server drives the bar/ribbon/coupons only — gifts are reconciled locally
+      // in _reconcileLocalGifts, so we don't apply to_add/to_remove here.
+      window.dispatchEvent(new CustomEvent('cartmax:eval-result', {
+        detail: Object.assign({}, result, { _server: true }),
+      }));
+      // Mark the cart cartx-active so the volume-discount Function can apply.
+      // (Idempotent; only fires when the config actually has a volume offer.)
+      ensureCartxAttribute(cart);
+      // Mark the cart as checked-out-via-the-cartx-drawer (once, when it has
+      // items) so the resulting order is attributable to cartx in the A/B split.
+      if (cart.item_count > 0) ensureDrawerAttribute(cart);
+    } catch (err) {
+      console.error('[cartx] ajax promo eval failed:', err);
+    }
+  }
+
   close() {
     if (this._focusCleanup) {
       this._focusCleanup();
@@ -829,6 +1461,7 @@ export default class CartDrawer extends Component {
     }
     this.setState({ open: false });
     document.body.style.overflow = '';
+    this._clearThemeScrollLock();
     this._closeTimer = setTimeout(() => {
       this.setState({ visible: false });
       this._closeTimer = null;
@@ -874,26 +1507,54 @@ export default class CartDrawer extends Component {
     }
   }
 
-  // ── Quantity changes (debounced) ──────────────────────────
+  // ── Quantity + remove mutations (debounced & coalesced) ───
+  // Every line mutation (qty change or remove) funnels through one short
+  // debounce buffer. A burst of clicks — several +'s, or deleting multiple
+  // lines in a row — collapses into a SINGLE server reconcile / re-render
+  // instead of one heavyweight round-trip per click (the cause of the qty
+  // "freeze" and the delete "blink"). The UI reflects each click instantly
+  // (pendingQty / tombstone fade), so the buffering is invisible to the
+  // shopper; it only coalesces the expensive part.
 
   queueQuantityChange(key, qty) {
+    // GraphQL cart path: route to the optimistic store (instant local update +
+    // single-flight server sync). The store's subscription re-renders the cart.
+    if (this._graphqlCart) {
+      if (qty <= 0) gqlRemoveLine(key); else gqlChangeQuantity(key, qty);
+      return;
+    }
+    if (this._ajaxStore) {
+      if (qty <= 0) ajaxRemoveLine(key); else ajaxChangeQty(key, qty);
+      return;
+    }
     var pendingQty = Object.assign({}, this.state.pendingQty);
     pendingQty[key] = qty;
     this.setState({ pendingQty: pendingQty });
-    if (this._debounceTimers[key]) clearTimeout(this._debounceTimers[key]);
-    this._debounceTimers[key] = setTimeout(() => {
-      delete this._debounceTimers[key];
-      this.flushQuantityChange(key, qty);
-    }, DEBOUNCE_DELAY);
+    this._bufferAction(key, qty);
   }
 
-  flushQuantityChange(key, qty) {
+  // Stage one line mutation and (re)arm the shared flush timer. Last write
+  // per key wins (e.g. +,+,+ → final qty; a later remove → qty 0).
+  _bufferAction(key, qty) {
+    this._actionBuffer[key] = qty;
+    if (this._actionFlushTimer) clearTimeout(this._actionFlushTimer);
+    this._actionFlushTimer = setTimeout(() => this._flushActions(), DEBOUNCE_DELAY);
+  }
+
+  // Dispatch all buffered mutations as ONE cart-action → one server reconcile.
+  _flushActions() {
+    this._actionFlushTimer = null;
+    var buffer = this._actionBuffer;
+    this._actionBuffer = {};
+    var keys = Object.keys(buffer);
+    if (!keys.length) return;
+    var actions = keys.map(function (k) { return { key: k, qty: buffer[k] }; });
     var updating = Object.assign({}, this.state.updating);
-    updating[key] = true;
+    keys.forEach(function (k) { updating[k] = true; });
     this.setState({ updating: updating });
     this._startProcessingTimeout();
     window.dispatchEvent(new CustomEvent('cartmax:cart-action', {
-      detail: { cart: this.state.cart, action: { key: key, qty: qty } },
+      detail: { cart: this.state.cart, actions: actions },
     }));
     this.announce('Updating cart...');
   }
@@ -906,13 +1567,14 @@ export default class CartDrawer extends Component {
   //    the server reconcile confirms the removal.
 
   handleRemove(key) {
-    if (this._debounceTimers[key]) {
-      clearTimeout(this._debounceTimers[key]);
-      delete this._debounceTimers[key];
-    }
-
     var cart = this.state.cart;
-    var line = cart && cart.items && cart.items.find(function (i) { return i.key === key; });
+    if (!cart || !cart.items) return;
+
+    // GraphQL cart path: optimistic remove via the store (re-renders on sync).
+    if (this._graphqlCart) { gqlRemoveLine(key); return; }
+    if (this._ajaxStore) { ajaxRemoveLine(key); return; }
+
+    var line = cart.items.find(function (i) { return i.key === key; });
 
     // Defer GIFT_REMOVED analytics until reconcile confirms (see _onInternalReload).
     if (line && line.properties && line.properties._freebie === 'true') {
@@ -923,26 +1585,73 @@ export default class CartDrawer extends Component {
       };
     }
 
-    // Stash the line as a tombstone so the fade can play while the
-    // optimistic update strips the line from state.cart.
+    // Snapshot the line as a tombstone so it stays mounted (and visible) while
+    // its collapse animation plays, then strip it from the cart IMMEDIATELY so
+    // the rest of the list stays put. The server removal is coalesced through
+    // the shared buffer, but the visual is instant and per-line, so deleting
+    // several items in a row collapses each row smoothly instead of blanking
+    // the whole cart while a batched reconcile is in flight.
     if (line) this._removingTombstones[key] = line;
 
     var removing = Object.assign({}, this.state.removing);
     removing[key] = true;
-    var updating = Object.assign({}, this.state.updating);
-    updating[key] = true;
-    this.setState({ removing: removing, updating: updating });
-    this._startProcessingTimeout();
+    var stripped = this._stripLine(cart, key);
+    this.setState({ removing: removing, cart: stripped });
+    updateCartCount(stripped.item_count);
 
-    window.dispatchEvent(new CustomEvent('cartmax:cart-action', {
-      detail: { cart: this.state.cart, action: { key: key, qty: 0 } },
-    }));
+    this._scheduleTombstoneDrop(key);
+    this._bufferAction(key, 0);
     this.announce('Removing item...');
+  }
 
-    // Drop the tombstone after the fade. The line may already be gone from
-    // state.cart by now (optimistic update fired); the tombstone is the
-    // only thing keeping it visible.
-    if (this._tombstoneTimers[key]) clearTimeout(this._tombstoneTimers[key]);
+  // Optimistic local removal: drop one line and recompute cart totals so the
+  // footer stays right until the server reconcile lands. Mirrors the totals
+  // math in evaluate.js simulateCart().
+  _stripLine(cart, key) {
+    var items = [];
+    var total = 0, orig = 0, count = 0;
+    for (var i = 0; i < cart.items.length; i++) {
+      var it = cart.items[i];
+      if (it.key === key) continue;
+      items.push(it);
+      total += (it.final_line_price || 0);
+      orig += (it.original_line_price || it.line_price || 0);
+      count += (it.quantity || 0);
+    }
+    return Object.assign({}, cart, {
+      items: items,
+      total_price: total,
+      original_total_price: orig,
+      total_discount: Math.max(0, orig - total),
+      item_count: count,
+      items_subtotal_price: total,
+    });
+  }
+
+  // True while the shopper has edits that haven't reconciled yet: a debounce
+  // window armed, actions buffered, or optimistic quantities on screen. Used to
+  // suppress the empty-state and transient-empty carts mid-edit.
+  _hasPendingEdits() {
+    return this._actionFlushTimer != null
+      || Object.keys(this._actionBuffer).length > 0
+      || Object.keys(this.state.pendingQty).length > 0;
+  }
+
+  // An incoming reconcile/optimistic cart that has 0 items while we still hold
+  // a non-empty cart AND more edits are queued is a mid-flight artifact, not a
+  // real emptying — applying it would flash the whole body blank.
+  _isTransientEmpty(incoming) {
+    var incomingEmpty = !incoming || !incoming.items || incoming.items.length === 0;
+    if (!incomingEmpty) return false;
+    var cur = this.state.cart;
+    var haveItems = cur && cur.items && cur.items.length > 0;
+    var moreComing = this._actionFlushTimer != null || Object.keys(this._actionBuffer).length > 0;
+    return haveItems && moreComing;
+  }
+
+  // Hold a tombstoned line in the DOM for its collapse animation, then drop it.
+  _scheduleTombstoneDrop(key) {
+    if (this._tombstoneTimers[key]) return;   // already scheduled
     this._tombstoneTimers[key] = setTimeout(() => {
       delete this._tombstoneTimers[key];
       delete this._removingTombstones[key];
@@ -1002,6 +1711,18 @@ export default class CartDrawer extends Component {
   // ── Render: Progress Bar ──────────────────────────────────
 
   renderProgressBar() {
+    // While any line is unpriced the last eval describes a cart that no longer
+    // exists, and showing its tiers would tell the shopper their rewards are
+    // locked when they may well have just unlocked them.
+    if (this._hasUnpricedLines(this.state.cart)) {
+      return (
+        <div id="cartmax-progress" class="cartmax-progress cartmax-progress-skeleton" aria-busy="true">
+          <div class="cartmax-skel cartmax-skel-line cartmax-skel-msg" />
+          <div class="cartmax-skel cartmax-skel-track" />
+          <span class="visually-hidden">Updating rewards…</span>
+        </div>
+      );
+    }
     var result = this.state.evalResult;
     if (!result || !result.bar || !result.bar.tiers || result.bar.tiers.length === 0) {
       return null;
@@ -1163,6 +1884,18 @@ export default class CartDrawer extends Component {
       return;
     }
 
+    // Store paths: a variant switch is remove-old + add-new. The store applies
+    // both optimistically and reconciles in one single-flight sync.
+    if (this._graphqlCart || this._ajaxStore) {
+      var cached = this._variantCache[String(item.product_id)] || [];
+      var nv = cached.find((v) => String(v.id) === String(newVariantId)) || {};
+      var meta = { price: nv.price || 0, title: item.product_title, product_title: item.product_title, variant_title: nv.title || null, image: (nv.featured_image && nv.featured_image.src) || item.image, handle: item.handle, product_id: item.product_id };
+      if (this._graphqlCart) { gqlRemoveLine(key); gqlAddLine(newVariantId, qty, item.properties || {}, meta); }
+      else { ajaxRemoveLine(key); ajaxAddLine(newVariantId, qty, item.properties || {}, meta); }
+      this.setState({ variantOpen: nextOpen });
+      return;
+    }
+
     var snapshot = this.state.cart;
     var cachedVariants = this._variantCache[String(item.product_id)] || [];
     var newVariant = cachedVariants.find((v) => String(v.id) === String(newVariantId));
@@ -1218,43 +1951,69 @@ export default class CartDrawer extends Component {
 
     this._startProcessingTimeout();
 
-    try {
-      await internalFetch('/cart/change.js', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: key, quantity: 0 }),
-      });
-      await internalFetch('/cart/add.js', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: Number(newVariantId), quantity: qty }),
-      });
-      var cart = await fetchCart();
-      this._currency = cart.currency || this._currency;
-      window.dispatchEvent(new CustomEvent('cartmax:internal-reload', { detail: { cart: cart } }));
-    } catch (err) {
-      console.error('[cartx] Variant switch error:', err);
-      if (snapshot) {
-        this.setState({ cart: snapshot, pendingQty: {} });
-        updateCartCount(snapshot.item_count);
+    // Track the change→add→reconcile sequence so an instant checkout click
+    // waits for the new variant to actually land in the server cart instead of
+    // navigating with the old variant still in it.
+    var op = (async () => {
+      try {
+        await internalFetch('/cart/change.js', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: key, quantity: 0 }),
+        });
+        await internalFetch('/cart/add.js', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: Number(newVariantId), quantity: qty }),
+        });
+        var cart = await fetchCart();
+        this._currency = cart.currency || this._currency;
+        window.dispatchEvent(new CustomEvent('cartmax:internal-reload', { detail: { cart: cart } }));
+      } catch (err) {
+        console.error('[cartx] Variant switch error:', err);
+        if (snapshot) {
+          this.setState({ cart: snapshot, pendingQty: {} });
+          updateCartCount(snapshot.item_count);
+        }
+        var usedKey = newVariant ? pendingKey : key;
+        var newUpdating = Object.assign({}, this.state.updating);
+        delete newUpdating[usedKey];
+        this.setState({ updating: newUpdating });
+        this.loadCart();
       }
-      var usedKey = newVariant ? pendingKey : key;
-      var newUpdating = Object.assign({}, this.state.updating);
-      delete newUpdating[usedKey];
-      this.setState({ updating: newUpdating });
-      this.loadCart();
-    }
+    })();
+    this._trackOp(op);
+    await op;
   }
 
   // ── Render: Line Item ─────────────────────────────────────
 
   renderLineItem(item) {
+    // Placeholder line: we know a product is being added but not what it costs
+    // or what it's called. Render its shape rather than an empty title and a
+    // confident-looking 0 — the real data lands one round-trip later.
+    if (item._cartx_unpriced) {
+      return (
+        <div class="cartmax-line-item cartmax-line-skeleton" key={item.key} aria-busy="true">
+          <div class="cartmax-line-image">
+            <div class="cartmax-skel cartmax-skel-img" />
+          </div>
+          <div class="cartmax-line-details">
+            <div class="cartmax-skel cartmax-skel-line cartmax-skel-title" />
+            <div class="cartmax-skel cartmax-skel-line cartmax-skel-price" />
+          </div>
+          <span class="visually-hidden">Adding item…</span>
+        </div>
+      );
+    }
     var isUpdating = this.state.updating[item.key];
     var isRemoving = this.state.removing[item.key];
     var displayQty = this.getDisplayQty(item);
     var isPending = this.state.pendingQty.hasOwnProperty(item.key);
     var curr = this._currency;
-    var isFreebie = item.properties && item.properties['_freebie'] === 'true' && item.properties['_claimed'] !== 'true';
+    // Any freebie marker (cartx `_freebie` or a partner's `*_freebie*`, e.g.
+    // GoKwik's `_gokwik_freebie`) makes it a gift line — no qty selector.
+    var isFreebie = hasFreebieMarker(item.properties) && item.properties['_claimed'] !== 'true';
     var isClaimed = item.properties && (item.properties['_claimed'] === 'true' || item.properties['_cartmax_claim'] === 'true');
     var isVariantOpen = this.state.variantOpen[item.key];
     var isVariantLoading = this.state.variantLoading[item.key];
@@ -1263,6 +2022,33 @@ export default class CartDrawer extends Component {
     var showVariantSwitcher = this._layout.show_variant_switcher && item.variant_title && !isFreebie && !isClaimed;
     // Separate remove button: only when qty > 1 (at qty=1 trash is in the qty row)
     var showRemoveBtn = this._layout.show_remove_btn && displayQty > 1 && !isFreebie && !isClaimed;
+
+    // Freebie lines have no variant switcher, so the variant only shows if it's
+    // part of the title. The optimistic gift line's enriched title already bakes
+    // it in ("Product - Variant", variant_title null), while the reconciled
+    // Shopify line splits product_title + variant_title — which dropped the
+    // "- 100 ml" on reconcile. Fold it back in so the name is stable across the
+    // reconcile. Guarded by indexOf so we never double-append the optimistic case.
+    var lineTitle = item.product_title;
+    if (isFreebie && item.variant_title && item.variant_title !== 'Default Title'
+        && String(item.product_title || '').indexOf(item.variant_title) === -1) {
+      lineTitle = item.product_title + ' - ' + item.variant_title;
+    }
+
+    // A claim gift can be configured at a price ("Customer pays"); it's stamped
+    // on the line as `_claim_price` (per-unit, minor units). Show that price
+    // rather than "FREE" when it's > 0.
+    var claimPriceUnit = (isClaimed && item.properties && item.properties._claim_price)
+      ? Number(item.properties._claim_price) : 0;
+    var claimPriceLine = claimPriceUnit * (item.quantity || 1);
+
+    // What Shopify is ACTUALLY charging for this line. A gift line is only
+    // "FREE" when the discount really landed. If a merchant discount code has
+    // "combines with product discounts" off, Shopify drops our automatic gift
+    // discount and the shopper IS charged for the gift — printing FREE there
+    // hides a real charge and makes the cart total look wrong. Missing price
+    // fields fall through to 0, so optimistic gift lines still render FREE.
+    var giftChargedLine = giftChargedAmount(item);
 
     var cls = 'cartmax-line-item'
       + (isRemoving ? ' cartmax-line-removing' : '')
@@ -1279,20 +2065,39 @@ export default class CartDrawer extends Component {
         <div class="cartmax-line-details">
           {this._layout.show_vendor && item.vendor ? <div class="cartmax-line-vendor">{item.vendor}</div> : null}
           <div class="cartmax-line-title-row">
-            <div class="cartmax-line-title">{item.product_title}</div>
+            <div class="cartmax-line-title">{lineTitle}</div>
             {showRemoveBtn
               ? <button
                   class="cartmax-line-remove"
                   onClick={() => this.handleRemove(item.key)}
-                  disabled={isUpdating || isRemoving}
+                  disabled={isRemoving}
                   aria-label={'Remove ' + item.product_title}
                 ><IconTrash /></button>
               : null
             }
           </div>
           <div class="cartmax-line-price">
-            {isFreebie && item.final_line_price === 0
-              ? <span class="cartmax-gift-badge">FREE</span>
+            {(isFreebie || isClaimed)
+              ? (claimPriceLine > 0
+                  ? [
+                      <span key="cp">{formatMoney(claimPriceLine, curr)}</span>,
+                      (item.original_line_price > claimPriceLine)
+                        ? <span key="orig" class="cartmax-line-price-original">{formatMoney(item.original_line_price, curr)}</span>
+                        : null,
+                      // Keep the freebie identity even at a nominal price.
+                      <span key="giftbadge" class="cartmax-gift-badge">GIFT</span>,
+                    ]
+                  : (giftChargedLine > 0
+                      ? [
+                          <span key="gp">{formatMoney(giftChargedLine, curr)}</span>,
+                          (item.original_line_price > giftChargedLine)
+                            ? <span key="gorig" class="cartmax-line-price-original">{formatMoney(item.original_line_price, curr)}</span>
+                            : null,
+                          // Still a gift line (no qty selector / switcher), but
+                          // the shopper is being charged — show the truth.
+                          <span key="giftbadge" class="cartmax-gift-badge">GIFT</span>,
+                        ]
+                      : <span class="cartmax-gift-badge">FREE</span>))
               : (() => {
                   var compareAtUnit = this._layout.show_compare_price
                     ? this._compareAtCache[String(item.variant_id)]
@@ -1329,7 +2134,7 @@ export default class CartDrawer extends Component {
               </div>
             : null
           }
-          {!isFreebie
+          {!isFreebie && !isClaimed
             ? <div class="cartmax-line-actions">
                 {showVariantSwitcher
                   ? <div class="cartmax-variant-wrap">
@@ -1371,23 +2176,26 @@ export default class CartDrawer extends Component {
                     </div>
                   : null
                 }
-                <div class="cartmax-qty-controls">
-                  <button
-                    class="cartmax-qty-btn"
-                    onClick={() => displayQty <= 1 ? this.handleRemove(item.key) : this.queueQuantityChange(item.key, displayQty - 1)}
-                    disabled={isUpdating || isRemoving}
-                    aria-label={displayQty <= 1 ? ('Remove ' + item.product_title) : 'Decrease quantity'}
-                  >{displayQty <= 1 ? <IconTrash /> : <IconMinus />}</button>
-                  <span class={'cartmax-qty-value' + (isPending ? ' cartmax-qty-pending' : '')}>
-                    {displayQty}
-                  </span>
-                  <button
-                    class="cartmax-qty-btn"
-                    onClick={() => this.queueQuantityChange(item.key, displayQty + 1)}
-                    disabled={isUpdating}
-                    aria-label="Increase quantity"
-                  ><IconPlus /></button>
-                </div>
+                {showsQuantitySelector(item)
+                  ? <div class="cartmax-qty-controls">
+                      <button
+                        class="cartmax-qty-btn"
+                        onClick={() => displayQty <= 1 ? this.handleRemove(item.key) : this.queueQuantityChange(item.key, displayQty - 1)}
+                        disabled={isRemoving}
+                        aria-label={displayQty <= 1 ? ('Remove ' + item.product_title) : 'Decrease quantity'}
+                      >{displayQty <= 1 ? <IconTrash /> : <IconMinus />}</button>
+                      <span class={'cartmax-qty-value' + (isPending ? ' cartmax-qty-pending' : '')}>
+                        {displayQty}
+                      </span>
+                      <button
+                        class="cartmax-qty-btn"
+                        onClick={() => this.queueQuantityChange(item.key, displayQty + 1)}
+                        disabled={isRemoving}
+                        aria-label="Increase quantity"
+                      ><IconPlus /></button>
+                    </div>
+                  : null
+                }
               </div>
             : null
           }
@@ -1476,51 +2284,106 @@ export default class CartDrawer extends Component {
     }
   }
 
-  async handleClaimAdd(variantId, claimId) {
+  async handleClaimAdd(variantId, claimId, gift) {
     var key = 'claim_' + variantId;
 
-    // Button-level optimistic: card flips to "Claimed ✓" immediately.
-    // No optimistic line in the cart — the line materialises on reconcile.
+    // What the shopper pays for this claimed item, in the store's minor units
+    // (0 = free). Stamped onto the line as `_claim_price` (underscore = hidden at
+    // checkout) so the line can display the real price instead of always "FREE"
+    // — the freebie Function applies the actual discount at checkout, so the cart
+    // line's own price stays full until then.
+    var claimPriceCents = Math.round((Number(gift && gift.claim_price) || 0) * 100);
+    var props = { _freebie: 'true', _cartmax_claim: 'true', _claimed: 'true', _offer_id: claimId };
+    if (claimPriceCents > 0) props._claim_price = String(claimPriceCents);
+
+    if (this._graphqlCart) {
+      this.setState({ claimed: Object.assign({}, this.state.claimed, { [key]: true }) });
+      gqlAddLine(variantId, 1, props, {});
+      tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, { promotion_id: claimId, promotion_type: 'claim-gift', variant_id: String(variantId) });
+      return;
+    }
+
+    if (this._ajaxStore) {
+      this.setState({ claimed: Object.assign({}, this.state.claimed, { [key]: true }) });
+      ajaxAddLine(variantId, 1, props,
+        { price: 0, title: gift && gift.title, product_title: gift && gift.title, image: gift && gift.image });
+      tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, { promotion_id: claimId, promotion_type: 'claim-gift', variant_id: String(variantId) });
+      return;
+    }
+
+    // Optimistically add the gift line NOW (instant), then run the real
+    // /cart/add in the background. _stabiliseOrder promotes this pending line to
+    // the real Shopify line on reconcile; on inventory rejection we roll it back
+    // out and surface the error.
     this._clearClaimError(key);
+    var pendingLine = buildPendingGiftLine(variantId, 1, props, gift && gift.title, gift && gift.image, 'pending_claim_');
+    var base = this.state.cart || { items: [] };
+    var optimisticItems = (base.items || []).concat([pendingLine]);
+    var optimisticCount = 0;
+    for (var oi = 0; oi < optimisticItems.length; oi++) optimisticCount += (optimisticItems[oi].quantity || 0);
+    this._cartReadSeq++;
     this.setState({
+      cart: Object.assign({}, base, { items: optimisticItems, item_count: optimisticCount }),
       claimed: Object.assign({}, this.state.claimed, { [key]: true }),
       updating: Object.assign({}, this.state.updating, { [key]: true }),
     });
+    updateCartCount(optimisticCount);
 
-    try {
-      await internalFetch('/cart/add.js', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: Number(variantId),
-          quantity: 1,
-          properties: { _freebie: 'true', _cartmax_claim: 'true', _claimed: 'true', _offer_id: claimId },
-        }),
-      });
-      var cart = await fetchCart();
-      this._currency = cart.currency || this._currency;
-      this.setState({ cart: cart });
-      updateCartCount(cart.item_count);
-      window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: { cart: cart } }));
-      tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, {
-        promotion_id: claimId,
-        promotion_type: 'claim-gift',
-        variant_id: String(variantId),
-        cart_total: cart.total_price,
-        item_count: cart.item_count,
-      });
-    } catch (err) {
-      // Rollback the button — claim state revert + inline error.
-      var nextClaimed = Object.assign({}, this.state.claimed);
-      delete nextClaimed[key];
-      this.setState({ claimed: nextClaimed });
-      this._showClaimError(key, 'Out of stock');
-      console.error('[cartx] Claim add error:', err);
-    } finally {
+    var op = (async () => {
+      var added = false;
+      try {
+        await internalFetch('/cart/add.js', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: Number(variantId), quantity: 1, properties: props }),
+        });
+        added = true;
+      } catch (err) {
+        // The ADD itself failed (e.g. out of stock) — roll the optimistic line
+        // back out and revert the button.
+        this._removePendingLine(pendingLine.key);
+        var nextClaimed = Object.assign({}, this.state.claimed);
+        delete nextClaimed[key];
+        this.setState({ claimed: nextClaimed });
+        this._showClaimError(key, 'Out of stock');
+        console.error('[cartx] Claim add error:', err);
+      }
+      // Post-add reconcile is best-effort: a failure here must NOT roll back a
+      // gift that was actually added (that was the spurious-revert bug).
+      if (added) {
+        try {
+          var cart = await fetchCart();
+          this._currency = cart.currency || this._currency;
+          window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: { cart: cart } }));
+          tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, {
+            promotion_id: claimId,
+            promotion_type: 'claim-gift',
+            variant_id: String(variantId),
+            cart_total: cart.total_price,
+            item_count: cart.item_count,
+          });
+        } catch (e) { /* add already succeeded; ignore reconcile error */ }
+      }
       var newUpdating = Object.assign({}, this.state.updating);
       delete newUpdating[key];
       this.setState({ updating: newUpdating });
-    }
+    })();
+    this._trackOp(op);
+    await op;
+  }
+
+  // Remove an optimistic pending line (used to roll back a gift that the server
+  // rejected, e.g. out of stock).
+  _removePendingLine(pendingKey) {
+    var c = this.state.cart;
+    if (!c || !c.items) return;
+    var filtered = c.items.filter(function (it) { return it.key !== pendingKey; });
+    if (filtered.length === c.items.length) return;
+    var cnt = 0;
+    for (var i = 0; i < filtered.length; i++) cnt += (filtered[i].quantity || 0);
+    this._cartReadSeq++;
+    this.setState({ cart: Object.assign({}, c, { items: filtered, item_count: cnt }) });
+    updateCartCount(cnt);
   }
 
   async handleClaimRemove(variantId) {
@@ -1543,45 +2406,70 @@ export default class CartDrawer extends Component {
   // Button-level optimistic (same pattern as handleClaimAdd) — the cart
   // line itself stays pessimistic to avoid blink-in/blink-out on
   // inventory rejection.
-  async handleOfferDisplayAdd(variantId, offerId, quantity) {
+  async handleOfferDisplayAdd(variantId, offerId, quantity, gift) {
     var key = 'offer_' + variantId;
 
+    if (this._graphqlCart) {
+      this.setState({ claimed: Object.assign({}, this.state.claimed, { [key]: true }) });
+      gqlAddLine(variantId, quantity || 1, { _freebie: 'true', _offer_id: offerId, _acquired_on_page: window.location.pathname }, {});
+      return;
+    }
+
+    if (this._ajaxStore) {
+      this.setState({ claimed: Object.assign({}, this.state.claimed, { [key]: true }) });
+      ajaxAddLine(variantId, quantity || 1, { _freebie: 'true', _offer_id: offerId, _acquired_on_page: window.location.pathname },
+        { price: 0, title: gift && gift.title, product_title: gift && gift.title, image: gift && gift.image });
+      return;
+    }
+
+    // Optimistically add the gift line NOW; the real /cart/add runs in the
+    // background and reconciles via _stabiliseOrder. Roll back on OOS.
     this._clearClaimError(key);
+    var props = { _freebie: 'true', _offer_id: offerId, _acquired_on_page: window.location.pathname };
+    var pendingLine = buildPendingGiftLine(variantId, quantity || 1, props, gift && gift.title, gift && gift.image, 'pending_offer_');
+    var base = this.state.cart || { items: [] };
+    var optimisticItems = (base.items || []).concat([pendingLine]);
+    var optimisticCount = 0;
+    for (var oi = 0; oi < optimisticItems.length; oi++) optimisticCount += (optimisticItems[oi].quantity || 0);
+    this._cartReadSeq++;
     this.setState({
+      cart: Object.assign({}, base, { items: optimisticItems, item_count: optimisticCount }),
       claimed: Object.assign({}, this.state.claimed, { [key]: true }),
       updating: Object.assign({}, this.state.updating, { [key]: true }),
     });
+    updateCartCount(optimisticCount);
 
-    try {
-      await internalFetch('/cart/add.js', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: Number(variantId),
-          quantity: quantity || 1,
-          properties: {
-            _freebie: 'true',
-            _offer_id: offerId,
-            _acquired_on_page: window.location.pathname,
-          },
-        }),
-      });
-      var cart = await fetchCart();
-      this._currency = cart.currency || this._currency;
-      this.setState({ cart: cart });
-      updateCartCount(cart.item_count);
-      window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: { cart: cart } }));
-    } catch (err) {
-      var nextClaimed = Object.assign({}, this.state.claimed);
-      delete nextClaimed[key];
-      this.setState({ claimed: nextClaimed });
-      this._showClaimError(key, 'Out of stock');
-      console.error('[cartx] Offer display add error:', err);
-    } finally {
+    var op = (async () => {
+      var added = false;
+      try {
+        await internalFetch('/cart/add.js', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: Number(variantId), quantity: quantity || 1, properties: props }),
+        });
+        added = true;
+      } catch (err) {
+        this._removePendingLine(pendingLine.key);
+        var nextClaimed = Object.assign({}, this.state.claimed);
+        delete nextClaimed[key];
+        this.setState({ claimed: nextClaimed });
+        this._showClaimError(key, 'Out of stock');
+        console.error('[cartx] Offer display add error:', err);
+      }
+      // Post-add reconcile is best-effort — never roll back a successful add.
+      if (added) {
+        try {
+          var cart = await fetchCart();
+          this._currency = cart.currency || this._currency;
+          window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: { cart: cart } }));
+        } catch (e) { /* add already succeeded; ignore reconcile error */ }
+      }
       var newUpdating = Object.assign({}, this.state.updating);
       delete newUpdating[key];
       this.setState({ updating: newUpdating });
-    }
+    })();
+    this._trackOp(op);
+    await op;
   }
 
   renderOfferDisplays() {
@@ -1592,6 +2480,13 @@ export default class CartDrawer extends Component {
 
     var self = this;
     var heading = this._text.offer_cards_heading || 'Pick your free gift';
+    var cart = this.state.cart;
+    function isInCart(vid) {
+      if (!cart || !cart.items) return false;
+      return cart.items.some(function (item) {
+        return String(item.variant_id) === String(vid);
+      });
+    }
 
     return (
       <div class="cartmax-claims cartmax-offer-cards">
@@ -1613,7 +2508,10 @@ export default class CartDrawer extends Component {
                   var isAdding = self.state.updating[btnKey];
                   var isClaimedOptimistic = self.state.claimed[btnKey];
                   var claimErr = self.state.claimError[btnKey];
-                  var inCart = g.in_cart;
+                  // Drive off the live cart, not the server's g.in_cart — the
+                  // latter lags a round-trip and left the "Remove" button stuck
+                  // after an instant optimistic removal.
+                  var inCart = isInCart(vid);
                   var showClaimedBtn = isClaimedOptimistic && !inCart;
                   return (
                     <div class={'cartmax-claim-card' + (inCart ? ' cartmax-claim-card--in-cart' : '')} key={group.offer_id + ':' + vid}>
@@ -1635,7 +2533,7 @@ export default class CartDrawer extends Component {
                               ><IconCheck /> Claimed</button>
                             : <button
                                 class="cartmax-claim-btn cartmax-claim-btn--add"
-                                onClick={function () { self.handleOfferDisplayAdd(vid, group.offer_id, group.quantity_per_variant); }}
+                                onClick={function () { self.handleOfferDisplayAdd(vid, group.offer_id, group.quantity_per_variant, { title: g.title, image: g.image }); }}
                                 disabled={isAdding || !g.available}
                               >{isAdding ? 'Adding...' : (!g.available ? 'Unavailable' : 'Add')}</button>
                         }
@@ -1701,7 +2599,9 @@ export default class CartDrawer extends Component {
             var isClaiming = self.state.updating[btnKey];
             var isClaimedOptimistic = self.state.claimed[btnKey];
             var claimErr = self.state.claimError[btnKey];
-            var inCart = g.in_cart || isInCart(vid);
+            // Live cart is the source of truth (see offer card note) — avoids a
+            // stale "Remove" button after an instant optimistic removal.
+            var inCart = isInCart(vid);
             var showClaimedBtn = isClaimedOptimistic && !inCart;
             return (
               <div class={'cartmax-claim-card' + (inCart ? ' cartmax-claim-card--in-cart' : '')} key={vid}>
@@ -1723,7 +2623,7 @@ export default class CartDrawer extends Component {
                         ><IconCheck /> Claimed</button>
                       : <button
                           class="cartmax-claim-btn cartmax-claim-btn--add"
-                          onClick={function () { self.handleClaimAdd(vid, cg._rule_id); }}
+                          onClick={function () { self.handleClaimAdd(vid, cg._rule_id, { title: g.title, image: g.image, claim_price: cg.claim_price }); }}
                           disabled={isClaiming || !g.available || limitReached}
                         >{isClaiming ? 'Adding...' : (!g.available ? 'Unavailable' : (limitReached ? 'Limit reached' : 'Claim gift'))}</button>
                   }
@@ -1739,114 +2639,187 @@ export default class CartDrawer extends Component {
 
   // ── Coupons ────────────────────────────────────────────────
 
+  // The codes Shopify has actually ACCEPTED. Authoritative source is
+  // cart.discount_codes[].applicable (present on /cart.js + /cart/update.js),
+  // which covers cart-level AND line-level codes and excludes rejected ones.
+  // Falls back to reading discount applications for older cart shapes.
   getAppliedCodes() {
     var cart = this.state.cart;
     if (!cart) return [];
+    // discount_codes is the authoritative list of CODES the shopper entered
+    // (always present on /cart.js; may be empty). An EMPTY array means no codes —
+    // we must return [] here and NOT fall through to reading discount-application
+    // titles, which also include AUTOMATIC / Shopify Function discounts (e.g. the
+    // freebie discount titled "Claimed Gift") that would be mistaken for coupons.
+    if (cart.discount_codes) {
+      return cart.discount_codes
+        .filter(function (d) { return d.applicable; })
+        .map(function (d) { return d.code; });
+    }
+    // Fallback only for a cart shape lacking discount_codes: discount-CODE
+    // applications ONLY (never automatic ones).
     var codes = [];
     (cart.cart_level_discount_applications || []).forEach(function (d) {
-      if (d.title) codes.push(d.title);
+      if (d.title && d.type === 'discount_code') codes.push(d.title);
     });
     (cart.items || []).forEach(function (item) {
       (item.line_level_discount_allocations || []).forEach(function (a) {
-        if (a.discount_application && a.discount_application.title) {
-          codes.push(a.discount_application.title);
-        }
+        var da = a.discount_application;
+        if (da && da.title && da.type === 'discount_code') codes.push(da.title);
       });
     });
     return codes.filter(function (c, i, arr) { return arr.indexOf(c) === i; });
   }
 
+  // Did `code` actually get applied to `cart`? Authoritative signal is
+  // /cart.js discount_codes[].applicable; fall back to the real discount
+  // applications. Used to reject invalid/inapplicable codes instead of silently
+  // banking them.
+  _couponApplied(cart, code) {
+    if (!cart || !code) return false;
+    var up = code.toUpperCase();
+    var dc = cart.discount_codes || [];
+    for (var i = 0; i < dc.length; i++) {
+      if (dc[i].code && dc[i].code.toUpperCase() === up) return !!dc[i].applicable;
+    }
+    var atCart = (cart.cart_level_discount_applications || []).some(function (d) {
+      return d.title && d.title.toUpperCase() === up;
+    });
+    if (atCart) return true;
+    return (cart.items || []).some(function (item) {
+      return (item.line_level_discount_allocations || []).some(function (a) {
+        return a.discount_application && a.discount_application.title &&
+          a.discount_application.title.toUpperCase() === up;
+      });
+    });
+  }
+
+  // Feed an authoritative /cart.js cart (from a direct coupon update.js call)
+  // back into the live cart system, so the drawer + store stay in sync WITHOUT
+  // any optimistic discount overlay.
+  // Show a coupon error that auto-dismisses (same hold as other inline errors),
+  // so a stale "Invalid or inapplicable code" doesn't linger on screen.
+  _flashCouponError(message) {
+    if (this._couponErrTimer) clearTimeout(this._couponErrTimer);
+    this.setState({ couponError: message });
+    this._couponErrTimer = setTimeout(() => {
+      this._couponErrTimer = null;
+      this.setState({ couponError: null });
+    }, INLINE_ERROR_HOLD_MS);
+  }
+
+  _clearCouponError() {
+    if (this._couponErrTimer) { clearTimeout(this._couponErrTimer); this._couponErrTimer = null; }
+    if (this.state.couponError) this.setState({ couponError: null });
+  }
+
+  _applyCouponCart(cart) {
+    if (this._ajaxStore) ajaxReconcile(cart, true);
+    // Update the footer "you saved {amount}" instantly from the authoritative
+    // cart (same formula as the server's computeTotalSavings), rather than
+    // waiting on the debounced promo eval.
+    var savings = Math.max(0, (cart.original_total_price || 0) - (cart.total_price || 0));
+    this.setState({ cart: cart, savings: savings });
+    updateCartCount(cart.item_count);
+    window.dispatchEvent(new CustomEvent('cartmax:cart-action', { detail: { cart: cart } }));
+  }
+
   async handleCouponApply(code) {
     if (!code || !code.trim()) return;
+    var newCode = code.trim();
+    if (this._graphqlCart) {
+      gqlApplyCoupon(newCode);
+      this.setState({ couponInput: '', couponPanelOpen: false, couponError: null });
+      return;
+    }
+    // Coupons are NEVER optimistic (AJAX store + legacy). A real, validated
+    // /cart/update.js call: send only the currently-APPLIED codes plus the new
+    // one. If Shopify doesn't actually apply the new code, reset the set to the
+    // applied codes so a rejected code is never banked (which is what caused
+    // random codes to pile up in the discount payload).
+    if (this.getAppliedCodes().some(function (c) { return c.toUpperCase() === newCode.toUpperCase(); })) {
+      this.setState({ couponInput: '', couponPanelOpen: false, couponError: null });
+      return;
+    }
     this.setState({ couponLoading: true, couponError: null });
     try {
-      var currentCodes = this.getAppliedCodes();
-      var newCode = code.trim();
-      if (!currentCodes.some(function (c) { return c.toUpperCase() === newCode.toUpperCase(); })) {
-        currentCodes.push(newCode);
-      }
-      var discountPayload = currentCodes.join(',');
-
-      await cartUpdateAll({ discount: discountPayload });
+      var allowMultiple = this._sections.allow_multiple_coupons;
+      var applied = this.getAppliedCodes();
+      // Multi-coupon mode APPENDS to the applied set; single-coupon mode REPLACES
+      // (base = none). Computing the target set up front means a successful apply
+      // is ONE /cart/update.js + ONE /cart.js — no extra "replace" round-trip.
+      var base = allowMultiple ? applied : [];
+      var sendStr = base.concat([newCode]).join(',');
+      await cartUpdateAll({ discount: sendStr });
+      // /cart/update.js response omits settled discount allocations; /cart.js has
+      // them (needed for the price breakup), so read it back once.
       var cart = await fetchCart();
-
-      var codeUpper = newCode.toUpperCase();
-      var applied = (cart.cart_level_discount_applications || []).some(function (d) {
-        return d.title && d.title.toUpperCase() === codeUpper;
-      });
-      if (!applied) {
-        applied = (cart.items || []).some(function (item) {
-          return (item.line_level_discount_allocations || []).some(function (a) {
-            return a.discount_application && a.discount_application.title &&
-              a.discount_application.title.toUpperCase() === codeUpper;
-          });
-        });
+      var didApply = this._couponApplied(cart, newCode);
+      if (!didApply) {
+        // Rejected → restore the previously-applied set; never bank a bad code.
+        await cartUpdateAll({ discount: applied.join(',') });
+        cart = await fetchCart();
       }
-
       this._currency = cart.currency || this._currency;
+      this._applyCouponCart(cart);
       this.setState({
-        cart: cart,
         couponLoading: false,
-        couponError: applied ? null : 'Invalid or inapplicable code',
-        couponInput: applied ? '' : this.state.couponInput,
-        couponPanelOpen: applied ? false : this.state.couponPanelOpen,
+        couponInput: '',
+        couponPanelOpen: didApply ? false : this.state.couponPanelOpen,
       });
-      updateCartCount(cart.item_count);
-      if (applied) window.dispatchEvent(new CustomEvent('cartmax:cart-action', { detail: { cart: cart } }));
-
+      if (didApply) this._clearCouponError();
+      else this._flashCouponError('Invalid or inapplicable code');
       tracker.track(
-        applied ? ANALYTICS_EVENTS.COUPON_APPLIED : ANALYTICS_EVENTS.COUPON_REJECTED,
-        {
-          promotion_type: 'coupon',
-          code: newCode,
-          reason: applied ? null : 'not_applicable',
-          cart_total: cart.total_price,
-          item_count: cart.item_count,
-        },
+        didApply ? ANALYTICS_EVENTS.COUPON_APPLIED : ANALYTICS_EVENTS.COUPON_REJECTED,
+        { promotion_type: 'coupon', code: newCode, reason: didApply ? null : 'not_applicable',
+          cart_total: cart.total_price, item_count: cart.item_count },
       );
     } catch (err) {
-      this.setState({ couponLoading: false, couponError: 'Failed to apply coupon' });
+      this.setState({ couponLoading: false });
+      this._flashCouponError('Failed to apply coupon');
       tracker.track(ANALYTICS_EVENTS.COUPON_REJECTED, {
-        promotion_type: 'coupon',
-        code: (code || '').trim(),
-        reason: 'request_failed',
+        promotion_type: 'coupon', code: newCode, reason: 'request_failed',
       });
     }
   }
 
   async handleCouponRemove(codeToRemove) {
-    var snapshot = this.state.cart;
+    if (this._graphqlCart) {
+      gqlRemoveCoupon(codeToRemove);
+      return;
+    }
+    // Non-optimistic: re-send the remaining applied codes via a real
+    // /cart/update.js call, then reconcile from the authoritative result.
     this.setState({ couponLoading: true });
-
-    // Optimistic: drop the chip from cart_level_discount_applications.
-    // Totals stay where they are until reconcile — re-running the merchant's
-    // discount engine client-side isn't possible. Acceptable: the chip
-    // disappearing is the visible feedback.
-    if (snapshot) dispatchOptimistic(simulateCouponRemove(snapshot, codeToRemove));
-
     try {
-      var currentCodes = this.getAppliedCodes();
       var removeUpper = (codeToRemove || '').toUpperCase();
-      var remaining = currentCodes.filter(function (c) { return c.toUpperCase() !== removeUpper; });
-      var discountPayload = remaining.length > 0 ? remaining.join(',') : '';
-
-      await cartUpdateAll({ discount: discountPayload });
-      var cart = await fetchCart();
-
+      var remaining = this.getAppliedCodes().filter(function (c) { return c.toUpperCase() !== removeUpper; });
+      await cartUpdateAll({ discount: remaining.join(',') });
+      var cart = await fetchCart();   // fresh /cart.js — complete discount allocations
       this._currency = cart.currency || this._currency;
-      this.setState({ cart: cart, couponLoading: false });
-      updateCartCount(cart.item_count);
-      window.dispatchEvent(new CustomEvent('cartmax:cart-action', { detail: { cart: cart } }));
+      this._applyCouponCart(cart);
+      this.setState({ couponLoading: false, couponError: null });
     } catch (err) {
-      // Rollback the chip.
-      if (snapshot) dispatchOptimistic(snapshot);
       this.setState({ couponLoading: false });
     }
   }
 
+  // Applied coupon chips. Driven by cart.discount_codes (applicable === true) so
+  // a code that applies at the LINE level — not just cart level — still shows a
+  // chip. Amounts (when the code produces a cart-level allocation) are looked up
+  // by title. Falls back to cart-level discount_code applications.
   getAppliedDiscounts() {
     var cart = this.state.cart;
     if (!cart) return [];
+    var amounts = {};
+    (cart.cart_level_discount_applications || []).forEach(function (d) {
+      if (d.title) amounts[d.title.toUpperCase()] = d.total_allocated_amount || 0;
+    });
+    if (cart.discount_codes && cart.discount_codes.length) {
+      return cart.discount_codes
+        .filter(function (d) { return d.applicable; })
+        .map(function (d) { return { code: d.code, amount: amounts[(d.code || '').toUpperCase()] || 0 }; });
+    }
     var codes = [];
     (cart.cart_level_discount_applications || []).forEach(function (d) {
       if (d.title && d.type === 'discount_code') {
@@ -1856,20 +2829,16 @@ export default class CartDrawer extends Component {
     return codes;
   }
 
-  renderCoupons() {
-    var self = this;
-    var isLoading = this.state.couponLoading;
-    var appliedDiscounts = this.getAppliedDiscounts();
-    var showPanel = this.state.couponPanelOpen;
+  // Coupons eligible to SHOW (not yet applied, cart meets min qty/price). Shared
+  // by the in-body block and the slide-in panel.
+  _availableCoupons() {
     var cart = this.state.cart;
     var cartQty = cart ? (cart.item_count || 0) : 0;
     var cartTotal = cart ? (cart.total_price || 0) / 100 : 0;
     var evalResult = this.state.evalResult;
-    var allowMultiple = this._sections.allow_multiple_coupons;
-    var singleCouponApplied = !allowMultiple && appliedDiscounts.length > 0;
+    var appliedCodes = this.getAppliedDiscounts().map(function (d) { return d.code; });
     var allCoupons = (evalResult && evalResult.available_coupons) ? evalResult.available_coupons : [];
-    var appliedCodes = appliedDiscounts.map(function (d) { return d.code; });
-    var coupons = allCoupons.filter(function (c) {
+    return allCoupons.filter(function (c) {
       if (appliedCodes.indexOf(c.code) !== -1) return false;
       var minQty = Number(c.trigger_qty) || 0;
       var minPrice = Number(c.trigger_price) || 0;
@@ -1877,121 +2846,139 @@ export default class CartDrawer extends Component {
       if (minPrice > 0 && cartTotal < minPrice) return false;
       return true;
     });
+  }
 
+  renderCoupons() {
+    var self = this;
+    var isLoading = this.state.couponLoading;
+    var appliedDiscounts = this.getAppliedDiscounts();
+    var coupons = this._availableCoupons();
+
+    // Input row + "View All" stay visible even when a coupon is applied, so the
+    // shopper can always open the coupon drawer (or apply another where allowed).
+    // Applied coupons render as compact chips with a remove (✕).
     return (
       <div class="cartmax-coupons">
-
-        {/* Applied coupon banners — one per applied code, stacked above block */}
-        {appliedDiscounts.map(function (d) {
-          return (
-            <div class="cartmax-applied-coupon-banner" key={d.code}>
-              <div class="cartmax-applied-coupon-card">
-                <div class="cartmax-applied-coupon-left">
-                  <span class="cartmax-applied-label">Applied Coupon</span>
-                  <span class="cartmax-applied-code">{d.code}</span>
-                </div>
-                <button
-                  class="cartmax-applied-remove"
-                  onClick={function () { self.handleCouponRemove(d.code); }}
-                  disabled={isLoading}
-                  aria-label={'Remove ' + d.code}
-                >REMOVE</button>
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Discount block — hidden when single-coupon mode and a coupon is already applied */}
-        {!singleCouponApplied ? (
-          <div class="cartmax-discount-block">
-            <div class="cartmax-discount-input-row">
-              <input
-                class="cartmax-discount-input"
-                type="text"
-                placeholder="Apply Coupon"
-                value={self.state.couponInput || ''}
-                onInput={function (e) { self.setState({ couponInput: e.target.value, couponError: null }); }}
-                onKeyDown={function (e) { if (e.key === 'Enter') self.handleCouponApply(self.state.couponInput); }}
-                disabled={isLoading}
-              />
-              <button
-                class="cartmax-discount-submit"
-                onClick={function () { self.handleCouponApply(self.state.couponInput); }}
-                disabled={isLoading || !(self.state.couponInput || '').trim()}
-                aria-label="Apply coupon"
-              ><IconChevronRight /></button>
-              <span class="cartmax-discount-divider" />
-              <button
-                class="cartmax-discount-viewall"
-                onClick={function () { self.setState({ couponPanelOpen: true }); }}
-              >View All</button>
-            </div>
-            {self.state.couponError
-              ? <div class="cartmax-coupon-error">{self.state.couponError}</div>
-              : null
-            }
-            {coupons.length > 0 ? (
-              <div class="cartmax-discount-cards">
-                {coupons.map(function (c) {
-                  return (
-                    <div class="cartmax-discount-card" key={c.code}>
-                      <div class="cartmax-discount-card-accent">
-                        <span>{c.accent}</span>
-                      </div>
-                      <div class="cartmax-discount-card-info">
-                        <span class="cartmax-discount-card-code">{c.code}</span>
-                        <span class="cartmax-discount-card-savings">{c.display_message}</span>
-                      </div>
-                      <button
-                        class="cartmax-discount-card-btn"
-                        onClick={function () { self.handleCouponApply(c.code); }}
-                        disabled={isLoading}
-                      >Apply</button>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {/* Offers & Coupons panel — slides in from right */}
-        <div class={'cartmax-offers-panel' + (showPanel ? ' cartmax-offers-panel--open' : '')}>
-          <div class="cartmax-offers-panel-header">
+        <div class="cartmax-discount-block">
+          <div class="cartmax-discount-input-row">
+            <input
+              class="cartmax-discount-input"
+              type="text"
+              placeholder="Apply Coupon"
+              value={self.state.couponInput || ''}
+              onInput={function (e) { self.setState({ couponInput: e.target.value, couponError: null }); }}
+              onKeyDown={function (e) { if (e.key === 'Enter') self.handleCouponApply(self.state.couponInput); }}
+              disabled={isLoading}
+            />
             <button
-              class="cartmax-offers-back"
-              onClick={function () { self.setState({ couponPanelOpen: false }); }}
-              aria-label="Back to cart"
-            ><IconChevronLeft /></button>
-            <span class="cartmax-offers-title">Offers & Coupons</span>
+              class="cartmax-discount-submit"
+              onClick={function () { self.handleCouponApply(self.state.couponInput); }}
+              disabled={isLoading || !(self.state.couponInput || '').trim()}
+              aria-label="Apply coupon"
+            ><IconChevronRight /></button>
+            <span class="cartmax-discount-divider" />
+            <button
+              class="cartmax-discount-viewall"
+              onClick={function () { self.setState({ couponPanelOpen: true }); }}
+            >View All</button>
           </div>
-          <div class="cartmax-offers-body">
-            <span class="cartmax-offers-label">Available Coupons</span>
-            {coupons.length > 0 ? (
-              <div class="cartmax-offers-cards">
-                {coupons.map(function (c) {
-                  return (
-                    <div class="cartmax-offers-card" key={c.code}>
-                      <div class="cartmax-offers-card-accent">
-                        <span>{c.accent}</span>
-                      </div>
-                      <div class="cartmax-offers-card-info">
-                        <span class="cartmax-offers-card-code">{c.code}</span>
-                        <span class="cartmax-offers-card-savings">{c.display_message}</span>
-                      </div>
-                      <button
-                        class="cartmax-offers-card-btn"
-                        onClick={function () { self.handleCouponApply(c.code); }}
-                        disabled={isLoading}
-                      >Apply</button>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
-        </div>
+          {self.state.couponError
+            ? <div class="cartmax-coupon-error">{self.state.couponError}</div>
+            : null
+          }
 
+          {/* Applied coupons — compact chips with a remove (✕) */}
+          {appliedDiscounts.length > 0 ? (
+            <div class="cartmax-applied-chips">
+              {appliedDiscounts.map(function (d) {
+                return (
+                  <div class="cartmax-applied-chip" key={d.code}>
+                    <span class="cartmax-applied-chip-check"><IconCheck /></span>
+                    <span class="cartmax-applied-chip-code">{d.code}</span>
+                    <button
+                      class="cartmax-applied-chip-remove"
+                      onClick={function () { self.handleCouponRemove(d.code); }}
+                      disabled={isLoading}
+                      aria-label={'Remove ' + d.code}
+                    ><IconClose /></button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {coupons.length > 0 ? (
+            <div class="cartmax-discount-cards">
+              {coupons.map(function (c) {
+                return (
+                  <div class="cartmax-discount-card" key={c.code}>
+                    <div class="cartmax-discount-card-accent">
+                      <span>{c.accent}</span>
+                    </div>
+                    <div class="cartmax-discount-card-info">
+                      <span class="cartmax-discount-card-code">{c.code}</span>
+                      <span class="cartmax-discount-card-savings">{c.display_message}</span>
+                    </div>
+                    <button
+                      class="cartmax-discount-card-btn"
+                      onClick={function () { self.handleCouponApply(c.code); }}
+                      disabled={isLoading}
+                    >Apply</button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  // The slide-in "Offers & Coupons" panel. Rendered as a direct child of the
+  // drawer root (NOT inside the scrollable body) so its absolute inset:0 overlays
+  // the whole drawer — including the header — regardless of body scroll position.
+  // (Nesting it in the scrolled body was pushing its header/back button up under
+  // the cart header on mobile.)
+  renderCouponsPanel() {
+    var self = this;
+    var isLoading = this.state.couponLoading;
+    var showPanel = this.state.couponPanelOpen;
+    var coupons = this._availableCoupons();
+    return (
+      <div class={'cartmax-offers-panel' + (showPanel ? ' cartmax-offers-panel--open' : '')}>
+        <div class="cartmax-offers-panel-header">
+          <button
+            class="cartmax-offers-back"
+            onClick={function () { self.setState({ couponPanelOpen: false }); }}
+            aria-label="Back to cart"
+          ><IconChevronLeft /></button>
+          <span class="cartmax-offers-title">Offers & Coupons</span>
+        </div>
+        <div class="cartmax-offers-body">
+          <span class="cartmax-offers-label">Available Coupons</span>
+          {coupons.length > 0 ? (
+            <div class="cartmax-offers-cards">
+              {coupons.map(function (c) {
+                return (
+                  <div class="cartmax-offers-card" key={c.code}>
+                    <div class="cartmax-offers-card-accent">
+                      <span>{c.accent}</span>
+                    </div>
+                    <div class="cartmax-offers-card-info">
+                      <span class="cartmax-offers-card-code">{c.code}</span>
+                      <span class="cartmax-offers-card-savings">{c.display_message}</span>
+                    </div>
+                    <button
+                      class="cartmax-offers-card-btn"
+                      onClick={function () { self.handleCouponApply(c.code); }}
+                      disabled={isLoading}
+                    >Apply</button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
       </div>
     );
   }
@@ -2010,6 +2997,19 @@ export default class CartDrawer extends Component {
   // Line-level optimistic add. Customer explicitly chose a paid item;
   // out-of-stock is an intuitive failure mode worth the line-blink risk.
   async handleUpsellAdd(variantId, productMeta) {
+    if (this._graphqlCart || this._ajaxStore) {
+      var meta = {
+        price: Math.round(Number((productMeta && productMeta.price) || 0) * 100),
+        title: productMeta && productMeta.title,
+        product_title: productMeta && productMeta.title,
+        variant_title: productMeta && productMeta.variant_title,
+        image: productMeta && productMeta.image,
+      };
+      if (this._graphqlCart) gqlAddLine(variantId, 1, {}, meta);
+      else ajaxAddLine(variantId, 1, {}, meta);
+      tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, { promotion_type: 'upsell', variant_id: String(variantId) });
+      return;
+    }
     var key = 'upsell_' + variantId;
     var snapshot = this.state.cart;
 
@@ -2063,6 +3063,30 @@ export default class CartDrawer extends Component {
     }
   }
 
+  // Fetch live availability for upsell products (once per handle per session) so
+  // sold-out variants show "Sold out" instead of an add button. Uses the same
+  // /products/{handle}.js source as the compare-at prefetch.
+  _ensureUpsellAvailability(products) {
+    var self = this;
+    (products || []).forEach(function (p) {
+      var handle = p.handle;
+      if (!handle || self._upsellFetched[handle]) return;
+      self._upsellFetched[handle] = true;
+      fetch('/products/' + handle + '.js')
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (!data || !data.variants) return;
+          var changed = false;
+          data.variants.forEach(function (v) {
+            self._upsellAvailable[String(v.id)] = !!v.available;
+            changed = true;
+          });
+          if (changed) self.setState({});
+        })
+        .catch(function () {});
+    });
+  }
+
   renderUpsells() {
     var result = this.state.evalResult;
     if (!result || !result.upsells || !result.upsells.enabled) return null;
@@ -2081,6 +3105,8 @@ export default class CartDrawer extends Component {
       return cartVariantIds.indexOf(vid) === -1;
     });
     if (filtered.length === 0) return null;
+
+    this._ensureUpsellAvailability(filtered);
 
     var curr = this._currency;
     var self = this;
@@ -2103,6 +3129,10 @@ export default class CartDrawer extends Component {
             var vid = String(p.variant_id);
             if (vid.startsWith('gid://')) vid = vid.split('/').pop();
             var isAdding = self.state.updating['upsell_' + vid];
+            // Sold out only once we've fetched availability and it's false —
+            // unknown (not yet fetched) stays addable so we never hide the button
+            // prematurely.
+            var soldOut = self._upsellAvailable[vid] === false;
             var productMeta = {
               title: p.title,
               image: p.image_url,
@@ -2124,10 +3154,10 @@ export default class CartDrawer extends Component {
                     }
                   </div>
                   <button
-                    class="cartmax-upsell-add"
-                    onClick={function () { self.handleUpsellAdd(vid, productMeta); }}
-                    disabled={isAdding}
-                  >{isAdding ? 'Adding...' : btnText}</button>
+                    class={'cartmax-upsell-add' + (soldOut ? ' cartmax-upsell-add--soldout' : '')}
+                    onClick={function () { if (!soldOut) self.handleUpsellAdd(vid, productMeta); }}
+                    disabled={isAdding || soldOut}
+                  >{soldOut ? 'Sold out' : (isAdding ? 'Adding...' : btnText)}</button>
                 </div>
               </div>
             );
@@ -2135,6 +3165,17 @@ export default class CartDrawer extends Component {
         </div>
       </div>
     );
+  }
+
+  // ── Checkout validation ───────────────────────────────────
+  // On checkout we reconcile the cart (pull any gift whose threshold is no
+  // longer met — offer AND claim gifts) and wait for the sync to settle, so a
+  // stale gift can never ride through to checkout. This predicate is the final
+  // gate: a cart with no payable value is not checkout-able (e.g. only a free
+  // gift remains). See _reconcileLocalGifts, which now also pulls claim gifts.
+
+  _isZeroTotal(c) {
+    return !c || !c.items || c.items.length === 0 || !(Number(c.total_price) > 0);
   }
 
   // ── Render: Footer (totals + checkout) ────────────────────
@@ -2161,7 +3202,7 @@ export default class CartDrawer extends Component {
         ) : null}
         <div class="cartmax-footer-checkout">
           <div class="cartmax-footer-price">
-            <span class="cartmax-footer-price-amount">{formatMoney(cart.total_price, curr)}</span>
+            <span class={'cartmax-footer-price-amount' + (this.state.cartSyncing ? ' cartmax-price-updating' : '')}>{formatMoney(cart.total_price, curr)}</span>
             <button
               class="cartmax-price-breakup-link"
               onClick={() => this.setState({ priceBreakupOpen: true })}
@@ -2169,22 +3210,80 @@ export default class CartDrawer extends Component {
           </div>
           <a
             class={'cartmax-checkout-btn' + (this.state.checkoutWaiting ? ' cartmax-checkout-waiting' : '')}
-            href="/checkout"
+            href={this._graphqlCart && cart.checkout_url ? cart.checkout_url : '/checkout'}
             onClick={(e) => {
               tracker.persistSessionCookie();
-              var isProcessing = Object.keys(this.state.updating).length > 0;
+              var checkoutJs = this._behavior.checkout_js;
+              var buttonEl = e.currentTarget;
+              // GraphQL path: checkout the canonical Storefront cart via its
+              // checkoutUrl. Wait for the sync to settle first so the server cart
+              // reflects the latest edits, then navigate.
+              if (this._graphqlCart) {
+                e.preventDefault();
+                if (this.state.checkoutWaiting) return;
+                this.setState({ checkoutWaiting: true });
+                gqlWhenSettled().then(() => {
+                  var fresh = gqlGetCart() || cart;
+                  this.setState({ checkoutWaiting: false });
+                  if (this._isZeroTotal(fresh)) return;
+                  var url = (fresh && fresh.checkout_url) || cart.checkout_url;
+                  if (checkoutJs) {
+                    try { new Function('button', checkoutJs)(buttonEl); } catch (_) { if (url) window.location.href = url; }
+                  } else if (url) {
+                    window.location.href = url;
+                  }
+                });
+                return;
+              }
+              // AJAX store path: validate before leaving — reconcile the cart
+              // (pull any offer/claim gift whose threshold is no longer met),
+              // then wait for the single-flight sync to commit, so /checkout only
+              // ever sees a correct, non-zero cart.
+              if (this._ajaxStore) {
+                e.preventDefault();
+                if (this.state.checkoutWaiting) return;
+                this.setState({ checkoutWaiting: true });
+                this._reconcileLocalGifts(this.state.cart);
+                ajaxWhenSettled().then(() => {
+                  var fresh = ajaxGetCart() || this.state.cart;
+                  this.setState({ checkoutWaiting: false });
+                  if (this._isZeroTotal(fresh)) return;
+                  if (checkoutJs) {
+                    try { new Function('button', checkoutJs)(buttonEl); } catch (_) { window.location.href = '/checkout'; }
+                  } else {
+                    window.location.href = '/checkout';
+                  }
+                });
+                return;
+              }
+              var isProcessing = Object.keys(this.state.updating).length > 0 || this._activeOps.size > 0;
               if (isProcessing || this.state.checkoutWaiting) {
                 e.preventDefault();
                 if (this.state.checkoutWaiting) return;
                 this.setState({ checkoutWaiting: true });
-                waitForEvaluate().then(() => {
+                // Wait for in-flight cart mutations (e.g. a just-selected variant)
+                // to commit, THEN for the eval pipeline, before leaving — so the
+                // server cart we check out reflects the latest edit.
+                this.whenCartIdle().then(() => waitForEvaluate()).then(() => {
                   this.setState({ checkoutWaiting: false });
-                  window.location.href = '/checkout';
+                  if (this._isZeroTotal(this.state.cart)) return;
+                  if (checkoutJs) {
+                    try { new Function('button', checkoutJs)(buttonEl); } catch (_) { window.location.href = '/checkout'; }
+                  } else {
+                    window.location.href = '/checkout';
+                  }
                 });
+                return;
+              }
+              if (checkoutJs) {
+                e.preventDefault();
+                this.setState({ checkoutWaiting: true });
+                try { new Function('button', checkoutJs)(buttonEl); } catch (_) { window.location.href = '/checkout'; }
+                setTimeout(() => this.setState({ checkoutWaiting: false }), 500);
               }
             }}
           >
-            <span>{this.state.checkoutWaiting ? 'Preparing...' : this._text.checkout_button}</span>
+            <span class="cartmax-checkout-label">{this.state.checkoutWaiting ? 'Preparing...' : this._text.checkout_button}</span>
             {this._layout.show_payment_icons && !this.state.checkoutWaiting ? (
               <span class="cartmax-payment-methods"><IconPaymentMethods /></span>
             ) : null}
@@ -2206,8 +3305,43 @@ export default class CartDrawer extends Component {
   renderPriceBreakup() {
     var cart = this.state.cart;
     var curr = this._currency;
-    var totalMRP = cart.items_subtotal_price;
-    var discountTotal = cart.total_discount || 0;
+    var self = this;
+
+    // Total MRP = full retail: compare-at price where we have it, else the
+    // line's own pre-discount price. Sum across lines.
+    var totalMRP = 0;
+    (cart.items || []).forEach(function (it) {
+      var compareUnit = self._compareAtCache[String(it.variant_id)];
+      var unit = (compareUnit && compareUnit > (it.original_price || 0)) ? compareUnit : (it.original_price || 0);
+      totalMRP += unit * (it.quantity || 0);
+    });
+
+    // Coupon discount = the amount attributable to the APPLIED coupon codes
+    // (automatic/sale discounts are folded into "Discount on MRP"). Match by the
+    // real applied code titles rather than a `type` flag, which isn't reliable
+    // across coupon kinds. For each code, prefer its line-level allocations
+    // (order-level codes spread across items); fall back to the cart-level
+    // allocation — never both, so it can't double-count.
+    var couponDiscount = 0;
+    this.getAppliedCodes().forEach(function (code) {
+      var up = (code || '').toUpperCase();
+      var lineSum = 0;
+      (cart.items || []).forEach(function (it) {
+        (it.line_level_discount_allocations || []).forEach(function (a) {
+          var da = a.discount_application || {};
+          if (da.title && da.title.toUpperCase() === up) lineSum += (a.amount || 0);
+        });
+      });
+      if (lineSum > 0) { couponDiscount += lineSum; return; }
+      (cart.cart_level_discount_applications || []).forEach(function (d) {
+        if (d.title && d.title.toUpperCase() === up) couponDiscount += (d.total_allocated_amount || 0);
+      });
+    });
+
+    var totalAmount = cart.total_price || 0;
+    // Everything between retail and what's paid, minus the coupon portion, is
+    // the "discount on MRP" (sale + automatic/volume discounts).
+    var discountOnMRP = Math.max(0, totalMRP - totalAmount - couponDiscount);
 
     return (
       <div class="cartmax-pb-backdrop" onClick={() => this.setState({ priceBreakupOpen: false })}>
@@ -2225,23 +3359,27 @@ export default class CartDrawer extends Component {
           <div class="cartmax-pb-divider" />
           <div class="cartmax-price-breakup-rows">
             <div class="cartmax-pb-row">
-              <span class="cartmax-pb-label">Total</span>
+              <span class="cartmax-pb-label">Total MRP</span>
               <span class="cartmax-pb-amount">{formatMoney(totalMRP, curr)}</span>
             </div>
-            {discountTotal > 0 ? (
+            {discountOnMRP > 0 ? (
               <div class="cartmax-pb-row">
-                <span class="cartmax-pb-label">Coupon Discount</span>
-                <span class="cartmax-pb-amount cartmax-pb-discount">{'-'}{formatMoney(discountTotal, curr)}</span>
+                <span class="cartmax-pb-label">Discount on MRP</span>
+                <span class="cartmax-pb-amount cartmax-pb-discount">{'-'}{formatMoney(discountOnMRP, curr)}</span>
               </div>
             ) : null}
             <div class="cartmax-pb-row">
-              <span class="cartmax-pb-label">Delivery Fee</span>
-              <span class="cartmax-pb-amount">{formatMoney(0, curr)}</span>
+              <span class="cartmax-pb-label">Coupon Discount</span>
+              <span class="cartmax-pb-amount cartmax-pb-discount">{'-'}{formatMoney(couponDiscount, curr)}</span>
+            </div>
+            <div class="cartmax-pb-row">
+              <span class="cartmax-pb-label">Shipping Fee</span>
+              <span class="cartmax-pb-amount cartmax-pb-shipping">Calculated at checkout</span>
             </div>
           </div>
           <div class="cartmax-price-breakup-total">
             <span>Total Amount</span>
-            <span>{formatMoney(cart.total_price, curr)}</span>
+            <span>{formatMoney(totalAmount, curr)}</span>
           </div>
         </div>
       </div>
@@ -2250,7 +3388,7 @@ export default class CartDrawer extends Component {
 
     // ── Main render ───────────────────────────────────────────
 
-  render(props, { visible, open, cart, loading }) {
+  render(props, { visible, open, cart, loading, styled }) {
     var liveRegion = (
       <div
         id="cartmax-live-region"
@@ -2264,8 +3402,12 @@ export default class CartDrawer extends Component {
       return <div class="cartmax-wrapper">{liveRegion}</div>;
     }
 
-    var isEmpty = !loading && cart && cart.items && cart.items.length === 0;
-    var hasItems = !loading && cart && cart.items && cart.items.length > 0;
+    // Base the empty/has-items gates on the *display* list (cart items + any
+    // tombstones mid-collapse) and never show the empty state while an edit is
+    // still pending — so the body can't flash empty during a reconcile.
+    var displayItems = this._displayItems();
+    var hasItems = !loading && displayItems.length > 0;
+    var isEmpty = !loading && displayItems.length === 0 && !this._hasPendingEdits();
     var count = cart ? cart.item_count : 0;
 
     // Build overlay classes from settings
@@ -2284,7 +3426,11 @@ export default class CartDrawer extends Component {
     return (
       <div class="cartmax-wrapper">
         {liveRegion}
-        <div class={overlayClass} onClick={this.handleOverlayClick}>
+        <div
+          class={overlayClass}
+          onClick={this.handleOverlayClick}
+          style={styled ? undefined : { visibility: 'hidden' }}
+        >
           <div
             class="cartmax-drawer"
             ref={(el) => { this._drawerRef = el; }}
@@ -2329,7 +3475,7 @@ export default class CartDrawer extends Component {
                 : isEmpty
                   ? this.renderEmpty()
                   : hasItems
-                    ? this._displayItems().map((item) => this.renderLineItem(item))
+                    ? displayItems.map((item) => this.renderLineItem(item))
                     : null
               }
               {hasItems && sec.show_coupons ? this.renderCoupons() : null}
@@ -2344,6 +3490,10 @@ export default class CartDrawer extends Component {
 
             {/* Footer */}
             {hasItems ? this.renderFooter() : null}
+
+            {/* Offers & Coupons panel — overlays the whole drawer (root-level so
+                body scroll can't push it under the header) */}
+            {sec.show_coupons ? this.renderCouponsPanel() : null}
 
             {/* Price Breakup Panel — slides up over drawer content */}
             {this.state.priceBreakupOpen ? this.renderPriceBreakup() : null}

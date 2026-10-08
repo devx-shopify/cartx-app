@@ -2,6 +2,7 @@ import { useLoaderData, useFetcher, useOutletContext, useNavigate } from "react-
 import { useEffect, useState } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { ThemeSwitcher } from "./app.jsx";
+import ThemeSearchList from "../components/ThemeSearchList.jsx";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
@@ -178,13 +179,6 @@ function StepIndicator({ done, active }) {
     </svg>
   );
 }
-
-const THEME_ROLE_LABELS = {
-  MAIN: "Live",
-  UNPUBLISHED: "Draft",
-  DEMO: "Trial",
-  DEVELOPMENT: "Dev",
-};
 
 function StepIllustration({ accent, render }) {
   return (
@@ -409,31 +403,17 @@ function SetupGuide({ steps, completedCount, totalSteps, previewUrl, navigate, s
             overflow: "hidden",
           }}
         >
-          {themes.map((theme, i) => {
-            const isLive = theme.id === mainThemeId;
-            const roleLabel = THEME_ROLE_LABELS[theme.role] || theme.role;
-            return (
-              <s-clickable key={theme.id} onClick={() => pickThemeAndOpen(theme.id)}>
-                <div
-                  style={{
-                    padding: "14px 16px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    borderBottom: i < themes.length - 1 ? "1px solid var(--s-color-border, #e3e3e3)" : "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
-                    <s-text fontWeight="medium">{theme.name}</s-text>
-                    <s-badge tone={isLive ? "success" : undefined}>{roleLabel}</s-badge>
-                  </div>
-                  <s-icon name="chevron-end" />
-                </div>
-              </s-clickable>
-            );
-          })}
+          <ThemeSearchList
+            themes={themes}
+            mainThemeId={mainThemeId}
+            onSelect={pickThemeAndOpen}
+            pinIds={[mainThemeId]}
+            ariaLabel="Choose a theme"
+            searchPlaceholder="Search by name or ID…"
+            emptyLabel="No themes match your search."
+            maxHeight="min(420px, 50vh)"
+            renderTrailing={() => <s-icon name="chevron-end" />}
+          />
         </div>
         <s-button slot="footer-secondary" onClick={() => shopify.modal.hide("cartx-theme-picker")}>
           Cancel

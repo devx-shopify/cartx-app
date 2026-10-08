@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { EvaluateCartRequestSchema } from "../lib/schemas.js";
 import { checkRateLimit } from "../lib/rate-limit.server.js";
 import { loadConfig } from "../lib/config.server.js";
+import { loadStorefrontToken } from "../lib/storefront-token.server.js";
 import { adjustedTotal, adjustedQty, isFrozenPage, computeTotalSavings } from "../lib/helpers.server.js";
 import { evaluateOffers } from "../lib/evaluate/triggers.server.js";
 import { buildBar, getRibbonFromBar } from "../lib/evaluate/bar.server.js";
@@ -52,20 +53,21 @@ export const action = async ({ request }) => {
     return Response.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // shop comes from Shopify-signed query param — trust it
+  // shop MUST come from the Shopify-signed query param — it is covered by the
+  // HMAC verified above. Never fall back to a client-supplied body field, or a
+  // caller could read another shop's config/storefront token under a valid
+  // signature and rotate the value to evade rate limiting.
   const url = new URL(request.url);
-  const shopId = url.searchParams.get("shop") || body.shop_id;
-
-  if (shopId) {
-    const rateResult = checkRateLimit(shopId);
-    if (!rateResult.allowed) {
-      return Response.json({ error: "Rate limit exceeded" }, { status: 429 });
-    }
-  }
+  const shopId = url.searchParams.get("shop");
   const themeId = body.theme_id;
 
   if (!shopId || !themeId) {
     return Response.json({ error: "Missing shop or theme_id" }, { status: 400 });
+  }
+
+  const rateResult = checkRateLimit(shopId);
+  if (!rateResult.allowed) {
+    return Response.json({ error: "Rate limit exceeded" }, { status: 429 });
   }
 
   const parsed = EvaluateCartRequestSchema.safeParse({
@@ -121,7 +123,7 @@ export const action = async ({ request }) => {
     claimGifts = resolveClaimGifts(config.claim_gifts || [], cart, adjTotal, adjQty, page, customer);
   } catch (err) {
     console.error('[cartx] Evaluate pipeline error:', err);
-    return Response.json({ error: "Evaluation failed", message: err.message }, { status: 500 });
+    return Response.json({ error: "Evaluation failed" }, { status: 500 });
   }
 
   // Remove claimed items whose threshold is no longer met
@@ -151,17 +153,44 @@ export const action = async ({ request }) => {
 
   const totalSavings = computeTotalSavings(cart);
 
+  // The storefront token is optional (the drawer falls back to AJAX when it's
+  // null). A mint/DB hiccup must never take down the whole evaluate-cart
+  // response — guard it so a failure degrades to null instead of a 500.
+  let storefrontToken = null;
+  try {
+    storefrontToken = await loadStorefrontToken(shopId);
+  } catch (err) {
+    console.error('[cartx] loadStorefrontToken error:', err);
+  }
+
   // Build lightweight config for client-side caching
   const clientConfig = {
     offers: (config.offers || []).filter((o) => o.enabled).map((o) => ({
       id: o.id,
+      // `source` drives product/collection-presence triggers (e.g. a product-page
+      // gift with an empty `trigger: {}`). The client's local eval reconciles gifts
+      // on the AJAX cart, so without `source` it can't reproduce the server's
+      // product-presence trigger and the gift is never added. See rules.js.
+      source: o.source,
       trigger: o.trigger,
-      reward: { type: o.reward.type, gift_variants: o.reward.gift_variants, quantity_per_variant: o.reward.quantity_per_variant, add_mode: o.reward.add_mode },
+      reward: { type: o.reward.type, gift_variants: o.reward.gift_variants, gift_variant_data: o.reward.gift_variant_data, quantity_per_variant: o.reward.quantity_per_variant, add_mode: o.reward.add_mode },
       page_handles: o.page_handles,
       bar: o.bar,
     })),
+    // Minimal claim-gift data (id + trigger) so the drawer's local eval can pull
+    // a claimed freebie the instant the cart drops below its threshold — same as
+    // it does for offer gifts. Without this the client cache has no claim rules
+    // and a stranded claim gift can leave a zero-total cart.
+    claim_gifts: (config.claim_gifts || []).filter((g) => g.enabled).map((g) => ({
+      id: g.id,
+      trigger: g.trigger,
+    })),
     progress_bar: config.progress_bar,
     money_format: moneyFormat || '',
+    // Storefront GraphQL cart (Phase A): public token (app-minted) + pinned API
+    // version. Null until minted (drawer falls back to AJAX; flag off anyway).
+    storefront_token: storefrontToken,
+    storefront_api_version: '2026-01',
   };
 
   return Response.json({

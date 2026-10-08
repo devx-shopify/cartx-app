@@ -13,6 +13,25 @@ export const PLANS = {
       theme_switcher: false,
     },
   },
+  // Entry tier: cartx's promotion engine (volume/quantity-break discounts) WITHOUT
+  // the cart drawer. The volume Function applies the discount at checkout once the
+  // merchant sets `_cartx:"on"` (via the activator theme block). Capability fields
+  // (limits/offerRewardTypes/promoTypes/allowsDrawer) are read ONLY to restrict
+  // Basic — plans that omit them (free/pro/enterprise) stay unrestricted.
+  basic: {
+    name: "Basic",
+    amount: 50.0,
+    amountAnnual: 480.0, // 50 × 12 × 0.8
+    trialDays: 7,
+    features: {
+      discount_function: true,
+      theme_switcher: false,
+    },
+    limits: { active_offers: 3 },
+    offerRewardTypes: ["volume_discount"],
+    promoTypes: ["offer"],
+    allowsDrawer: false,
+  },
   pro: {
     name: "Pro",
     amount: 150.0,
@@ -25,7 +44,10 @@ export const PLANS = {
   },
 };
 
-export const ENTERPRISE_CONTACT_EMAIL = "ansh.varshney@devxlabs.ai";
+// Single contact address shown to merchants (Enterprise upgrades, privacy page,
+// etc.). Override via the CARTX_CONTACT_EMAIL Fly secret; falls back to current.
+export const ENTERPRISE_CONTACT_EMAIL =
+  process.env.CARTX_CONTACT_EMAIL || "ansh.varshney@devxlabs.ai";
 
 const INTERVAL_BY_CYCLE = {
   monthly: "EVERY_30_DAYS",
@@ -40,6 +62,30 @@ function isBillingTest() {
   const flag = process.env.SHOPIFY_BILLING_TEST;
   if (flag != null && flag !== "") return flag === "true";
   return process.env.NODE_ENV !== "production";
+}
+
+// Partner development stores can't be charged real money, so a merchant trying
+// the app there should get a free, card-less TEST charge — even though the app
+// runs in production. Detect them and force test mode. Real (non-dev) stores are
+// unaffected: partnerDevelopment is false → real charge as before. Fails safe to
+// false (real charge) so a query hiccup never silently makes a real store free.
+async function isDevelopmentStore(admin) {
+  try {
+    const res = await admin.graphql(
+      `#graphql
+      query { shop { plan { partnerDevelopment } } }`,
+    );
+    const json = await res.json();
+    return json?.data?.shop?.plan?.partnerDevelopment === true;
+  } catch (err) {
+    console.error("[cartx][billing] isDevelopmentStore query failed:", err);
+    return false;
+  }
+}
+
+// A charge is a test charge when the app env says so OR the store is a dev store.
+async function shouldTestCharge(admin) {
+  return isBillingTest() || (await isDevelopmentStore(admin));
 }
 
 function amountForCycle(plan, cycle) {
@@ -78,13 +124,57 @@ export async function ensureStoreRecord(shopDomain) {
   });
 }
 
+// ── Sync Shop Currency + Timezone ────────────────────────
+//
+// Persists the merchant's currency code and IANA timezone onto the Store row so
+// the analytics dashboard can format money correctly and the rollup cron (which
+// has no admin context) can bucket events into the merchant's local days.
+//
+// Cheap by design: once both values are stored we skip the Shopify call. A
+// merchant changing currency/timezone is rare and would be picked up on the
+// next install/auth refresh.
+export async function syncShopSettings(admin, shopDomain) {
+  const existing = await db.store.findUnique({
+    where: { storeDomain: shopDomain },
+    select: { currencyCode: true, ianaTimezone: true },
+  });
+  if (existing?.currencyCode && existing?.ianaTimezone) {
+    return existing;
+  }
+
+  let currencyCode = existing?.currencyCode ?? null;
+  let ianaTimezone = existing?.ianaTimezone ?? null;
+  try {
+    const res = await admin.graphql(
+      `#graphql
+      query ShopSettings {
+        shop { currencyCode ianaTimezone }
+      }`,
+    );
+    const json = await res.json();
+    currencyCode = json?.data?.shop?.currencyCode ?? currencyCode;
+    ianaTimezone = json?.data?.shop?.ianaTimezone ?? ianaTimezone;
+  } catch (err) {
+    console.error("[cartx][billing] syncShopSettings failed:", err);
+  }
+
+  await db.store.upsert({
+    where: { storeDomain: shopDomain },
+    create: { storeDomain: shopDomain, currencyCode, ianaTimezone },
+    update: { currencyCode, ianaTimezone },
+  });
+  return { currencyCode, ianaTimezone };
+}
+
 // Drop Enterprise status — used when a merchant self-downgrades to a
 // standard plan. They become a normal store and must be re-negotiated to
 // get Enterprise pricing back.
 export async function clearEnterpriseStatus(shopDomain) {
   return db.store.update({
     where: { storeDomain: shopDomain },
-    data: { isLegacy: false, legacyPrice: null },
+    // Reset planTier too — otherwise a stale "enterprise" label lingers and the
+    // /enterprise dashboard keeps showing the store as Enterprise after cancel.
+    data: { planTier: "free", isLegacy: false, legacyPrice: null },
   });
 }
 
@@ -174,9 +264,16 @@ export async function getActivePlan(admin, shopDomain) {
   const billingCycle = pricing?.interval === "ANNUAL" ? "annual" : "monthly";
 
   const proThreshold = amountForCycle(PLANS.pro, billingCycle);
+  const basicThreshold = amountForCycle(PLANS.basic, billingCycle);
 
+  // Resolve tiers by amount, highest first — Pro must be checked before Basic so
+  // a Pro subscription never mis-resolves to the cheaper Basic band.
   if (amount >= proThreshold) {
     return { plan: "pro", subscriptionId: standardSub.id, isLegacy: false, billingCycle, ...PLANS.pro };
+  }
+
+  if (amount >= basicThreshold) {
+    return { plan: "basic", subscriptionId: standardSub.id, isLegacy: false, billingCycle, ...PLANS.basic };
   }
 
   return { plan: "free", isLegacy: false, billingCycle: "monthly", ...PLANS.free };
@@ -192,6 +289,7 @@ export async function createSubscription(admin, planKey, returnUrl, billingCycle
   const cycle = billingCycle === "annual" ? "annual" : "monthly";
   const amount = amountForCycle(plan, cycle);
   const interval = INTERVAL_BY_CYCLE[cycle];
+  const testCharge = await shouldTestCharge(admin);
 
   const res = await admin.graphql(
     `#graphql
@@ -200,7 +298,7 @@ export async function createSubscription(admin, planKey, returnUrl, billingCycle
         name: $name
         returnUrl: $returnUrl
         trialDays: $trialDays
-        test: ${isBillingTest()}
+        test: ${testCharge}
         lineItems: [{
           plan: {
             appRecurringPricingDetails: {
@@ -240,6 +338,7 @@ export async function createEnterpriseSubscription(admin, returnUrl, amount) {
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error("Enterprise price must be greater than 0");
   }
+  const testCharge = await shouldTestCharge(admin);
 
   const res = await admin.graphql(
     `#graphql
@@ -247,7 +346,7 @@ export async function createEnterpriseSubscription(admin, returnUrl, amount) {
       appSubscriptionCreate(
         name: $name
         returnUrl: $returnUrl
-        test: ${isBillingTest()}
+        test: ${testCharge}
         replacementBehavior: STANDARD
         lineItems: [{
           plan: {
@@ -308,6 +407,61 @@ export async function cancelSubscription(admin, subscriptionId) {
 export function hasFeature(planData, feature) {
   return planData?.features?.[feature] === true;
 }
+
+// ── Plan capability checks ───────────────────────────────
+//
+// These read the capability descriptors on a plan (limits/offerRewardTypes/
+// promoTypes/allowsDrawer). Only Basic defines them, so plans that omit them
+// (free/pro/enterprise) are treated as UNRESTRICTED — this keeps existing tiers
+// (incl. live Pro/Enterprise stores) byte-for-byte unchanged.
+
+export function planOfferLimit(planData) {
+  return PLANS[planData?.plan]?.limits?.active_offers ?? Infinity;
+}
+
+export function planAllowsReward(planData, rewardType) {
+  const allowed = PLANS[planData?.plan]?.offerRewardTypes;
+  return !allowed || allowed.includes(rewardType);
+}
+
+export function planAllowsPromoType(planData, promoType) {
+  const allowed = PLANS[planData?.plan]?.promoTypes;
+  return !allowed || allowed.includes(promoType);
+}
+
+export function planAllowsDrawer(planData) {
+  return PLANS[planData?.plan]?.allowsDrawer !== false;
+}
+
+// ── Promotion policy guards (server-side enforcement) ────
+//
+// Used by the promotion write actions to enforce a plan's promotion policy.
+// Each returns an error payload the action can return verbatim, or null when the
+// op is allowed. Only Basic carries a policy; on every other plan these are
+// no-ops (the capability helpers above return "unrestricted").
+
+function policyError(message) {
+  return { ok: false, error: message, upgrade_required: true, required_plan: "pro" };
+}
+
+export function promoTypePolicyError(planData, promoType) {
+  if (planAllowsPromoType(planData, promoType)) return null;
+  return policyError(
+    "Your plan supports offers only — upgrade to Pro for coupons and claim gifts.",
+  );
+}
+
+export function offerRewardPolicyError(planData, rewardType) {
+  if (planAllowsReward(planData, rewardType)) return null;
+  return policyError(
+    "Your plan supports volume discounts only — upgrade to Pro for free gifts and bundles.",
+  );
+}
+
+// Note: the active-offer COUNT is not hard-enforced. Over-limit volume offers are
+// simply not synced to the Function (buildVolumeDiscountConfig slices to the plan
+// limit), so only the first N apply at checkout, and the promotions page shows an
+// upgrade note. `planOfferLimit` above drives both.
 
 export function requireFeature(planData, feature) {
   if (!hasFeature(planData, feature)) {

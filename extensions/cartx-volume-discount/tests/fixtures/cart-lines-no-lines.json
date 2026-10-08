@@ -4,10 +4,12 @@
     "target": "cart.lines.discounts.generate.run",
     "input": {
       "cart": {
+        "cartxActive": null,
         "lines": []
       },
       "discount": {
-        "discountClasses": ["ORDER", "PRODUCT"]
+        "discountClasses": ["PRODUCT"],
+        "metafield": null
       }
     },
     "output": {

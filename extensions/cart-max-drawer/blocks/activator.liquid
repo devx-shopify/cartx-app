@@ -1,0 +1,32 @@
+{%- comment -%}
+  cartx Promotions activator (Basic plan / drawer-less installs).
+
+  Sets the `_cartx:"on"` cart attribute that the cartx volume-discount Function
+  gates on — WITHOUT loading the drawer bundle. This is the no-drawer equivalent
+  of the drawer's ensureCartxAttribute() (app/drawer-src/src/evaluate.js). Enable
+  THIS app embed (not "cartx Drawer") on plans that only use the promotion engine.
+
+  Loads no assets and mutates the cart at most once per session.
+{%- endcomment -%}
+<script>
+  (function () {
+    try {
+      if (window.sessionStorage && sessionStorage.getItem('cartx_activated')) return;
+      fetch('/cart/update.js', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attributes: { _cartx: 'on' } })
+      }).then(function () {
+        try { sessionStorage.setItem('cartx_activated', '1'); } catch (e) {}
+      }).catch(function () {});
+    } catch (e) {}
+  })();
+</script>
+
+{% schema %}
+{
+  "name": "cartx Promotions",
+  "target": "body",
+  "settings": []
+}
+{% endschema %}

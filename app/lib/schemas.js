@@ -57,9 +57,14 @@ export const OfferSchema = z.object({
   reward: z.discriminatedUnion('type', [
     z.object({
       type: z.literal('auto_add_gift'),
-      gift_variants: z.array(z.string()).min(1),
+      // No `.min(1)` here — an ENABLED offer requires ≥1 gift (enforced by the
+      // superRefine below), but a DRAFT (disabled) offer may be empty so a
+      // webhook can park an offer whose gift product was deleted (see
+      // product-sync.server.js) instead of failing validation and leaving it live.
+      gift_variants: z.array(z.string()),
       gift_variant_data: z.array(z.object({
         variant_id: z.string(),
+        product_id: z.string().optional(),
         title: z.string(),
         image: z.string(),
       })).optional(),
@@ -69,7 +74,7 @@ export const OfferSchema = z.object({
     }),
     z.object({
       type: z.literal('bundle'),
-      bundle_variants: z.array(z.string()).min(1),
+      bundle_variants: z.array(z.string()),
       min_offer_quantity: z.number().int().min(1),
     }),
     z.object({
@@ -89,7 +94,16 @@ export const OfferSchema = z.object({
   page_handles: z.array(z.string()).min(1),
   page_targets: z.array(PageTargetSchema).optional(),
   customer_tags: CustomerTagsTargetSchema,
-}).passthrough()
+}).passthrough().superRefine((offer, ctx) => {
+  // Enabled offers must have a complete reward; drafts may be incomplete.
+  if (!offer.enabled) return
+  if (offer.reward?.type === 'auto_add_gift' && (offer.reward.gift_variants || []).length < 1) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['reward', 'gift_variants'], message: 'An enabled gift offer needs at least one gift variant' })
+  }
+  if (offer.reward?.type === 'bundle' && (offer.reward.bundle_variants || []).length < 1) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['reward', 'bundle_variants'], message: 'An enabled bundle needs at least one variant' })
+  }
+})
 
 export const CouponSchema = z.object({
   id: z.string().min(1),
@@ -116,9 +130,12 @@ export const ClaimGiftSchema = z.object({
     type: z.enum(['price', 'quantity']),
     threshold: z.number().positive(),
   }),
-  claimable_variants: z.array(z.string()).min(1),
+  // No `.min(1)` — enforced only when enabled (superRefine); a draft may be empty
+  // so a webhook can park a claim gift whose product was deleted.
+  claimable_variants: z.array(z.string()),
   claimable_variant_data: z.array(z.object({
     variant_id: z.string(),
+    product_id: z.string().optional(),
     title: z.string(),
     image: z.string(),
   })).optional(),
@@ -128,7 +145,11 @@ export const ClaimGiftSchema = z.object({
   page_targets: z.array(PageTargetSchema).optional(),
   customer_tags: CustomerTagsTargetSchema,
   bar: BarSchema.optional(),
-}).passthrough()
+}).passthrough().superRefine((cg, ctx) => {
+  if (cg.enabled && (cg.claimable_variants || []).length < 1) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['claimable_variants'], message: 'An enabled claim gift needs at least one variant' })
+  }
+})
 
 export const VisualMilestoneSchema = z.object({
   id: z.string().min(1),
@@ -147,6 +168,7 @@ export const VisualMilestoneSchema = z.object({
 export const UpsellProductSchema = z.object({
   product_id: z.string().min(1),
   title: z.string().min(1),
+  handle: z.string().optional(),
   image_url: z.string(),
   variant_id: z.string().min(1),
   price: z.string().min(1),

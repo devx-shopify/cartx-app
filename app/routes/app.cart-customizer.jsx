@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useLoaderData, useFetcher, useRouteError } from "react-router";
+import { useLoaderData, useFetcher, useOutletContext, useRouteError, redirect } from "react-router";
+import { ThemeSwitcher } from "./app.jsx";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -9,13 +10,37 @@ import {
   getShopAndTheme,
   getSelectedTheme,
 } from "../lib/config.server.js";
+import { getActivePlan, planAllowsDrawer } from "../lib/billing.server.js";
+import { syncDrawerMetafield } from "../lib/drawer-metafield.server.js";
+import { ensureStorefrontToken } from "../lib/storefront-token.server.js";
 import CartPreview from "../components/CartPreview.jsx";
+
+// GoKwik "open checkout" snippet used by the customizer's checkout action. Calls
+// GoKwik's handler when present, else falls back to native /checkout so a store
+// where GoKwik hasn't loaded still checks out. Kept in sync with the value set
+// manually on the live store so new stores get the same, updated behavior.
+const GOKWIK_CHECKOUT_JS = `if (typeof window.onCheckoutClick === 'function') {
+  window.onCheckoutClick(button);
+} else {
+  window.location.href = '/checkout';
+}`;
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
+  // The cart drawer isn't part of drawer-less plans (Basic) — send them to
+  // billing rather than the customizer. Nav also hides the link; this guards a
+  // direct visit.
+  const planData = await getActivePlan(admin, session.shop);
+  if (!planAllowsDrawer(planData)) return redirect("/app/billing");
   const preferred = await getSelectedTheme(session.shop);
   const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
+  // Backfill the storefront styling metafield for installs that configured the
+  // drawer before this metafield existed (best-effort; never blocks the page).
+  await syncDrawerMetafield(admin, config.drawer);
+  // Mint the app-owned Storefront access token on first admin visit (GraphQL
+  // cart migration, Phase A). Best-effort; reused once minted.
+  await ensureStorefrontToken(admin, shopId);
   return { drawer: config.drawer, promotionCoupons: config.coupons.filter((c) => c.enabled) };
 };
 
@@ -29,6 +54,9 @@ export const action = async ({ request }) => {
   if (body._action === "save_drawer") {
     config.drawer = body.drawer;
     await saveConfig(shopId, themeId, config);
+    // Mirror styling to the app-data metafield so the storefront drawer can
+    // apply it on first paint (see app-embed.liquid data-drawer-config).
+    await syncDrawerMetafield(admin, config.drawer);
     return { ok: true };
   }
 
@@ -36,6 +64,7 @@ export const action = async ({ request }) => {
     config.drawer = {};
     await saveConfig(shopId, themeId, config);
     const fresh = await loadConfig(shopId, themeId);
+    await syncDrawerMetafield(admin, fresh.drawer);
     return { ok: true, drawer: fresh.drawer };
   }
 
@@ -187,7 +216,7 @@ function SliderField({ label, value, min, max, step = 1, onChange, suffix = "" }
         step={step}
         value={value}
         onInput={(e) => onChange(Number(e.target.value))}
-        style={{ width: "100%", accentColor: "#5e32e2", cursor: "pointer" }}
+        style={{ width: "100%", accentColor: "#1a1a1a", cursor: "pointer" }}
       />
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#8c9196", marginTop: 4 }}>
         <span>
@@ -208,7 +237,7 @@ function SliderField({ label, value, min, max, step = 1, onChange, suffix = "" }
 const TABS = [
   { id: "design", label: "Design" },
   { id: "content", label: "Content" },
-  { id: "layout", label: "Layout" },
+  { id: "features", label: "Features" },
   { id: "behavior", label: "Behavior" },
   { id: "advanced", label: "Advanced" },
 ];
@@ -297,6 +326,7 @@ function SectionToggles({ sections, onToggle }) {
 
 export default function CartCustomizer() {
   const { drawer: initial, promotionCoupons } = useLoaderData();
+  const { themes, activeThemeId, mainThemeId } = useOutletContext();
   const [settings, setSettings] = useState(initial);
   const [dirty, setDirty] = useState(false);
   const [showEmpty, setShowEmpty] = useState(false);
@@ -402,7 +432,7 @@ export default function CartCustomizer() {
     const lottieUrl = settings.behavior.confetti_lottie_url;
     if (lottieUrl) {
       const existing = document.querySelector("script[data-cartmax-lottie-admin]");
-      function playLottie() {
+      const playLottie = () => {
         const player = document.createElement("dotlottie-player");
         player.setAttribute("src", lottieUrl);
         player.setAttribute("autoplay", "");
@@ -411,7 +441,7 @@ export default function CartCustomizer() {
         previewEl.appendChild(player);
         player.addEventListener("complete", () => player.remove());
         setTimeout(() => { if (player.parentNode) player.remove(); }, 6000);
-      }
+      };
       if (customElements.get("dotlottie-player")) playLottie();
       else if (!existing) {
         const s2 = document.createElement("script");
@@ -475,6 +505,9 @@ export default function CartCustomizer() {
       </ui-save-bar>
 
       <s-page heading="Customize Cart">
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+          <ThemeSwitcher themes={themes} activeThemeId={activeThemeId} mainThemeId={mainThemeId} />
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: `minmax(0, 1fr) ${PREVIEW_VISUAL_WIDTH}px`, gap: 24, alignItems: "start" }}>
           {/* ── Left: Settings ─────────────────── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
@@ -488,12 +521,12 @@ export default function CartCustomizer() {
               <ContentTab s={s} update={update} />
             )}
 
-            {activeTab === "layout" && (
-              <LayoutTab s={s} update={update} />
+            {activeTab === "features" && (
+              <FeaturesTab s={s} update={update} onTestConfetti={handleTestConfetti} />
             )}
 
             {activeTab === "behavior" && (
-              <BehaviorTab s={s} update={update} onTestConfetti={handleTestConfetti} />
+              <BehaviorTab s={s} update={update} />
             )}
 
             {activeTab === "advanced" && (
@@ -576,12 +609,70 @@ export default function CartCustomizer() {
   );
 }
 
+// ── Collapsible section ──────────────────────────────────────
+// Wraps a Polaris s-section card with a clickable header + chevron so each
+// settings group can collapse. Per tab, the first section is rendered with
+// defaultOpen so something is always visible without scrolling a wall of
+// controls. State is local, so it resets to the default each time a tab mounts.
+function CollapsibleSection({ heading, description, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <s-section>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open ? "true" : "false"}
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 12,
+          width: "100%",
+          padding: 0,
+          margin: 0,
+          border: "none",
+          background: "none",
+          cursor: "pointer",
+          textAlign: "left",
+          fontFamily: "inherit",
+        }}
+      >
+        <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "#1a1a1a" }}>{heading}</span>
+          {description ? (
+            <span style={{ fontSize: 13, color: "#6d7175", lineHeight: 1.4 }}>{description}</span>
+          ) : null}
+        </span>
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#6d7175"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{
+            flexShrink: 0,
+            marginTop: 2,
+            transform: open ? "rotate(180deg)" : "none",
+            transition: "transform 0.2s ease",
+          }}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {open ? <div style={{ marginTop: 16 }}>{children}</div> : null}
+    </s-section>
+  );
+}
+
 // ── Tabs ─────────────────────────────────────────────────────
 
 function DesignTab({ s, update }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <s-section heading="Colors" description="Customize the cart drawer's color palette.">
+      <CollapsibleSection heading="Colors" description="Customize the cart drawer's color palette." defaultOpen>
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
             <ColorField label="Primary" value={s.colors.primary} onChange={(v) => update("colors.primary", v)} />
@@ -606,9 +697,34 @@ function DesignTab({ s, update }) {
             onChange={(v) => update("colors.overlay_opacity", v)}
           />
         </div>
-      </s-section>
+      </CollapsibleSection>
 
-      <s-section heading="Shape" description="Corner radius and button style.">
+      <CollapsibleSection heading="Typography" description="Font sizes for headings and body text.">
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <SegmentedControl
+            label="Heading size"
+            options={[
+              { value: "small", label: "Small" },
+              { value: "medium", label: "Medium" },
+              { value: "large", label: "Large" },
+            ]}
+            value={s.typography.heading_size}
+            onChange={(v) => update("typography.heading_size", v)}
+          />
+          <SegmentedControl
+            label="Body text size"
+            options={[
+              { value: "small", label: "Small" },
+              { value: "medium", label: "Medium" },
+              { value: "large", label: "Large" },
+            ]}
+            value={s.typography.body_size}
+            onChange={(v) => update("typography.body_size", v)}
+          />
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection heading="Shape" description="Corner radius and button style.">
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <SegmentedControl
             label="Corner radius"
@@ -632,42 +748,105 @@ function DesignTab({ s, update }) {
             onChange={(v) => update("shape.button_style", v)}
           />
         </div>
-      </s-section>
+      </CollapsibleSection>
 
-      <s-section heading="Typography" description="Font sizes for headings and body text.">
+      <CollapsibleSection heading="Drawer" description="Position and size of the cart drawer.">
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <SegmentedControl
-            label="Heading size"
-            options={[
-              { value: "small", label: "Small" },
-              { value: "medium", label: "Medium" },
-              { value: "large", label: "Large" },
-            ]}
-            value={s.typography.heading_size}
-            onChange={(v) => update("typography.heading_size", v)}
+          <SliderField
+            label="Drawer width"
+            value={s.layout.drawer_width}
+            min={320}
+            max={560}
+            step={20}
+            onChange={(v) => update("layout.drawer_width", v)}
+            suffix="px"
           />
           <SegmentedControl
-            label="Body text size"
+            label="Position"
             options={[
-              { value: "small", label: "Small" },
-              { value: "medium", label: "Medium" },
-              { value: "large", label: "Large" },
+              { value: "right", label: "Right" },
+              { value: "left", label: "Left" },
             ]}
-            value={s.typography.body_size}
-            onChange={(v) => update("typography.body_size", v)}
+            value={s.layout.drawer_position}
+            onChange={(v) => update("layout.drawer_position", v)}
           />
         </div>
-      </s-section>
+      </CollapsibleSection>
+
+      <CollapsibleSection heading="Cart items" description="How items in the cart are displayed.">
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <SegmentedControl
+            label="Image style"
+            options={[
+              { value: "square", label: "Square" },
+              { value: "rounded", label: "Rounded" },
+              { value: "circle", label: "Circle" },
+            ]}
+            value={s.layout.image_style}
+            onChange={(v) => update("layout.image_style", v)}
+          />
+          <SegmentedControl
+            label="Image size"
+            options={[
+              { value: "small", label: "Small" },
+              { value: "medium", label: "Medium" },
+              { value: "large", label: "Large" },
+            ]}
+            value={s.layout.image_size}
+            onChange={(v) => update("layout.image_size", v)}
+          />
+          <SegmentedControl
+            label="Item density"
+            options={[
+              { value: "compact", label: "Compact" },
+              { value: "comfortable", label: "Comfortable" },
+              { value: "spacious", label: "Spacious" },
+            ]}
+            value={s.layout.density}
+            onChange={(v) => update("layout.density", v)}
+          />
+          <SegmentedControl
+            label="Quantity controls"
+            options={[
+              { value: "bordered", label: "Bordered" },
+              { value: "minimal", label: "Minimal" },
+            ]}
+            value={s.layout.qty_style}
+            onChange={(v) => update("layout.qty_style", v)}
+          />
+          <s-divider />
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <s-checkbox
+              label="Show compare at price"
+              checked={s.layout.show_compare_price !== false || undefined}
+              onChange={(e) => update("layout.show_compare_price", e.target.checked)}
+            />
+            <s-checkbox
+              label="Variant switcher"
+              checked={s.layout.show_variant_switcher || undefined}
+              onChange={(e) => update("layout.show_variant_switcher", e.target.checked)}
+            />
+            <s-checkbox
+              label="Show vendor name"
+              checked={s.layout.show_vendor || undefined}
+              onChange={(e) => update("layout.show_vendor", e.target.checked)}
+            />
+            <s-checkbox
+              label="Show remove button"
+              checked={s.layout.show_remove_btn || undefined}
+              onChange={(e) => update("layout.show_remove_btn", e.target.checked)}
+            />
+          </div>
+        </div>
+      </CollapsibleSection>
     </div>
   );
 }
 
 function ContentTab({ s, update }) {
-  const ab = s.announcement_bar || {};
-  const pb = s.progress_bar || {};
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <s-section heading="Cart copy" description="Customize the headings, button labels, and helper text.">
+      <CollapsibleSection heading="Cart copy" description="Customize the headings, button labels, and helper text." defaultOpen>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <s-text-field label="Cart title" value={s.text.cart_title} onInput={(e) => update("text.cart_title", e.target.value)} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
@@ -676,8 +855,8 @@ function ContentTab({ s, update }) {
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 0" }}>
             <div>
-              <s-text>Allow multiple coupons</s-text>
-              <div style={{ fontSize: 12, color: "#6d7175", marginTop: 2 }}>When off, the coupon input hides after one code is applied.</div>
+              <s-text>Allow multiple coupons (stacking)</s-text>
+              <div style={{ fontSize: 12, color: "#6d7175", marginTop: 2 }}>On: shoppers can apply several codes at once. Off: applying a new code replaces the current one (single coupon per order).</div>
             </div>
             <s-switch
               label="Allow multiple coupons"
@@ -697,9 +876,9 @@ function ContentTab({ s, update }) {
             onInput={(e) => update("text.offer_cards_heading", e.target.value)}
           />
         </div>
-      </s-section>
+      </CollapsibleSection>
 
-      <s-section heading="Empty cart" description="Shown when the cart is empty.">
+      <CollapsibleSection heading="Empty cart" description="Shown when the cart is empty.">
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* Icon upload */}
           <div>
@@ -797,30 +976,9 @@ function ContentTab({ s, update }) {
             details="Where the empty cart button takes the customer. Leave empty to close the drawer, or enter a URL to redirect."
           />
         </div>
-      </s-section>
+      </CollapsibleSection>
 
-      <s-section heading="Announcement bar" description="A full-width strip shown above the cart header.">
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <s-text-field
-            label="Text"
-            value={ab.text || ""}
-            onInput={(e) => update("announcement_bar.text", e.target.value)}
-            placeholder="Free shipping on orders over $50"
-            details="Leave empty to hide the announcement bar."
-          />
-          <SegmentedControl
-            label="Animation"
-            options={[
-              { value: "static", label: "Static" },
-              { value: "marquee", label: "Marquee" },
-            ]}
-            value={ab.type || "static"}
-            onChange={(v) => update("announcement_bar.type", v)}
-          />
-        </div>
-      </s-section>
-
-      <s-section heading="Checkout" description="Customize the checkout footer bar and savings ribbon.">
+      <CollapsibleSection heading="Checkout" description="Customize the checkout footer bar and savings ribbon.">
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <s-text-field
             label="Checkout message"
@@ -846,9 +1004,24 @@ function ContentTab({ s, update }) {
             <ColorField label="Ribbon amount color" value={s.colors.savings_amount} onChange={(v) => update("colors.savings_amount", v)} />
           </div>
         </div>
-      </s-section>
+      </CollapsibleSection>
+    </div>
+  );
+}
 
-      <s-section heading="Progress bar" description="Customize the milestone progress bar appearance.">
+function FeaturesTab({ s, update, onTestConfetti }) {
+  const ab = s.announcement_bar || {};
+  const pb = s.progress_bar || {};
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <CollapsibleSection heading="Section visibility" description="Toggle which sections appear in the cart drawer." defaultOpen>
+        <SectionToggles
+          sections={s.sections}
+          onToggle={(key, val) => update("sections." + key, val)}
+        />
+      </CollapsibleSection>
+
+      <CollapsibleSection heading="Progress bar" description="Customize the milestone progress bar appearance.">
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <SegmentedControl
             label="Track thickness"
@@ -985,9 +1158,30 @@ function ContentTab({ s, update }) {
             )}
           </div>
         </div>
-      </s-section>
+      </CollapsibleSection>
 
-      <s-section heading="Upsells" description="Customize how recommended products are displayed.">
+      <CollapsibleSection heading="Announcement bar" description="A full-width strip shown above the cart header.">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <s-text-field
+            label="Text"
+            value={ab.text || ""}
+            onInput={(e) => update("announcement_bar.text", e.target.value)}
+            placeholder="Free shipping on orders over $50"
+            details="Leave empty to hide the announcement bar."
+          />
+          <SegmentedControl
+            label="Animation"
+            options={[
+              { value: "static", label: "Static" },
+              { value: "marquee", label: "Marquee" },
+            ]}
+            value={ab.type || "static"}
+            onChange={(v) => update("announcement_bar.type", v)}
+          />
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection heading="Upsells" description="Customize how recommended products are displayed.">
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <SegmentedControl
             label="Card layout"
@@ -1046,118 +1240,39 @@ function ContentTab({ s, update }) {
             onChange={(e) => update("layout.upsells_show_compare_price", e.target.checked)}
           />
         </div>
-      </s-section>
+      </CollapsibleSection>
 
-      <s-section heading="Section visibility" description="Toggle which sections appear in the cart drawer.">
-        <SectionToggles
-          sections={s.sections}
-          onToggle={(key, val) => update("sections." + key, val)}
-        />
-      </s-section>
+      <CollapsibleSection heading="Confetti" description="Celebrate when a customer unlocks a milestone.">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <s-switch
+            label="Burst confetti on milestone unlock"
+            checked={s.behavior.confetti || undefined}
+            onChange={(e) => update("behavior.confetti", e.target.checked)}
+          />
+          {s.behavior.confetti && (
+            <>
+              <s-text-field
+                label="Lottie animation URL"
+                value={s.behavior.confetti_lottie_url}
+                onInput={(e) => update("behavior.confetti_lottie_url", e.target.value)}
+                placeholder="https://assets.lottiefiles.com/..."
+                details="Paste a .lottie or .json URL from LottieFiles. Leave empty to use the default confetti."
+              />
+              <div>
+                <s-button onClick={onTestConfetti}>Test confetti</s-button>
+              </div>
+            </>
+          )}
+        </div>
+      </CollapsibleSection>
     </div>
   );
 }
 
-function LayoutTab({ s, update }) {
+function BehaviorTab({ s, update }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <s-section heading="Drawer" description="Position and size of the cart drawer.">
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <SliderField
-            label="Drawer width"
-            value={s.layout.drawer_width}
-            min={320}
-            max={560}
-            step={20}
-            onChange={(v) => update("layout.drawer_width", v)}
-            suffix="px"
-          />
-          <SegmentedControl
-            label="Position"
-            options={[
-              { value: "right", label: "Right" },
-              { value: "left", label: "Left" },
-            ]}
-            value={s.layout.drawer_position}
-            onChange={(v) => update("layout.drawer_position", v)}
-          />
-        </div>
-      </s-section>
-
-      <s-section heading="Cart items" description="How items in the cart are displayed.">
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <SegmentedControl
-            label="Image style"
-            options={[
-              { value: "square", label: "Square" },
-              { value: "rounded", label: "Rounded" },
-              { value: "circle", label: "Circle" },
-            ]}
-            value={s.layout.image_style}
-            onChange={(v) => update("layout.image_style", v)}
-          />
-          <SegmentedControl
-            label="Image size"
-            options={[
-              { value: "small", label: "Small" },
-              { value: "medium", label: "Medium" },
-              { value: "large", label: "Large" },
-            ]}
-            value={s.layout.image_size}
-            onChange={(v) => update("layout.image_size", v)}
-          />
-          <SegmentedControl
-            label="Item density"
-            options={[
-              { value: "compact", label: "Compact" },
-              { value: "comfortable", label: "Comfortable" },
-              { value: "spacious", label: "Spacious" },
-            ]}
-            value={s.layout.density}
-            onChange={(v) => update("layout.density", v)}
-          />
-          <SegmentedControl
-            label="Quantity controls"
-            options={[
-              { value: "bordered", label: "Bordered" },
-              { value: "minimal", label: "Minimal" },
-            ]}
-            value={s.layout.qty_style}
-            onChange={(v) => update("layout.qty_style", v)}
-          />
-          <s-divider />
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <s-checkbox
-              label="Show compare at price"
-              checked={s.layout.show_compare_price !== false || undefined}
-              onChange={(e) => update("layout.show_compare_price", e.target.checked)}
-            />
-            <s-checkbox
-              label="Variant switcher"
-              checked={s.layout.show_variant_switcher || undefined}
-              onChange={(e) => update("layout.show_variant_switcher", e.target.checked)}
-            />
-            <s-checkbox
-              label="Show vendor name"
-              checked={s.layout.show_vendor || undefined}
-              onChange={(e) => update("layout.show_vendor", e.target.checked)}
-            />
-            <s-checkbox
-              label="Show remove button"
-              checked={s.layout.show_remove_btn || undefined}
-              onChange={(e) => update("layout.show_remove_btn", e.target.checked)}
-            />
-          </div>
-        </div>
-      </s-section>
-    </div>
-  );
-}
-
-function BehaviorTab({ s, update, onTestConfetti }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <s-section heading="Open & close" description="How the drawer opens, closes, and animates.">
+      <CollapsibleSection heading="Open & close" description="How the drawer opens, closes, and animates." defaultOpen>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <s-switch
             label="Auto-open when item is added to cart"
@@ -1175,9 +1290,9 @@ function BehaviorTab({ s, update, onTestConfetti }) {
             onChange={(e) => update("behavior.close_on_esc", e.target.checked)}
           />
         </div>
-      </s-section>
+      </CollapsibleSection>
 
-      <s-section heading="Animation" description="How the drawer enters and leaves the screen.">
+      <CollapsibleSection heading="Animation" description="How the drawer enters and leaves the screen.">
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <SegmentedControl
             label="Animation style"
@@ -1200,31 +1315,59 @@ function BehaviorTab({ s, update, onTestConfetti }) {
             onChange={(v) => update("behavior.animation_speed", v)}
           />
         </div>
-      </s-section>
+      </CollapsibleSection>
 
-      <s-section heading="Confetti" description="Celebrate when a customer unlocks a milestone.">
+      <CollapsibleSection heading="Checkout button" description="What happens when the customer taps Checkout. If the snippet throws an error, cartx falls back to /checkout.">
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <s-switch
-            label="Burst confetti on milestone unlock"
-            checked={s.behavior.confetti || undefined}
-            onChange={(e) => update("behavior.confetti", e.target.checked)}
+          <SegmentedControl
+            label="Action"
+            options={[
+              { value: "", label: "Go to /checkout" },
+              { value: "custom", label: "Custom JavaScript" },
+            ]}
+            value={s.behavior.checkout_js ? "custom" : ""}
+            onChange={(v) => {
+              if (v === "") {
+                update("behavior.checkout_js", "");
+              } else if (!s.behavior.checkout_js) {
+                update("behavior.checkout_js", GOKWIK_CHECKOUT_JS);
+              }
+            }}
           />
-          {s.behavior.confetti && (
+          {s.behavior.checkout_js ? (
             <>
-              <s-text-field
-                label="Lottie animation URL"
-                value={s.behavior.confetti_lottie_url}
-                onInput={(e) => update("behavior.confetti_lottie_url", e.target.value)}
-                placeholder="https://assets.lottiefiles.com/..."
-                details="Paste a .lottie or .json URL from LottieFiles. Leave empty to use the default confetti."
+              <textarea
+                value={s.behavior.checkout_js}
+                onInput={(e) => update("behavior.checkout_js", e.target.value)}
+                rows={4}
+                placeholder="window.onCheckoutClick(button)"
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  padding: "12px 14px",
+                  border: "1px solid #d4d6d8",
+                  borderRadius: 10,
+                  fontSize: 12,
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                  resize: "vertical",
+                  background: "#fff",
+                  color: "#1a1a1a",
+                  lineHeight: 1.6,
+                  outline: "none",
+                }}
               />
-              <div>
-                <s-button onClick={onTestConfetti}>Test confetti</s-button>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <s-button onClick={() => update("behavior.checkout_js", GOKWIK_CHECKOUT_JS)}>GoKwik</s-button>
+                <s-button onClick={() => update("behavior.checkout_js", "window.RazorpayMagicCheckout && window.RazorpayMagicCheckout.trigger()")}>Razorpay Magic</s-button>
+                <s-button onClick={() => update("behavior.checkout_js", "window.ScCheckout && window.ScCheckout.open()")}>Shiprocket</s-button>
               </div>
+              <s-text color="subdued">
+                The snippet runs as a JS function body. <code>button</code> refers to the checkout button element. If it throws, cartx falls back to /checkout.
+              </s-text>
             </>
-          )}
+          ) : null}
         </div>
-      </s-section>
+      </CollapsibleSection>
     </div>
   );
 }
@@ -1232,7 +1375,7 @@ function BehaviorTab({ s, update, onTestConfetti }) {
 function AdvancedTab({ s, update, onExport, onImport, onReset }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <s-section heading="Custom CSS" description="Applied inside the cart drawer only. Does not affect your theme.">
+      <CollapsibleSection heading="Custom CSS" description="Applied inside the cart drawer only. Does not affect your theme." defaultOpen>
         <textarea
           value={s.advanced.custom_css}
           onInput={(e) => update("advanced.custom_css", e.target.value)}
@@ -1253,16 +1396,16 @@ function AdvancedTab({ s, update, onExport, onImport, onReset }) {
             outline: "none",
           }}
         />
-      </s-section>
+      </CollapsibleSection>
 
-      <s-section heading="Backup & restore" description="Export your config as JSON or import from another store.">
+      <CollapsibleSection heading="Backup & restore" description="Export your config as JSON or import from another store.">
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <s-button onClick={onExport}>Export settings</s-button>
           <s-button onClick={onImport}>Import settings</s-button>
         </div>
-      </s-section>
+      </CollapsibleSection>
 
-      <s-section heading="Danger zone">
+      <CollapsibleSection heading="Danger zone">
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <s-text color="subdued">
             Resets every drawer setting back to its default. Your promotions, milestones, and upsells aren't touched.
@@ -1271,7 +1414,7 @@ function AdvancedTab({ s, update, onExport, onImport, onReset }) {
             <s-button tone="critical" onClick={onReset}>Reset all settings to defaults</s-button>
           </div>
         </div>
-      </s-section>
+      </CollapsibleSection>
     </div>
   );
 }

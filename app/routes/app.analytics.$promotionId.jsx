@@ -1,30 +1,18 @@
 import { useLoaderData, useNavigate, useRouteError, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
-import { getDashboardData, queryEvents } from "../lib/analytics.server.js";
-
-const PRESETS = [
-  { id: "7d",  label: "Last 7 days",  days: 7 },
-  { id: "30d", label: "Last 30 days", days: 30 },
-  { id: "90d", label: "Last 90 days", days: 90 },
-];
-
-function rangeFromPreset(presetId) {
-  const days = (PRESETS.find((p) => p.id === presetId)?.days) ?? 30;
-  const to = new Date();
-  to.setUTCHours(23, 59, 59, 999);
-  const from = new Date(to);
-  from.setUTCDate(from.getUTCDate() - (days - 1));
-  from.setUTCHours(0, 0, 0, 0);
-  return { from, to };
-}
+import { getDashboardData, queryEvents, presetRange, themePromotionStatusMap } from "../lib/analytics.server.js";
+import { getSelectedTheme, getShopAndTheme, loadConfig } from "../lib/config.server.js";
+import { syncShopSettings } from "../lib/billing.server.js";
 
 export const loader = async ({ request, params }) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const promotionId = params.promotionId;
   const url = new URL(request.url);
   const preset = url.searchParams.get("preset") || "30d";
-  const { from, to } = rangeFromPreset(preset);
+
+  const { ianaTimezone } = await syncShopSettings(admin, session.shop);
+  const { from, to } = presetRange(preset, ianaTimezone || "UTC");
 
   const [dashboard, recentEvents] = await Promise.all([
     getDashboardData(session.shop, { from, to }),
@@ -32,14 +20,25 @@ export const loader = async ({ request, params }) => {
   ]);
 
   const promo = dashboard.promotions.find((p) => p.id === promotionId) ?? null;
-  return { promo, promotionId, preset, recentEvents };
+
+  // Status must reflect the SELECTED theme, not the cross-theme aggregate — so
+  // the drill-down agrees with the "By promotion" table. Ids not on this theme
+  // (orphans) fall back to the global 'deleted'.
+  if (promo) {
+    const preferred = await getSelectedTheme(session.shop);
+    const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
+    const themeConfig = await loadConfig(shopId, themeId);
+    promo.status = themePromotionStatusMap(themeConfig).get(promo.id) ?? "deleted";
+  }
+
+  return { promo, promotionId, preset, recentEvents, currency: dashboard.currency || "USD" };
 };
 
-function formatMoneyCents(cents) {
+function formatMoneyCents(cents, currency = "USD") {
   if (!Number.isFinite(cents)) return "—";
   return new Intl.NumberFormat(undefined, {
     style: "currency",
-    currency: "USD",
+    currency,
     maximumFractionDigits: 0,
   }).format(cents / 100);
 }
@@ -50,6 +49,19 @@ function formatPct(value) {
     style: "percent",
     maximumFractionDigits: 1,
   }).format(value);
+}
+
+const STATUS_BADGE = {
+  active: { label: "Active", tone: "success" },
+  draft: { label: "Draft", tone: "warning" },
+  "needs-attention": { label: "Needs attention", tone: "critical" },
+  deleted: { label: "Deleted", tone: "auto" },
+};
+
+function StatusBadge({ status }) {
+  const b = STATUS_BADGE[status];
+  if (!b) return null;
+  return <s-badge tone={b.tone}>{b.label}</s-badge>;
 }
 
 const EVENT_LABELS = {
@@ -75,7 +87,7 @@ function SummaryCard({ label, value, sub }) {
 }
 
 export default function PromotionAnalytics() {
-  const { promo, promotionId, recentEvents } = useLoaderData();
+  const { promo, promotionId, recentEvents, currency } = useLoaderData();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -91,22 +103,32 @@ export default function PromotionAnalytics() {
         </s-section>
       ) : (
         <s-section>
+          {promo.status ? (
+            <div style={{ marginBottom: 12 }}>
+              <StatusBadge status={promo.status} />
+            </div>
+          ) : null}
           <s-grid gridTemplateColumns="repeat(4, 1fr)" gap="200">
             <SummaryCard label="Impressions" value={promo.impressions.toLocaleString()} />
             <SummaryCard label="Claims" value={promo.claims.toLocaleString()} sub={formatPct(promo.conversionRate)} />
             <SummaryCard label="Orders" value={promo.orders.toLocaleString()} />
-            <SummaryCard label="Revenue" value={formatMoneyCents(promo.revenue)} sub={"AOV " + formatMoneyCents(promo.aov)} />
+            <SummaryCard label="Revenue" value={formatMoneyCents(promo.revenue, currency)} sub={"AOV " + formatMoneyCents(promo.aov, currency)} />
           </s-grid>
         </s-section>
       )}
 
-      <s-section padding="none" heading="Recent events">
+      <s-section padding="none">
+        <div style={{ padding: "16px 16px 12px" }}>
+          <s-text variant="headingSm">Recent events</s-text>
+        </div>
         {recentEvents.length === 0 ? (
           <div style={{ padding: "40px 20px", textAlign: "center", color: "#6d7175" }}>
             No events recorded for this promotion in the selected range.
           </div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <div style={{ padding: "0 16px 16px" }}>
+          <div style={{ width: "100%", overflowX: "auto", border: "1px solid var(--s-color-border, #e3e3e3)", borderRadius: 8 }}>
+          <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "var(--s-color-bg-surface-secondary, #f6f6f7)", borderBottom: "1px solid var(--s-color-border, #e3e3e3)" }}>
                 <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600 }}>When</th>
@@ -125,15 +147,17 @@ export default function PromotionAnalytics() {
                     <s-text fontWeight="semibold">{EVENT_LABELS[e.event] ?? e.event}</s-text>
                   </td>
                   <td style={{ padding: "10px 16px", textAlign: "right" }}>
-                    {e.cartTotal != null ? formatMoneyCents(e.cartTotal) : "—"}
+                    {e.cartTotal != null ? formatMoneyCents(e.cartTotal, currency) : "—"}
                   </td>
                   <td style={{ padding: "10px 16px", textAlign: "right" }}>
-                    {e.revenue != null ? formatMoneyCents(e.revenue) : "—"}
+                    {e.revenue != null ? formatMoneyCents(e.revenue, currency) : "—"}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
+          </div>
         )}
       </s-section>
     </s-page>

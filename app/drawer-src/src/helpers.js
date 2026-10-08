@@ -4,12 +4,37 @@
 
 // ── Internal fetch (bypasses cart interceptor) ──────────────
 
+// cartx must not react to its OWN cart calls. That used to be done with a
+// page-global boolean held for the lifetime of each request — which meant that
+// while any cartx request was in flight, EVERY cart mutation on the page was
+// ignored, including the theme's. A shopper whose add-to-cart happened to land
+// inside that window got no cart-changed event at all: no re-evaluate, no gift
+// reconcile, and a drawer still describing the previous cart.
+//
+// The marker now travels with the request instead, so a cartx request can only
+// ever suppress itself.
 var _internalFetchDepth = 0;
 
+export var INTERNAL_HEADER = 'X-Cartx-Internal';
+
 export function internalFetch(url, opts) {
+  var o = Object.assign({}, opts || {});
+  var h = o.headers;
+  // Headers may arrive as a plain object or a Headers instance.
+  if (h && typeof h.append === 'function') {
+    var copy = new Headers(h);
+    copy.set(INTERNAL_HEADER, '1');
+    o.headers = copy;
+  } else {
+    o.headers = Object.assign({}, h || {});
+    o.headers[INTERNAL_HEADER] = '1';
+  }
+
+  // Legacy global, kept ONLY as a fallback for the kill switch below and for
+  // any embed still running the old interception code. Harmless when unused.
   _internalFetchDepth++;
   window.__cartmaxInternal = true;
-  return fetch(url, opts).finally(function () {
+  return fetch(url, o).finally(function () {
     _internalFetchDepth--;
     if (_internalFetchDepth === 0) {
       window.__cartmaxInternal = false;
@@ -28,7 +53,20 @@ export function cartUpdateAll(payload) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-  }).then(function (r) { return r.json(); });
+  }).then(function (r) {
+    return r.json().then(function (data) {
+      // A non-2xx (e.g. 422 "updates parameter is invalid") returns an ERROR
+      // object, not a cart. It must never be mistaken for the cart — doing so
+      // blanks the drawer. Reject so callers' catch blocks keep the last good
+      // (optimistic) cart instead.
+      if (!r.ok || !data || !Array.isArray(data.items)) {
+        var err = new Error((data && (data.description || data.message)) || ('cart update failed: ' + r.status));
+        err.cartError = data;
+        throw err;
+      }
+      return data;
+    });
+  });
 }
 
 // ── Optimistic-update utilities ─────────────────────────────
@@ -296,6 +334,53 @@ export function formatMoneyTemplate(moneyFormat, amount) {
         .replace(/\{\{\s*amount_with_comma_separator\s*\}\}/, amountStr.replace('.', ','))
     : '$' + amountStr;
   return formatted;
+}
+
+// ── Gift-line detection / quantity-selector policy ──────────
+
+// A line is a "free gift" if ANY of its properties is a freebie marker — cartx's
+// own `_freebie`, or a third-party one whose key contains `_freebie` (e.g.
+// GoKwik's `_gokwik_freebie`). Marks gift lines so the drawer can hide the
+// quantity selector / remove / variant switcher and show FREE, so a shopper
+// can't bump the quantity of a gift a partner app added.
+export function hasFreebieMarker(properties) {
+  if (!properties) return false;
+  for (var k in properties) {
+    if (!Object.prototype.hasOwnProperty.call(properties, k)) continue;
+    if (k.indexOf('_freebie') === -1) continue;
+    var v = properties[k];
+    if (v === 'true' || v === true) return true;
+  }
+  return false;
+}
+
+// The quantity selector shows ONLY for a real paid line. It is hidden when the
+// line is a gift — a freebie/claim marker is present — OR when the effective
+// price is 0. A ₹0 line is treated as a gift (a freebie whose attribute may be
+// missing, or any free line), so shoppers can't change the quantity of anything
+// they aren't paying for. `final_price` is the per-unit price the shopper pays
+// (minor units); fall back to `price` if absent, and treat 0 / missing as free.
+export function showsQuantitySelector(item) {
+  if (!item) return false;
+  var p = item.properties || {};
+  var isClaim = p['_claimed'] === 'true' || p['_cartmax_claim'] === 'true';
+  var isFreebie = hasFreebieMarker(p) && !isClaim;
+  if (isFreebie || isClaim) return false;
+  var unit = item.final_price != null ? item.final_price : (item.price || 0);
+  return Number(unit) > 0;
+}
+
+// What a gift line is ACTUALLY charging the shopper, in minor units. 0 means
+// the discount landed and the line really is free. > 0 means it did NOT land —
+// e.g. a merchant discount code with "combines with product discounts" off
+// makes Shopify drop our automatic gift discount, and the shopper is charged
+// for a line we'd otherwise label FREE. Missing price fields read as 0, so
+// optimistic (not-yet-reconciled) gift lines still count as free.
+export function giftChargedAmount(item) {
+  if (!item) return 0;
+  var line = item.final_line_price != null ? item.final_line_price : item.line_price;
+  var n = Number(line || 0);
+  return n > 0 ? n : 0;
 }
 
 // ── Focus trap for accessibility ────────────────────────────

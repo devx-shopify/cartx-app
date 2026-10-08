@@ -1,27 +1,20 @@
 import { authenticate } from '../shopify.server'
-import { getDashboardData } from '../lib/analytics.server.js'
-
-const PRESETS = {
-  '7d':  7,
-  '30d': 30,
-  '90d': 90,
-}
-
-function rangeFromPreset(preset) {
-  const days = PRESETS[preset] ?? 30
-  const to = new Date()
-  to.setUTCHours(23, 59, 59, 999)
-  const from = new Date(to)
-  from.setUTCDate(from.getUTCDate() - (days - 1))
-  from.setUTCHours(0, 0, 0, 0)
-  return { from, to }
-}
+import { getDashboardData, presetRange, filterPromotionsForTheme } from '../lib/analytics.server.js'
+import { getSelectedTheme, getShopAndTheme, loadConfig } from '../lib/config.server.js'
+import { syncShopSettings } from '../lib/billing.server.js'
 
 const TYPE_LABELS = {
   offer: 'Offer',
   coupon: 'Coupon',
   'claim-gift': 'Claim Gift',
   upsell: 'Upsell',
+}
+
+const STATUS_LABELS = {
+  active: 'Active',
+  draft: 'Draft',
+  'needs-attention': 'Needs attention',
+  deleted: 'Deleted',
 }
 
 // CSV field escaper. Wraps any value containing comma, quote, or newline in
@@ -45,37 +38,56 @@ function formatCents(cents) {
 }
 
 export const loader = async ({ request }) => {
-  const { session } = await authenticate.admin(request)
+  const { admin, session } = await authenticate.admin(request)
   const url = new URL(request.url)
 
   const preset = url.searchParams.get('preset') || '30d'
   const fromParam = url.searchParams.get('from')
   const toParam = url.searchParams.get('to')
+
+  const { ianaTimezone } = await syncShopSettings(admin, session.shop)
+  const tz = ianaTimezone || 'UTC'
+
   let from, to
   if (fromParam && toParam) {
     from = new Date(fromParam)
     to = new Date(toParam)
     to.setUTCHours(23, 59, 59, 999)
   } else {
-    ({ from, to } = rangeFromPreset(preset))
+    ({ from, to } = presetRange(preset, tz))
   }
 
   const data = await getDashboardData(session.shop, { from, to })
+  const currency = data.currency || 'USD'
+
+  // Follow the on-screen filter: scope to the selected theme's promotions,
+  // plus deleted rows when `deleted=1`.
+  const preferred = await getSelectedTheme(session.shop)
+  const { shopId, themeId } = await getShopAndTheme(admin, session, preferred)
+  const themeConfig = await loadConfig(shopId, themeId)
+  const showDeleted = url.searchParams.get('deleted') === '1'
+  data.promotions = filterPromotionsForTheme(
+    data.promotions,
+    themeConfig,
+    { showDeleted },
+  )
 
   let body = csvRow([
     'Promotion',
     'Type',
+    'Status',
     'Impressions',
     'Claims',
     'Conversion rate',
     'Orders',
-    'Revenue',
-    'AOV',
+    `Influenced revenue (${currency})`,
+    `AOV (${currency})`,
   ])
   for (const p of data.promotions) {
     body += csvRow([
       p.name,
       TYPE_LABELS[p.type] ?? p.type ?? '',
+      STATUS_LABELS[p.status] ?? p.status ?? '',
       p.impressions,
       p.claims,
       p.conversionRate.toFixed(4),

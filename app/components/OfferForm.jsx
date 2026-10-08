@@ -115,7 +115,7 @@ function buildOfferSummary({
 }
 
 export default forwardRef(function OfferForm(
-  { offer, variantDataMap, onSubmit, submitting },
+  { offer, variantDataMap, onSubmit, submitting, allowedRewardTypes },
   ref,
 ) {
   const shopify = useAppBridge();
@@ -142,8 +142,13 @@ export default forwardRef(function OfferForm(
   const [triggerValue, setTriggerValue] = useState(
     offer?.trigger?.price_threshold ?? offer?.trigger?.quantity_threshold ?? "",
   );
+  // On a plan that restricts reward types (Basic → volume only), default a new
+  // offer to the first allowed type instead of auto_add_gift.
   const [rewardType, setRewardType] = useState(
-    offer?.reward?.type ?? "auto_add_gift",
+    offer?.reward?.type ??
+      (allowedRewardTypes && allowedRewardTypes.length
+        ? allowedRewardTypes[0]
+        : "auto_add_gift"),
   );
   const [giftVariants, setGiftVariants] = useState(
     offer?.reward?.gift_variants ?? [],
@@ -427,18 +432,28 @@ export default forwardRef(function OfferForm(
         })}
       />
 
-      {/* Reward — shown first so the form adapts based on reward type */}
+      {/* Reward — shown first so the form adapts based on reward type. When the
+          plan restricts reward types (Basic → volume only), only the allowed
+          options render; a single allowed type hides the selector entirely. */}
       <s-section heading="Reward">
         <VStack gap={400}>
-          <s-select
-            label="Reward type"
-            value={rewardType}
-            onChange={(e) => setRewardType(e.target.value)}
-          >
-            <s-option value="auto_add_gift">Auto-add free gift</s-option>
-            <s-option value="bundle">Bundle</s-option>
-            <s-option value="volume_discount">Volume discount</s-option>
-          </s-select>
+          {(!allowedRewardTypes || allowedRewardTypes.length > 1) && (
+            <s-select
+              label="Reward type"
+              value={rewardType}
+              onChange={(e) => setRewardType(e.target.value)}
+            >
+              {(!allowedRewardTypes || allowedRewardTypes.includes("auto_add_gift")) && (
+                <s-option value="auto_add_gift">Auto-add free gift</s-option>
+              )}
+              {(!allowedRewardTypes || allowedRewardTypes.includes("bundle")) && (
+                <s-option value="bundle">Bundle</s-option>
+              )}
+              {(!allowedRewardTypes || allowedRewardTypes.includes("volume_discount")) && (
+                <s-option value="volume_discount">Volume discount</s-option>
+              )}
+            </s-select>
+          )}
           {rewardType === "auto_add_gift" && (
             <>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
