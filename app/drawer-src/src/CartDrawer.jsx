@@ -3,7 +3,8 @@ import { h, Component } from 'preact';
 import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId, hasFreebieMarker, showsQuantitySelector, giftChargedAmount } from './helpers';
 import { fireConfetti, setConfettiLottieUrl } from './confetti';
 import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLine, ensureCartxAttribute, ensureDrawerAttribute, localGiftDelta, giftIntendedQuantity, dispatchLocalBar } from './evaluate';
-import { isGraphqlCartEnabled } from './storefront-cart';
+import { isGraphqlCartEnabled, isStorefrontReady, fetchProductAvailability } from './storefront-cart';
+import { pickRecommendations } from './upsell-recs';
 import { initStore as gqlInitStore, subscribe as gqlSubscribe, getOptimisticCart as gqlGetCart, changeQuantity as gqlChangeQuantity, removeLine as gqlRemoveLine, addLine as gqlAddLine, applyDiscountCode as gqlApplyCoupon, removeDiscountCode as gqlRemoveCoupon, whenSettled as gqlWhenSettled } from './cart-store';
 import { isAjaxCartStoreEnabled, subscribe as ajaxSubscribe, getOptimisticCart as ajaxGetCart, init as ajaxInit, reconcileFromServer as ajaxReconcile, addLine as ajaxAddLine, changeQuantity as ajaxChangeQty, removeLine as ajaxRemoveLine, whenSettled as ajaxWhenSettled, cartHasDiscounts } from './ajax-cart-store';
 import { tracker } from './tracker';
@@ -229,8 +230,9 @@ export default class CartDrawer extends Component {
     this._variantCache = {}; // product_id -> variants[]
     this._compareAtCache = {}; // variant_id (string) -> compare_at_price (cents, per unit)
     this._prefetchedHandles = {}; // product handle -> true, so compare-at is fetched once per session
-    this._upsellAvailable = {};   // variant_id (string) -> bool; live availability for upsell cards
-    this._upsellFetched = {};     // upsell handle -> true, fetched once per session
+    this._upsellAvail = {};          // product_id -> { available, variantId } live availability for upsell cards
+    this._upsellAvailRequested = {}; // product_id -> true, fetched once per session
+    this._upsellViewed = {};         // shown card-set key -> true, so upsell_viewed fires once per set
     // Monotonic token for cart reads. A /cart.js read issued before a mutation
     // can resolve after it; we drop any read older than the latest authoritative
     // update so the count bubble never flickers back to a stale value.
@@ -2996,7 +2998,15 @@ export default class CartDrawer extends Component {
 
   // Line-level optimistic add. Customer explicitly chose a paid item;
   // out-of-stock is an intuitive failure mode worth the line-blink risk.
-  async handleUpsellAdd(variantId, productMeta) {
+  async handleUpsellAdd(variantId, productMeta, card) {
+    var addedProps = {
+      promotion_type: 'upsell',
+      variant_id: String(variantId),
+      product_id: card ? card.product_id : undefined,
+      source: card ? card.source : undefined,
+      trigger_product_id: card ? card.trigger_product_id : undefined,
+      position: card ? card.position : undefined,
+    };
     if (this._graphqlCart || this._ajaxStore) {
       var meta = {
         price: Math.round(Number((productMeta && productMeta.price) || 0) * 100),
@@ -3004,10 +3014,13 @@ export default class CartDrawer extends Component {
         product_title: productMeta && productMeta.title,
         variant_title: productMeta && productMeta.variant_title,
         image: productMeta && productMeta.image,
+        // product_id lets the recommendations drop this card and show its own
+        // rules from the optimistic cart, before the server confirms the add.
+        product_id: productMeta && productMeta.product_id,
       };
       if (this._graphqlCart) gqlAddLine(variantId, 1, {}, meta);
       else ajaxAddLine(variantId, 1, {}, meta);
-      tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, { promotion_type: 'upsell', variant_id: String(variantId) });
+      tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, addedProps);
       return;
     }
     var key = 'upsell_' + variantId;
@@ -3020,6 +3033,7 @@ export default class CartDrawer extends Component {
       var optimisticItem = {
         key: 'pending_upsell_' + variantId + '_' + Date.now(),
         variant_id: Number(variantId),
+        product_id: productMeta.product_id != null ? Number(productMeta.product_id) : null,
         quantity: 1,
         price: unitPriceCents,
         line_price: unitPriceCents,
@@ -3045,12 +3059,10 @@ export default class CartDrawer extends Component {
       this._currency = cart.currency || this._currency;
       window.dispatchEvent(new CustomEvent('cartmax:internal-reload', { detail: { cart: cart } }));
       window.dispatchEvent(new CustomEvent('cartmax:cart-changed', { detail: { cart: cart } }));
-      tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, {
-        promotion_type: 'upsell',
-        variant_id: String(variantId),
+      tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, Object.assign({}, addedProps, {
         cart_total: cart.total_price,
         item_count: cart.item_count,
-      });
+      }));
     } catch (err) {
       // Roll back optimistic line.
       if (snapshot) dispatchOptimistic(snapshot);
@@ -3063,50 +3075,117 @@ export default class CartDrawer extends Component {
     }
   }
 
-  // Fetch live availability for upsell products (once per handle per session) so
-  // sold-out variants show "Sold out" instead of an add button. Uses the same
-  // /products/{handle}.js source as the compare-at prefetch.
-  _ensureUpsellAvailability(products) {
+  // One Storefront API call per batch of unchecked products (or
+  // /products/{handle}.js without a token); each product once per session.
+  _ensureUpsellAvailability(cards) {
     var self = this;
-    (products || []).forEach(function (p) {
-      var handle = p.handle;
-      if (!handle || self._upsellFetched[handle]) return;
-      self._upsellFetched[handle] = true;
-      fetch('/products/' + handle + '.js')
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (data) {
-          if (!data || !data.variants) return;
-          var changed = false;
-          data.variants.forEach(function (v) {
-            self._upsellAvailable[String(v.id)] = !!v.available;
-            changed = true;
-          });
-          if (changed) self.setState({});
-        })
-        .catch(function () {});
+    var need = (cards || []).filter(function (c) {
+      return c.product_id && !self._upsellAvailRequested[c.product_id];
+    });
+    if (need.length === 0) return;
+    need.forEach(function (c) { self._upsellAvailRequested[c.product_id] = true; });
+    var apply = function (map) {
+      var changed = false;
+      for (var pid in map) {
+        if (!Object.prototype.hasOwnProperty.call(map, pid)) continue;
+        self._upsellAvail[pid] = map[pid];
+        changed = true;
+      }
+      if (changed) self.setState({});
+    };
+    var byHandle = function () {
+      return Promise.all(need.map(function (c) {
+        if (!c.handle) return null;
+        return fetch('/products/' + c.handle + '.js')
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (data) {
+            if (!data || !data.variants) return null;
+            var first = null;
+            for (var i = 0; i < data.variants.length; i++) {
+              if (data.variants[i].available) { first = data.variants[i]; break; }
+            }
+            return [c.product_id, { available: !!first, variantId: first ? String(first.id) : null }];
+          })
+          .catch(function () { return null; });
+      })).then(function (pairs) {
+        var map = {};
+        pairs.forEach(function (p) { if (p) map[p[0]] = p[1]; });
+        return map;
+      });
+    };
+    var run = isStorefrontReady()
+      ? fetchProductAvailability(need.map(function (c) { return c.product_id; })).catch(byHandle)
+      : byHandle();
+    // On failure the cards stay addable (availability unknown), never hidden.
+    run.then(apply).catch(function (err) { console.error('[cartx] upsell availability check failed:', err); });
+  }
+
+  // The upsell cards for the current cart. With a server that sends rules
+  // (cart-based upsells), they're recomputed from the live cart on every
+  // render, so adding a recommendation swaps in its own recommendations at once.
+  _upsellCards(upsells, items) {
+    var self = this;
+    var unavailable = {};
+    for (var pid in this._upsellAvail) {
+      if (Object.prototype.hasOwnProperty.call(this._upsellAvail, pid) && this._upsellAvail[pid].available === false) {
+        unavailable[pid] = true;
+      }
+    }
+    if (upsells.settings) {
+      var input = {
+        items: items,
+        rules: upsells.rules || {},
+        catalog: upsells.catalog || {},
+        defaults: upsells.defaults || upsells.products || [],
+        settings: upsells.settings,
+      };
+      var max = upsells.settings.max_items || 8;
+      // Check stock for twice the cap so hidden sold-out cards can be backfilled.
+      this._ensureUpsellAvailability(pickRecommendations(Object.assign({}, input, { limit: max * 2 })));
+      return {
+        cards: pickRecommendations(Object.assign({}, input, { unavailable: unavailable })),
+        showSoldOut: upsells.settings.sold_out === 'show',
+      };
+    }
+    // Server predating cart-based upsells: its list, minus variants in the cart.
+    var cartVariantIds = items.map(function (i) { return String(i.variant_id); });
+    var cards = (upsells.products || []).map(function (p) {
+      return Object.assign({}, p, {
+        product_id: String(p.product_id).split('/').pop(),
+        variant_id: String(p.variant_id).split('/').pop(),
+        source: 'default',
+        trigger_product_id: null,
+      });
+    }).filter(function (p) { return cartVariantIds.indexOf(p.variant_id) === -1; });
+    self._ensureUpsellAvailability(cards);
+    return { cards: cards, showSoldOut: true };
+  }
+
+  _trackUpsellView(cards) {
+    if (!this.state.open || cards.length === 0) return;
+    var key = cards.map(function (c) { return c.product_id; }).join(',');
+    if (this._upsellViewed[key]) return;
+    this._upsellViewed[key] = true;
+    tracker.track(ANALYTICS_EVENTS.UPSELL_VIEWED, {
+      promotion_type: 'upsell',
+      product_ids: cards.map(function (c) { return c.product_id; }),
+      sources: cards.map(function (c) { return c.source; }),
+      trigger_product_ids: cards.map(function (c) { return c.trigger_product_id; }),
     });
   }
 
   renderUpsells() {
     var result = this.state.evalResult;
     if (!result || !result.upsells || !result.upsells.enabled) return null;
-    var upsells = result.upsells;
-    var products = upsells.products || [];
-    if (products.length === 0) return null;
 
     var cart = this.state.cart;
-    var isEmpty = !cart || !cart.items || cart.items.length === 0;
-    if (isEmpty && this._upsells.show_on_empty !== 'always') return null;
+    var items = (cart && cart.items) || [];
+    if (items.length === 0 && this._upsells.show_on_empty !== 'always') return null;
 
-    var cartVariantIds = (cart && cart.items || []).map(function (i) { return String(i.variant_id); });
-    var filtered = products.filter(function (p) {
-      var vid = String(p.variant_id);
-      if (vid.startsWith('gid://')) vid = vid.split('/').pop();
-      return cartVariantIds.indexOf(vid) === -1;
-    });
-    if (filtered.length === 0) return null;
-
-    this._ensureUpsellAvailability(filtered);
+    var picked = this._upsellCards(result.upsells, items);
+    var cards = picked.cards;
+    if (cards.length === 0) return null;
+    this._trackUpsellView(cards);
 
     var curr = this._currency;
     var self = this;
@@ -3125,19 +3204,22 @@ export default class CartDrawer extends Component {
           : null
         }
         <div class="cartmax-upsells-scroll">
-          {filtered.map(function (p) {
-            var vid = String(p.variant_id);
-            if (vid.startsWith('gid://')) vid = vid.split('/').pop();
+          {cards.map(function (p, i) {
+            var avail = self._upsellAvail[p.product_id];
+            // Add the first variant that's in stock; the snapshot's first
+            // variant until availability is known.
+            var vid = String((avail && avail.variantId) || p.variant_id).split('/').pop();
             var isAdding = self.state.updating['upsell_' + vid];
-            // Sold out only once we've fetched availability and it's false —
-            // unknown (not yet fetched) stays addable so we never hide the button
-            // prematurely.
-            var soldOut = self._upsellAvailable[vid] === false;
+            // Sold out only once availability is known and false — unknown stays
+            // addable so the button is never hidden prematurely.
+            var soldOut = picked.showSoldOut && !!avail && avail.available === false;
             var productMeta = {
               title: p.title,
               image: p.image_url,
               price: p.price,
+              product_id: p.product_id,
             };
+            var card = { product_id: p.product_id, source: p.source, trigger_product_id: p.trigger_product_id, position: i + 1 };
             return (
               <div class={'cartmax-upsell-card ' + sizeClass} key={p.product_id}>
                 {p.image_url
@@ -3155,7 +3237,7 @@ export default class CartDrawer extends Component {
                   </div>
                   <button
                     class={'cartmax-upsell-add' + (soldOut ? ' cartmax-upsell-add--soldout' : '')}
-                    onClick={function () { if (!soldOut) self.handleUpsellAdd(vid, productMeta); }}
+                    onClick={function () { if (!soldOut) self.handleUpsellAdd(vid, productMeta, card); }}
                     disabled={isAdding || soldOut}
                   >{soldOut ? 'Sold out' : (isAdding ? 'Adding...' : btnText)}</button>
                 </div>

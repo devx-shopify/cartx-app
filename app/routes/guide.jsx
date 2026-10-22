@@ -210,14 +210,14 @@ export default function Guide() {
         {/* ── 8. Upsells ─────────────────────────────────── */}
         <Section id="upsells" n="8" title="Upsells">
           <Ol items={[
-            <>Settings → <Strong>Upsells</Strong> — enable and set the heading (e.g. “You may also like”).</>,
-            <>Add products to recommend. cartx stores each product so it can show live price and availability.</>,
-            <>Choose whether upsells show on an empty cart.</>,
-            <>Style card layout and size under Customize Cart → Upsells.</>,
+            <><Strong>Upsells</Strong> → Settings — enable upsells and choose the mode: the same products for every cart, or based on cart contents.</>,
+            <>Upsells → <Strong>Default products</Strong> — the products shown in the same-for-every-cart mode, and when no product rule matches.</>,
+            <>Upsells → <Strong>Product rules</Strong> — for cart-based mode, map a product to the products to recommend when it is in the cart. The newest cart item's recommendations show first.</>,
+            <>Choose whether upsells show on an empty cart, and style card layout and size, under Customize Cart → Upsells.</>,
           ]} />
           <Callout>
-            If an upsell product is sold out, cartx automatically shows a “Sold out” state
-            instead of the add button.
+            Sold-out recommendations are hidden by default and the next product takes their place.
+            You can show them with a “Sold out” state instead in Upsells → Settings.
           </Callout>
         </Section>
 

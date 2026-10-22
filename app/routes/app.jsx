@@ -11,10 +11,12 @@ import {
   loadConfig,
   saveConfig,
   getShopAndTheme,
+  normalizeThemeId,
 } from "../lib/config.server.js";
 import { getActivePlan, ensureStoreRecord, syncShopSettings } from "../lib/billing.server.js";
 import ThemeSearchList, { THEME_ROLE_LABELS } from "../components/ThemeSearchList.jsx";
 import { syncPlanMetafield } from "../lib/drawer-metafield.server.js";
+import { copyRules } from "../lib/upsells.server.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -90,6 +92,8 @@ export const action = async ({ request }) => {
       if (sourceConfig[key] !== undefined) targetConfig[key] = structuredClone(sourceConfig[key]);
     }
     await saveConfig(shopId, currentThemeId, targetConfig);
+    // Upsell product rules live in their own table (per theme), not the config.
+    await copyRules(shopId, normalizeThemeId(String(sourceThemeId)), currentThemeId);
     return { ok: true, toast: "Settings & promotions copied" };
   }
 
@@ -505,6 +509,7 @@ export default function App() {
           <s-link href="/app/cart-customizer">Customize Cart</s-link>
         )}
         <s-link href="/app/promotions">Promotions</s-link>
+        {planData?.allowsDrawer !== false && <s-link href="/app/upsells">Upsells</s-link>}
         <s-link href="/app/analytics">Analytics</s-link>
         <s-link href="/app/settings">Settings</s-link>
         <s-link href="/app/billing">Plans</s-link>

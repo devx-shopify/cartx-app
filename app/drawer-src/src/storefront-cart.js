@@ -88,6 +88,32 @@ async function sfFetch(query, variables) {
   return json.data;
 }
 
+// ── Product availability (upsell cards) ───────────────────
+// { productId: { available, variantId } }, variantId = first variant for sale.
+// Products the storefront can't see are left out (callers treat them as unknown).
+export async function fetchProductAvailability(productIds) {
+  var ids = (productIds || []).map(function (id) { return 'gid://shopify/Product/' + id; });
+  if (ids.length === 0) return {};
+  var data = await sfFetch(
+    'query cartxUpsellAvailability($ids: [ID!]!) { nodes(ids: $ids) { ... on Product { id availableForSale variants(first: 50) { nodes { id availableForSale } } } } }',
+    { ids: ids }
+  );
+  var out = {};
+  ((data && data.nodes) || []).forEach(function (n) {
+    if (!n || !n.id) return;
+    var variants = (n.variants && n.variants.nodes) || [];
+    var first = null;
+    for (var i = 0; i < variants.length; i++) {
+      if (variants[i].availableForSale) { first = variants[i]; break; }
+    }
+    out[n.id.split('/').pop()] = {
+      available: !!n.availableForSale,
+      variantId: first ? first.id.split('/').pop() : null,
+    };
+  });
+  return out;
+}
+
 // ── Cart fragment (enriched: render the drawer without a refetch) ──
 var CART_FRAGMENT = `
   fragment Cart on Cart {

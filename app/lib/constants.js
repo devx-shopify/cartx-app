@@ -36,7 +36,13 @@ export const DEFAULT_CONFIG = {
     enabled: false,
     heading: 'You may also like',
     show_on_empty_cart: false,
-    products: [],
+    products: [], // default list (used by 'static' mode and as the cart-based fallback)
+    mode: 'static', // static: same products for every cart | cart_based: from UpsellRule rows
+    no_match: 'default', // cart_based, no rule matched: 'default' (show default list) | 'none'
+    fill_with_default: false, // cart_based: top up the remaining slots with the default list
+    sold_out: 'hide', // 'hide' (skip, backfill from the next product) | 'show' (disabled "Sold out" card)
+    max_items: 8, // cards shown (both modes)
+    max_per_trigger: 10, // recommendations one rule may hold
   },
   drawer: {
     colors: {

@@ -1,7 +1,8 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { EvaluateCartRequestSchema } from "../lib/schemas.js";
 import { checkRateLimit } from "../lib/rate-limit.server.js";
-import { loadConfig } from "../lib/config.server.js";
+import { loadConfig, normalizeThemeId } from "../lib/config.server.js";
+import { buildUpsellsPayload } from "../lib/upsells.server.js";
 import { loadStorefrontToken } from "../lib/storefront-token.server.js";
 import { adjustedTotal, adjustedQty, isFrozenPage, computeTotalSavings } from "../lib/helpers.server.js";
 import { evaluateOffers } from "../lib/evaluate/triggers.server.js";
@@ -163,6 +164,22 @@ export const action = async ({ request }) => {
     console.error('[cartx] loadStorefrontToken error:', err);
   }
 
+  // Upsells never fail the whole response: on a DB hiccup the drawer just
+  // renders without them.
+  let upsells = null;
+  if (config.upsells?.enabled) {
+    try {
+      upsells = await buildUpsellsPayload({
+        shopId,
+        themeId: normalizeThemeId(String(themeId)),
+        upsells: config.upsells,
+        items: cartItems,
+      });
+    } catch (err) {
+      console.error('[cartx] upsells payload error:', err);
+    }
+  }
+
   // Build lightweight config for client-side caching
   const clientConfig = {
     offers: (config.offers || []).filter((o) => o.enabled).map((o) => ({
@@ -207,17 +224,6 @@ export const action = async ({ request }) => {
     volume_discounts: offerResult.volume_discounts || [],
     _config: clientConfig,
     drawer: config.drawer,
-    upsells: config.upsells?.enabled ? {
-      enabled: true,
-      heading: config.upsells.heading,
-      show_on_empty_cart: config.upsells.show_on_empty_cart || false,
-      products: (config.upsells.products || []).filter((p) => {
-        const pid = p.product_id?.startsWith('gid://') ? p.product_id.split('/').pop() : String(p.product_id);
-        return !cartItems.some((item) => {
-          const itemPid = String(item.product_id).startsWith('gid://') ? String(item.product_id).split('/').pop() : String(item.product_id);
-          return itemPid === pid;
-        });
-      }),
-    } : null,
+    upsells,
   });
 };

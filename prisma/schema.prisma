@@ -142,3 +142,52 @@ model DailyStats {
   @@unique([shopId, date, promotionId])
   @@index([shopId, date])
 }
+
+// Cart-based upsells: when the trigger product is in the cart, recommend these
+// products in this order. Per theme, like ThemeConfig. Product ids are numeric
+// strings ("8123456789"), never GIDs.
+model UpsellRule {
+  id               String   @id @default(cuid())
+  shopId           String
+  themeId          String
+  triggerProductId String
+  recommendedIds   String[]
+  enabled          Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([shopId, themeId, triggerProductId])
+  @@index([shopId, themeId])
+}
+
+// Product snapshot for upsell rules (shop-level: product data is the same on
+// every theme). Kept fresh by the products/* webhooks.
+model UpsellProduct {
+  id             String   @id @default(cuid())
+  shopId         String
+  productId      String
+  title          String
+  handle         String
+  imageUrl       String   @default("")
+  variantId      String // first variant; the drawer picks the first available at runtime
+  price          String // Shopify decimal string, display only (same as the config snapshots)
+  compareAtPrice String?
+  status         String   @default("ACTIVE") // ACTIVE | DRAFT | ARCHIVED
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([shopId, productId])
+}
+
+// One row per import, so the import can be undone.
+model UpsellImport {
+  id            String   @id @default(cuid())
+  shopId        String
+  themeId       String
+  previousRules Json // rule set before the import: [{ triggerProductId, recommendedIds, enabled }]
+  summary       Json // { rows, ok, warning, skipped, mode }
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([shopId, themeId, createdAt])
+}

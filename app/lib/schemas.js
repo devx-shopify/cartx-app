@@ -175,6 +175,29 @@ export const UpsellProductSchema = z.object({
   compare_at_price: z.string().optional(),
 })
 
+// Hard ceiling for both caps: bounds the proxy payload and the import sheet width.
+export const UPSELL_CAP_LIMIT = 20
+
+export const UpsellSettingsSchema = z.object({
+  enabled: z.boolean(),
+  heading: z.string(),
+  show_on_empty_cart: z.boolean().optional(),
+  products: z.array(UpsellProductSchema),
+  mode: z.enum(['static', 'cart_based']).default('static'),
+  no_match: z.enum(['default', 'none']).default('default'),
+  fill_with_default: z.boolean().default(false),
+  sold_out: z.enum(['hide', 'show']).default('hide'),
+  max_items: z.number().int().min(1).max(UPSELL_CAP_LIMIT).default(8),
+  max_per_trigger: z.number().int().min(1).max(UPSELL_CAP_LIMIT).default(10),
+})
+
+// One product → recommended products mapping (admin save + import row).
+export const UpsellRuleInputSchema = z.object({
+  trigger_product_id: z.string().min(1),
+  recommended_ids: z.array(z.string().min(1)).min(1).max(UPSELL_CAP_LIMIT),
+  enabled: z.boolean().default(true),
+})
+
 export const EvaluateCartRequestSchema = z.object({
   cart: z.object({
     items: z.array(z.any()),
@@ -314,11 +337,6 @@ export const ConfigSchema = z.object({
     oos_message_override: z.string().optional(),
   }),
   cross_page_removal_behavior: z.enum(['silent', 'notice', 'modal']),
-  upsells: z.object({
-    enabled: z.boolean(),
-    heading: z.string(),
-    show_on_empty_cart: z.boolean().optional(),
-    products: z.array(UpsellProductSchema),
-  }),
+  upsells: UpsellSettingsSchema,
   drawer: DrawerConfigSchema,
 })

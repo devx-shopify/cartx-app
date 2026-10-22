@@ -2,7 +2,7 @@ import prisma from '../db.server.js'
 import { DEFAULT_CONFIG } from './constants.js'
 import { ConfigSchema } from './schemas.js'
 
-function normalizeThemeId(id) {
+export function normalizeThemeId(id) {
   if (!id) return id
   return id.startsWith('gid://') ? id.split('/').pop() : id
 }

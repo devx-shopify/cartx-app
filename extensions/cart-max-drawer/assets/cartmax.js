@@ -1036,6 +1036,33 @@
     }
     return json.data;
   }
+  async function fetchProductAvailability(productIds) {
+    var ids = (productIds || []).map(function(id) {
+      return "gid://shopify/Product/" + id;
+    });
+    if (ids.length === 0) return {};
+    var data = await sfFetch(
+      "query cartxUpsellAvailability($ids: [ID!]!) { nodes(ids: $ids) { ... on Product { id availableForSale variants(first: 50) { nodes { id availableForSale } } } } }",
+      { ids }
+    );
+    var out = {};
+    (data && data.nodes || []).forEach(function(n2) {
+      if (!n2 || !n2.id) return;
+      var variants = n2.variants && n2.variants.nodes || [];
+      var first = null;
+      for (var i2 = 0; i2 < variants.length; i2++) {
+        if (variants[i2].availableForSale) {
+          first = variants[i2];
+          break;
+        }
+      }
+      out[n2.id.split("/").pop()] = {
+        available: !!n2.availableForSale,
+        variantId: first ? first.id.split("/").pop() : null
+      };
+    });
+    return out;
+  }
   var CART_FRAGMENT = `
   fragment Cart on Cart {
     id
@@ -1896,6 +1923,92 @@
   }).catch(function() {
   });
 
+  // app/drawer-src/src/upsell-recs.js
+  function numericId2(id) {
+    if (id === null || id === void 0) return "";
+    var s2 = String(id);
+    return s2.indexOf("gid://") === 0 ? s2.split("/").pop() : s2;
+  }
+  function isGiftLine(item) {
+    var p2 = item && item.properties || {};
+    if (p2["_claimed"] === "true" || p2["_cartmax_claim"] === "true") return true;
+    for (var k2 in p2) {
+      if (!Object.prototype.hasOwnProperty.call(p2, k2)) continue;
+      if (k2.indexOf("_freebie") !== -1 && (p2[k2] === "true" || p2[k2] === true)) return true;
+    }
+    return false;
+  }
+  function triggerProductIds(items) {
+    var out = [];
+    (items || []).forEach(function(item) {
+      if (isGiftLine(item)) return;
+      var pid = numericId2(item.product_id);
+      if (pid && out.indexOf(pid) === -1) out.push(pid);
+    });
+    return out;
+  }
+  function toCard(snapshot, source, triggerId) {
+    return {
+      product_id: numericId2(snapshot.product_id),
+      title: snapshot.title,
+      handle: snapshot.handle || "",
+      image_url: snapshot.image_url || "",
+      variant_id: numericId2(snapshot.variant_id),
+      price: snapshot.price,
+      compare_at_price: snapshot.compare_at_price || void 0,
+      source,
+      trigger_product_id: triggerId || null
+    };
+  }
+  function pickRecommendations(input) {
+    var items = input.items || [];
+    var rules = input.rules || {};
+    var catalog = input.catalog || {};
+    var defaults = input.defaults || [];
+    var settings = input.settings || {};
+    var unavailable = input.unavailable || {};
+    var hideSoldOut = settings.sold_out !== "show";
+    var seen = {};
+    items.forEach(function(item) {
+      var pid = numericId2(item.product_id);
+      if (pid) seen[pid] = true;
+    });
+    var cards = [];
+    function take(snapshot, source, triggerId) {
+      var pid = numericId2(snapshot && snapshot.product_id);
+      if (!pid || seen[pid]) return;
+      if (hideSoldOut && unavailable[pid]) return;
+      seen[pid] = true;
+      cards.push(toCard(snapshot, source, triggerId));
+    }
+    function takeDefaults() {
+      defaults.forEach(function(p2) {
+        take(p2, "default", null);
+      });
+    }
+    var limit = input.limit || settings.max_items || 8;
+    if (settings.mode !== "cart_based") {
+      takeDefaults();
+      return cards.slice(0, limit);
+    }
+    var maxPerTrigger = settings.max_per_trigger || 10;
+    triggerProductIds(items).forEach(function(triggerId) {
+      var recs = rules[triggerId];
+      if (!recs || !recs.length) return;
+      recs.slice(0, maxPerTrigger).forEach(function(recId) {
+        var snap = catalog[numericId2(recId)];
+        if (!snap || snap.status && snap.status !== "ACTIVE") return;
+        take(snap, "rule", triggerId);
+      });
+    });
+    if (cards.length === 0) {
+      if (settings.no_match !== "none") takeDefaults();
+    } else if (settings.fill_with_default) {
+      takeDefaults();
+    }
+    return cards.slice(0, limit);
+  }
+
   // app/drawer-src/src/cart-optimistic.js
   function isVolatileLineProp(k2) {
     return k2 === "_acquired_on_page" || k2.indexOf("_gk") === 0;
@@ -2595,6 +2708,7 @@
     GIFT_CLAIMED: "gift_claimed",
     GIFT_REMOVED: "gift_removed",
     UPSELL_ADDED: "upsell_added",
+    UPSELL_VIEWED: "upsell_viewed",
     COUPON_APPLIED: "coupon_applied",
     COUPON_REJECTED: "coupon_rejected"
   };
@@ -2935,8 +3049,9 @@
       this._variantCache = {};
       this._compareAtCache = {};
       this._prefetchedHandles = {};
-      this._upsellAvailable = {};
-      this._upsellFetched = {};
+      this._upsellAvail = {};
+      this._upsellAvailRequested = {};
+      this._upsellViewed = {};
       this._cartReadSeq = 0;
       this._activeOps = /* @__PURE__ */ new Set();
       this._upsells = { card_layout: "horizontal", card_size: "medium", heading: "", btn_text: "ADD TO CART", show_compare_price: true };
@@ -5125,18 +5240,29 @@
     }
     // Line-level optimistic add. Customer explicitly chose a paid item;
     // out-of-stock is an intuitive failure mode worth the line-blink risk.
-    async handleUpsellAdd(variantId, productMeta) {
+    async handleUpsellAdd(variantId, productMeta, card) {
+      var addedProps = {
+        promotion_type: "upsell",
+        variant_id: String(variantId),
+        product_id: card ? card.product_id : void 0,
+        source: card ? card.source : void 0,
+        trigger_product_id: card ? card.trigger_product_id : void 0,
+        position: card ? card.position : void 0
+      };
       if (this._graphqlCart || this._ajaxStore) {
         var meta = {
           price: Math.round(Number(productMeta && productMeta.price || 0) * 100),
           title: productMeta && productMeta.title,
           product_title: productMeta && productMeta.title,
           variant_title: productMeta && productMeta.variant_title,
-          image: productMeta && productMeta.image
+          image: productMeta && productMeta.image,
+          // product_id lets the recommendations drop this card and show its own
+          // rules from the optimistic cart, before the server confirms the add.
+          product_id: productMeta && productMeta.product_id
         };
         if (this._graphqlCart) addLine(variantId, 1, {}, meta);
         else addLine2(variantId, 1, {}, meta);
-        tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, { promotion_type: "upsell", variant_id: String(variantId) });
+        tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, addedProps);
         return;
       }
       var key = "upsell_" + variantId;
@@ -5147,6 +5273,7 @@
         var optimisticItem = {
           key: "pending_upsell_" + variantId + "_" + Date.now(),
           variant_id: Number(variantId),
+          product_id: productMeta.product_id != null ? Number(productMeta.product_id) : null,
           quantity: 1,
           price: unitPriceCents,
           line_price: unitPriceCents,
@@ -5171,12 +5298,10 @@
         this._currency = cart.currency || this._currency;
         window.dispatchEvent(new CustomEvent("cartmax:internal-reload", { detail: { cart } }));
         window.dispatchEvent(new CustomEvent("cartmax:cart-changed", { detail: { cart } }));
-        tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, {
-          promotion_type: "upsell",
-          variant_id: String(variantId),
+        tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, Object.assign({}, addedProps, {
           cart_total: cart.total_price,
           item_count: cart.item_count
-        });
+        }));
       } catch (err) {
         if (snapshot) dispatchOptimistic(snapshot);
         this._showUpsellError("Could not add \u2014 out of stock or unavailable.");
@@ -5187,48 +5312,131 @@
         this.setState({ updating: newUpdating });
       }
     }
-    // Fetch live availability for upsell products (once per handle per session) so
-    // sold-out variants show "Sold out" instead of an add button. Uses the same
-    // /products/{handle}.js source as the compare-at prefetch.
-    _ensureUpsellAvailability(products) {
+    // One Storefront API call per batch of unchecked products (or
+    // /products/{handle}.js without a token); each product once per session.
+    _ensureUpsellAvailability(cards) {
       var self = this;
-      (products || []).forEach(function(p2) {
-        var handle = p2.handle;
-        if (!handle || self._upsellFetched[handle]) return;
-        self._upsellFetched[handle] = true;
-        fetch("/products/" + handle + ".js").then(function(r2) {
-          return r2.ok ? r2.json() : null;
-        }).then(function(data) {
-          if (!data || !data.variants) return;
-          var changed = false;
-          data.variants.forEach(function(v2) {
-            self._upsellAvailable[String(v2.id)] = !!v2.available;
-            changed = true;
+      var need = (cards || []).filter(function(c2) {
+        return c2.product_id && !self._upsellAvailRequested[c2.product_id];
+      });
+      if (need.length === 0) return;
+      need.forEach(function(c2) {
+        self._upsellAvailRequested[c2.product_id] = true;
+      });
+      var apply = function(map) {
+        var changed = false;
+        for (var pid in map) {
+          if (!Object.prototype.hasOwnProperty.call(map, pid)) continue;
+          self._upsellAvail[pid] = map[pid];
+          changed = true;
+        }
+        if (changed) self.setState({});
+      };
+      var byHandle = function() {
+        return Promise.all(need.map(function(c2) {
+          if (!c2.handle) return null;
+          return fetch("/products/" + c2.handle + ".js").then(function(r2) {
+            return r2.ok ? r2.json() : null;
+          }).then(function(data) {
+            if (!data || !data.variants) return null;
+            var first = null;
+            for (var i2 = 0; i2 < data.variants.length; i2++) {
+              if (data.variants[i2].available) {
+                first = data.variants[i2];
+                break;
+              }
+            }
+            return [c2.product_id, { available: !!first, variantId: first ? String(first.id) : null }];
+          }).catch(function() {
+            return null;
           });
-          if (changed) self.setState({});
-        }).catch(function() {
+        })).then(function(pairs) {
+          var map = {};
+          pairs.forEach(function(p2) {
+            if (p2) map[p2[0]] = p2[1];
+          });
+          return map;
         });
+      };
+      var run = isStorefrontReady() ? fetchProductAvailability(need.map(function(c2) {
+        return c2.product_id;
+      })).catch(byHandle) : byHandle();
+      run.then(apply).catch(function(err) {
+        console.error("[cartx] upsell availability check failed:", err);
+      });
+    }
+    // The upsell cards for the current cart. With a server that sends rules
+    // (cart-based upsells), they're recomputed from the live cart on every
+    // render, so adding a recommendation swaps in its own recommendations at once.
+    _upsellCards(upsells, items) {
+      var self = this;
+      var unavailable = {};
+      for (var pid in this._upsellAvail) {
+        if (Object.prototype.hasOwnProperty.call(this._upsellAvail, pid) && this._upsellAvail[pid].available === false) {
+          unavailable[pid] = true;
+        }
+      }
+      if (upsells.settings) {
+        var input = {
+          items,
+          rules: upsells.rules || {},
+          catalog: upsells.catalog || {},
+          defaults: upsells.defaults || upsells.products || [],
+          settings: upsells.settings
+        };
+        var max = upsells.settings.max_items || 8;
+        this._ensureUpsellAvailability(pickRecommendations(Object.assign({}, input, { limit: max * 2 })));
+        return {
+          cards: pickRecommendations(Object.assign({}, input, { unavailable })),
+          showSoldOut: upsells.settings.sold_out === "show"
+        };
+      }
+      var cartVariantIds = items.map(function(i2) {
+        return String(i2.variant_id);
+      });
+      var cards = (upsells.products || []).map(function(p2) {
+        return Object.assign({}, p2, {
+          product_id: String(p2.product_id).split("/").pop(),
+          variant_id: String(p2.variant_id).split("/").pop(),
+          source: "default",
+          trigger_product_id: null
+        });
+      }).filter(function(p2) {
+        return cartVariantIds.indexOf(p2.variant_id) === -1;
+      });
+      self._ensureUpsellAvailability(cards);
+      return { cards, showSoldOut: true };
+    }
+    _trackUpsellView(cards) {
+      if (!this.state.open || cards.length === 0) return;
+      var key = cards.map(function(c2) {
+        return c2.product_id;
+      }).join(",");
+      if (this._upsellViewed[key]) return;
+      this._upsellViewed[key] = true;
+      tracker.track(ANALYTICS_EVENTS.UPSELL_VIEWED, {
+        promotion_type: "upsell",
+        product_ids: cards.map(function(c2) {
+          return c2.product_id;
+        }),
+        sources: cards.map(function(c2) {
+          return c2.source;
+        }),
+        trigger_product_ids: cards.map(function(c2) {
+          return c2.trigger_product_id;
+        })
       });
     }
     renderUpsells() {
       var result = this.state.evalResult;
       if (!result || !result.upsells || !result.upsells.enabled) return null;
-      var upsells = result.upsells;
-      var products = upsells.products || [];
-      if (products.length === 0) return null;
       var cart = this.state.cart;
-      var isEmpty = !cart || !cart.items || cart.items.length === 0;
-      if (isEmpty && this._upsells.show_on_empty !== "always") return null;
-      var cartVariantIds = (cart && cart.items || []).map(function(i2) {
-        return String(i2.variant_id);
-      });
-      var filtered = products.filter(function(p2) {
-        var vid = String(p2.variant_id);
-        if (vid.startsWith("gid://")) vid = vid.split("/").pop();
-        return cartVariantIds.indexOf(vid) === -1;
-      });
-      if (filtered.length === 0) return null;
-      this._ensureUpsellAvailability(filtered);
+      var items = cart && cart.items || [];
+      if (items.length === 0 && this._upsells.show_on_empty !== "always") return null;
+      var picked = this._upsellCards(result.upsells, items);
+      var cards = picked.cards;
+      if (cards.length === 0) return null;
+      this._trackUpsellView(cards);
       var curr = this._currency;
       var self = this;
       var u2 = this._upsells;
@@ -5237,22 +5445,24 @@
       var headingText = u2.heading || "YOU MAY ALSO LIKE";
       var btnText = u2.btn_text || "ADD TO CART";
       var imgPx = { small: 130, medium: 180, large: 230 }[u2.card_size] || 180;
-      return /* @__PURE__ */ k("div", { class: "cartmax-upsells " + layoutClass }, /* @__PURE__ */ k("div", { class: "cartmax-upsells-heading", style: { justifyContent: u2.heading_position === "center" ? "center" : "flex-start" } }, headingText), this.state.upsellError ? /* @__PURE__ */ k("div", { class: "cartmax-upsell-error" }, this.state.upsellError) : null, /* @__PURE__ */ k("div", { class: "cartmax-upsells-scroll" }, filtered.map(function(p2) {
-        var vid = String(p2.variant_id);
-        if (vid.startsWith("gid://")) vid = vid.split("/").pop();
+      return /* @__PURE__ */ k("div", { class: "cartmax-upsells " + layoutClass }, /* @__PURE__ */ k("div", { class: "cartmax-upsells-heading", style: { justifyContent: u2.heading_position === "center" ? "center" : "flex-start" } }, headingText), this.state.upsellError ? /* @__PURE__ */ k("div", { class: "cartmax-upsell-error" }, this.state.upsellError) : null, /* @__PURE__ */ k("div", { class: "cartmax-upsells-scroll" }, cards.map(function(p2, i2) {
+        var avail = self._upsellAvail[p2.product_id];
+        var vid = String(avail && avail.variantId || p2.variant_id).split("/").pop();
         var isAdding = self.state.updating["upsell_" + vid];
-        var soldOut = self._upsellAvailable[vid] === false;
+        var soldOut = picked.showSoldOut && !!avail && avail.available === false;
         var productMeta = {
           title: p2.title,
           image: p2.image_url,
-          price: p2.price
+          price: p2.price,
+          product_id: p2.product_id
         };
+        var card = { product_id: p2.product_id, source: p2.source, trigger_product_id: p2.trigger_product_id, position: i2 + 1 };
         return /* @__PURE__ */ k("div", { class: "cartmax-upsell-card " + sizeClass, key: p2.product_id }, p2.image_url ? /* @__PURE__ */ k("img", { class: "cartmax-upsell-img", src: resizeImage(p2.image_url, imgPx), alt: p2.title, loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-upsell-img-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image")), /* @__PURE__ */ k("div", { class: "cartmax-upsell-info" }, /* @__PURE__ */ k("div", { class: "cartmax-upsell-title" }, p2.title), /* @__PURE__ */ k("div", { class: "cartmax-upsell-price" }, /* @__PURE__ */ k("span", { class: "cartmax-upsell-sale" }, formatMoney(Number(p2.price) * 100, curr)), u2.show_compare_price && p2.compare_at_price ? /* @__PURE__ */ k("span", { class: "cartmax-upsell-compare" }, formatMoney(Number(p2.compare_at_price) * 100, curr)) : null), /* @__PURE__ */ k(
           "button",
           {
             class: "cartmax-upsell-add" + (soldOut ? " cartmax-upsell-add--soldout" : ""),
             onClick: function() {
-              if (!soldOut) self.handleUpsellAdd(vid, productMeta);
+              if (!soldOut) self.handleUpsellAdd(vid, productMeta, card);
             },
             disabled: isAdding || soldOut
           },

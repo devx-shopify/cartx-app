@@ -15,6 +15,7 @@ import { generateId } from "../lib/helpers.server.js";
 import { markStep } from "../lib/onboarding.server.js";
 import TargetingSection from "../components/TargetingSection.jsx";
 import VStack from "../components/VStack.jsx";
+import { countRules } from "../lib/upsells.server.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -92,6 +93,7 @@ export const loader = async ({ request }) => {
   return {
     progressBar: config.progress_bar,
     upsells: config.upsells,
+    upsellRuleCount: await countRules(shopId, themeId),
     bottomRibbon: config.bottom_ribbon,
     crossPageRemoval: config.cross_page_removal_behavior,
     lineup,
@@ -154,34 +156,6 @@ export const action = async ({ request }) => {
     config.progress_bar.tier_order = body.tier_order.filter((id) => typeof id === "string");
   }
 
-  if (body.upsell_product_ids?.length > 0) {
-    const gids = body.upsell_product_ids.map((id) => id.startsWith("gid://") ? id : `gid://shopify/Product/${id}`);
-    const res = await admin.graphql(
-      `#graphql
-        query getProducts($ids: [ID!]!) {
-          nodes(ids: $ids) {
-            ... on Product {
-              id
-              title
-              handle
-              featuredImage { url }
-              variants(first: 1) { edges { node { id price compareAtPrice } } }
-            }
-          }
-        }`,
-      { variables: { ids: gids } }
-    );
-    const json = await res.json();
-    config.upsells.products = (json.data?.nodes ?? []).filter(Boolean).map((node) => {
-      const firstVariant = node.variants?.edges?.[0]?.node;
-      // handle lets the drawer fetch /products/{handle}.js for live availability
-      // (to show "Sold out" instead of the add button).
-      return { product_id: node.id, title: node.title, handle: node.handle ?? "", image_url: node.featuredImage?.url ?? "", variant_id: firstVariant?.id ?? "", price: firstVariant?.price ?? "0", compare_at_price: firstVariant?.compareAtPrice || undefined };
-    });
-  } else if (!body.keep_upsell_products) {
-    config.upsells.products = [];
-  }
-  config.upsells.enabled = body.upsells_enabled;
   config.bottom_ribbon = body.bottom_ribbon;
   config.cross_page_removal_behavior = body.cross_page_removal_behavior;
 
@@ -445,9 +419,6 @@ export default function Settings() {
   const [dragId, setDragId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
   const [editingId, setEditingId] = useState(null);
-  const [upsellsEnabled, setUpsellsEnabled] = useState(data.upsells.enabled);
-  const [upsellProducts, setUpsellProducts] = useState(data.upsells.products);
-  const [newProductIds, setNewProductIds] = useState(null);
   const [ribbonEnabled, setRibbonEnabled] = useState(data.bottomRibbon.enabled);
   const [oosOverride, setOosOverride] = useState(data.bottomRibbon.oos_message_override ?? "");
   const [crossPageBehavior, setCrossPageBehavior] = useState(data.crossPageRemoval);
@@ -459,8 +430,6 @@ export default function Settings() {
     pbEnabled: data.progressBar.enabled,
     allCompleteMessage: data.progressBar.all_complete_message,
     tierOrder: data.lineup.map((t) => t.id).join(","),
-    upsellsEnabled: data.upsells.enabled,
-    upsellProducts: data.upsells.products.map((p) => p.product_id).join(","),
     ribbonEnabled: data.bottomRibbon.enabled,
     oosOverride: data.bottomRibbon.oos_message_override ?? "",
     crossPageBehavior: data.crossPageRemoval,
@@ -485,18 +454,15 @@ export default function Settings() {
   useEffect(() => {
     const init = initialRef.current;
     const currentTierOrder = lineup.map((t) => t.id).join(",");
-    const currentProducts = (newProductIds ?? upsellProducts.map((p) => p.product_id)).join(",");
     setDirty(
       pbEnabled !== init.pbEnabled ||
       allCompleteMessage !== init.allCompleteMessage ||
       currentTierOrder !== init.tierOrder ||
-      upsellsEnabled !== init.upsellsEnabled ||
-      currentProducts !== init.upsellProducts ||
       ribbonEnabled !== init.ribbonEnabled ||
       oosOverride !== init.oosOverride ||
       crossPageBehavior !== init.crossPageBehavior
     );
-  }, [pbEnabled, allCompleteMessage, lineup, upsellsEnabled, upsellProducts, newProductIds, ribbonEnabled, oosOverride, crossPageBehavior, data]);
+  }, [pbEnabled, allCompleteMessage, lineup, ribbonEnabled, oosOverride, crossPageBehavior, data]);
 
   useEffect(() => {
     if (fetcher.data?.ok) shopify.toast.show("Settings saved");
@@ -506,13 +472,10 @@ export default function Settings() {
     const payload = {
       progress_bar_enabled: pbEnabled,
       all_complete_message: allCompleteMessage,
-      upsells_enabled: upsellsEnabled,
       bottom_ribbon: { enabled: ribbonEnabled, oos_message_override: oosOverride || "" },
       cross_page_removal_behavior: crossPageBehavior,
       tier_order: lineup.map((t) => t.id),
     };
-    if (newProductIds) payload.upsell_product_ids = newProductIds;
-    else payload.keep_upsell_products = true;
     fetcher.submit(JSON.stringify(payload), { method: "POST", encType: "application/json" });
   }
 
@@ -520,9 +483,6 @@ export default function Settings() {
     setPbEnabled(data.progressBar.enabled);
     setAllCompleteMessage(data.progressBar.all_complete_message);
     setLineup(data.lineup);
-    setUpsellsEnabled(data.upsells.enabled);
-    setUpsellProducts(data.upsells.products);
-    setNewProductIds(null);
     setRibbonEnabled(data.bottomRibbon.enabled);
     setOosOverride(data.bottomRibbon.oos_message_override ?? "");
     setCrossPageBehavior(data.crossPageRemoval);
@@ -536,19 +496,6 @@ export default function Settings() {
     if (dirty) el.show();
     else el.hide();
   }, [dirty]);
-
-  async function pickProducts() {
-    const selection = await shopify.resourcePicker({ type: "product", multiple: true, action: "select" });
-    if (selection) {
-      setNewProductIds(selection.map((p) => p.id));
-      setUpsellProducts(selection.map((p) => ({ product_id: p.id, title: p.title, image_url: p.images?.[0]?.originalSrc ?? "", variant_id: p.variants?.[0]?.id ?? "", price: p.variants?.[0]?.price ?? "0" })));
-    }
-  }
-
-  function removeProduct(productId) {
-    setUpsellProducts(upsellProducts.filter((p) => p.product_id !== productId));
-    if (newProductIds) setNewProductIds(newProductIds.filter((id) => id !== productId));
-  }
 
   function addMilestone(milestoneData) {
     fetcher.submit(JSON.stringify(milestoneData), { method: "POST", encType: "application/json" });
@@ -696,92 +643,19 @@ export default function Settings() {
           {/* ── Upsells ──────────────────────────────────── */}
           <s-section
             heading="Upsells"
-            description="Suggest related products inside the cart drawer to increase order value."
+            description="Suggest products inside the cart drawer to increase order value."
           >
-            <VStack gap={400}>
-              <SectionEnableHeader enabled={upsellsEnabled} onChange={setUpsellsEnabled} label="Upsells enabled" />
-
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                  <s-text fontWeight="semibold">Products</s-text>
-                  <s-button onClick={pickProducts}>
-                    {upsellProducts.length > 0 ? "Change products" : "Add products"}
-                  </s-button>
-                </div>
-                {upsellProducts.length > 0 ? (
-                  <div
-                    style={{
-                      border: "1px solid var(--s-color-border, #e3e3e3)",
-                      borderRadius: 10,
-                      overflow: "hidden",
-                    }}
-                  >
-                    {upsellProducts.map((p, i) => (
-                      <div
-                        key={p.product_id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 12,
-                          padding: "10px 14px",
-                          borderBottom: i < upsellProducts.length - 1 ? "1px solid var(--s-color-border, #e3e3e3)" : "none",
-                          background: "#fff",
-                        }}
-                      >
-                        {p.image_url ? (
-                          <s-thumbnail src={p.image_url} alt={p.title} size="small-200" />
-                        ) : (
-                          <div
-                            style={{
-                              width: 40,
-                              height: 40,
-                              borderRadius: 6,
-                              background: "var(--s-color-bg-surface-secondary)",
-                              flexShrink: 0,
-                            }}
-                          />
-                        )}
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <s-text fontWeight="medium">{p.title}</s-text>
-                          <div>
-                            <s-text color="subdued" variant="bodySm">₹{p.price}</s-text>
-                          </div>
-                        </div>
-                        <s-button
-                          variant="tertiary"
-                          tone="critical"
-                          icon="delete"
-                          accessibilityLabel={`Remove ${p.title}`}
-                          onClick={() => removeProduct(p.product_id)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      textAlign: "center",
-                      padding: "28px 14px",
-                      border: "1px dashed var(--s-color-border, #e3e3e3)",
-                      borderRadius: 10,
-                      background: "#fafafa",
-                    }}
-                  >
-                    <s-text color="subdued">No upsell products yet</s-text>
-                    <div style={{ marginTop: 10 }}>
-                      <s-button onClick={pickProducts}>Add products</s-button>
-                    </div>
-                  </div>
-                )}
-                {upsellProducts.length > 6 && (
-                  <div style={{ marginTop: 10 }}>
-                    <s-banner tone="warning">
-                      More than 6 products may feel overwhelming. Consider keeping it focused.
-                    </s-banner>
-                  </div>
-                )}
-              </div>
-            </VStack>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <s-stack direction="inline" gap="small" alignItems="center">
+                <s-badge tone={data.upsells.enabled ? "success" : "warning"}>{data.upsells.enabled ? "Enabled" : "Disabled"}</s-badge>
+                <s-text color="subdued">
+                  {data.upsells.mode === "cart_based" ? "Based on cart contents" : "Same products for every cart"}
+                  {" · "}{data.upsellRuleCount} product {data.upsellRuleCount === 1 ? "rule" : "rules"}
+                  {" · "}{(data.upsells.products || []).length} default {(data.upsells.products || []).length === 1 ? "product" : "products"}
+                </s-text>
+              </s-stack>
+              <s-button href="/app/upsells">Manage upsells</s-button>
+            </div>
           </s-section>
 
           {/* ── Bottom Ribbon ───────────────────────────── */}
