@@ -3,7 +3,7 @@
 # Or run `fly launch --copy-config` to let Fly generate this interactively.
 
 app = "cartx"
-primary_region = "bom"  # Mumbai — close to India merchants
+primary_region = "sin"  # Singapore — bom was deprecated by Fly; same region as cartx-db
 
 [build]
 
@@ -14,7 +14,12 @@ primary_region = "bom"  # Mumbai — close to India merchants
 [http_service]
   internal_port = 3000
   force_https = true
-  auto_stop_machines = "off"   # keep warm to avoid Shopify embed load delays
+  # "stop" + min_machines_running=1: machine 1 stays permanently warm (so the
+  # Shopify embed and the storefront proxy never pay a cold start), while the
+  # HA spare stops when idle instead of billing 24/7. auto_start brings it back
+  # under load. Do NOT set min_machines_running = 0 — that reintroduces the
+  # cold-start delay on the shopper-facing /apps/cartx proxy.
+  auto_stop_machines = "stop"
   auto_start_machines = true
   min_machines_running = 1
   processes = ["app"]
@@ -37,7 +42,7 @@ primary_region = "bom"  # Mumbai — close to India merchants
 # Migrations run on every app machine at boot via `npm run docker-start`
 # (-> `npm run setup` -> `prisma migrate deploy`), so a separate ephemeral
 # release machine is redundant. Removing it also lets deploys succeed when
-# the bom region has no spare capacity to launch a new release VM — existing
+# the region has no spare capacity to launch a new release VM — existing
 # machines are updated in place instead.
 
 # ─ Scheduled jobs (analytics) ──────────────────────────────────────────
@@ -51,8 +56,8 @@ primary_region = "bom"  # Mumbai — close to India merchants
 #    the command silently becomes a no-op `sh`.
 #  - The Prisma client is baked into the image (Dockerfile `npx prisma generate`),
 #    so the job script runs without a separate generate step.
-#  - bom frequently has no spare capacity; these batch jobs aren't latency
-#    sensitive, so we run them in sin (Singapore).
+#  - These run in sin (Singapore), same region as the app and cartx-db.
+#    Fly deprecated bom in Oct 2026, so sin is now the only region we use.
 #
 #   IMAGE="registry.fly.io/cartx:deployment-XXXXXXXX"
 #
