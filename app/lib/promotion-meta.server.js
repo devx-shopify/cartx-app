@@ -62,9 +62,28 @@ export async function loadPromotionMeta(shopId) {
         }
       }
     }
+    // Default upsell products, as `upsell:<product_id>` (the drawer's card id).
+    for (const p of (parsed?.upsells?.products ?? [])) {
+      const id = upsellPromotionId(p?.product_id)
+      if (id && !map.has(id)) map.set(id, { name: p.title || null, type: 'upsell', enabled: true, needsAttention: false })
+    }
+  }
+  // Upsell products used by cart-based product rules.
+  const ruleProducts = await db.upsellProduct.findMany({
+    where: { shopId },
+    select: { productId: true, title: true },
+  })
+  for (const p of ruleProducts) {
+    const id = upsellPromotionId(p.productId)
+    if (!map.has(id)) map.set(id, { name: p.title || null, type: 'upsell', enabled: true, needsAttention: false })
   }
   _cache.set(shopId, { map, ts: Date.now() })
   return map
+}
+
+function upsellPromotionId(productId) {
+  const pid = String(productId || '').split('/').pop()
+  return pid ? `upsell:${pid}` : null
 }
 
 // Derive a display status from resolved meta. Undefined meta means the

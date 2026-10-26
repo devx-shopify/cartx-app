@@ -17,6 +17,7 @@
 import { loadConfig, saveConfig, listConfigThemeIds } from './config.server.js'
 import { captureException } from './sentry.server.js'
 import { variantDisplayTitle } from './graphql.server.js'
+import { syncUpsellProduct, removeUpsellProduct } from './upsells.server.js'
 
 function numeric(id) {
   const s = String(id || '')
@@ -52,9 +53,10 @@ async function fetchProduct(admin, productId) {
         product(id: $id) {
           id
           title
+          handle
           status
           featuredMedia { preview { image { url } } }
-          variants(first: 100) { nodes { id title displayName image { url } price } }
+          variants(first: 100) { nodes { id title displayName image { url } price compareAtPrice } }
         }
       }`,
       { variables: { id: gid } }
@@ -69,12 +71,13 @@ async function fetchProduct(admin, productId) {
         title: variantDisplayTitle(p.title, v.title, v.displayName),
         image: v.image?.url || productImage,
         price: v.price,
+        compareAtPrice: v.compareAtPrice || null,
       }
     }
     // available = sellable on the storefront. DRAFT / ARCHIVED = intentional
     // takedown (treated like a soft delete for promotions), distinct from a
     // temporary out-of-stock (which stays live + is handled at the drawer).
-    return { found: true, available: p.status === 'ACTIVE', title: p.title || '', image: productImage, byVariant }
+    return { found: true, available: p.status === 'ACTIVE', title: p.title || '', handle: p.handle || '', image: productImage, byVariant }
   } catch (err) {
     console.error('[cartx] product-sync fetchProduct error:', err)
     return { error: true }
@@ -193,6 +196,9 @@ export function reconcileConfig(config, productId, product) {
         if (p.title !== product.title) { p.title = product.title; changed = true }
         if (v.image && p.image_url !== v.image) { p.image_url = v.image; changed = true }
         if (v.price && p.price !== v.price) { p.price = v.price; changed = true }
+        const compareAt = v.compareAtPrice || undefined
+        if (p.compare_at_price !== compareAt) { p.compare_at_price = compareAt; changed = true }
+        if (product.handle && p.handle !== product.handle) { p.handle = product.handle; changed = true }
         return p
       })
       .filter(Boolean)
@@ -220,6 +226,7 @@ async function applyToShop(shop, productId, product) {
 /** products/update — refresh snapshots referencing this product. No-ops fast
  *  (no Admin API) when the product isn't referenced. */
 export async function handleProductUpdate(shop, productId, admin) {
+  await syncUpsellRules(shop, productId, admin)
   const themeIds = await listConfigThemeIds(shop)
   const configs = []
   let referenced = false
@@ -251,5 +258,18 @@ export async function handleProductUpdate(shop, productId, admin) {
 /** products/delete — drop refs to the deleted product; auto-draft any promotion
  *  it invalidates. No Admin API needed (product is gone). */
 export async function handleProductDelete(shop, productId) {
+  await syncUpsellRules(shop, productId, null, { deleted: true })
   await applyToShop(shop, productId, null)
+}
+
+// Upsell product rules live in their own tables, not the theme config. A
+// failure here is reported but never blocks the config sync below.
+async function syncUpsellRules(shop, productId, admin, { deleted = false } = {}) {
+  try {
+    if (deleted) await removeUpsellProduct(shop, productId)
+    else await syncUpsellProduct(shop, admin, productId)
+  } catch (err) {
+    console.error('[cartx] upsell product sync failed:', shop, productId, err)
+    captureException(err, { tags: { area: 'product_sync_upsells' }, extra: { shop, productId, deleted } })
+  }
 }

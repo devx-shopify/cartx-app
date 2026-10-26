@@ -140,42 +140,18 @@ export function scoreGapFiller(price, gap, tolerance) {
 }
 
 /**
- * Which candidate variants a merchant's pairing rules promote, given the cart.
- * Rule shape: { when_product_ids[], then_variant_ids[], boost }.
- * Returns a map of normalized variant id -> summed boost.
- */
-export function matchPairingRules(rules, cartItems) {
-  const boosts = {}
-  const list = rules || []
-  const items = cartItems || []
-  for (let i = 0; i < list.length; i++) {
-    const rule = list[i] || {}
-    const when = (rule.when_product_ids || []).map(normalizeId)
-    if (when.length === 0) continue
-    const matched = items.some((item) => when.indexOf(normalizeId(item.product_id)) !== -1)
-    if (!matched) continue
-    const boost = Number(rule.boost) > 0 ? Number(rule.boost) : 1
-    const targets = rule.then_variant_ids || []
-    for (let t = 0; t < targets.length; t++) {
-      const vid = normalizeId(targets[t])
-      boosts[vid] = (boosts[vid] || 0) + boost
-    }
-  }
-  return boosts
-}
-
-/**
- * Rank the curated upsell pool for a given cart.
+ * Rank the candidate upsell products for a given cart (candidates come from
+ * upsell-recs.js: cart-based product rules, then the default list).
  *
  * Every strategy is opt-in: with none enabled this returns the pool in its
  * authored order minus exclusions, which is exactly the pre-engine behaviour.
  *
  * @param {object}  input
- * @param {Array}   input.pool        curated upsell product snapshots
+ * @param {Array}   input.pool        candidate upsell product snapshots
  * @param {Array}   input.cartItems   current cart lines
  * @param {object}  input.gap         result of computeGap(), or null
  * @param {object}  input.strategies  config.upsells.strategies
- * @param {object}  input.addRates    { 'upsell:<variant_id>': 0..1 }
+ * @param {object}  input.addRates    { 'upsell:<product_id>': { impressions, rate } }
  * @param {number}  input.maxVisible
  * @returns {Array} copies of the pool entries, ordered, annotated with
  *                  `_score` and `_unlocks_tier`
@@ -200,9 +176,7 @@ export function rankUpsells(input) {
   }
 
   const gapCfg = strategies.gap_filler || {}
-  const pairCfg = strategies.pairing || {}
   const perfCfg = strategies.performance || {}
-  const pairBoosts = pairCfg.enabled ? matchPairingRules(pairCfg.rules, cartItems) : {}
   const minImpressions = Number(perfCfg.min_impressions) > 0 ? Number(perfCfg.min_impressions) : 50
 
   const scored = []
@@ -221,12 +195,8 @@ export function rankUpsells(input) {
       if (price >= gapInfo.gap) unlocksTier = gapInfo.tier
     }
 
-    if (pairCfg.enabled && pairBoosts[vid]) {
-      score += pairBoosts[vid]
-    }
-
     if (perfCfg.enabled) {
-      const stat = addRates['upsell:' + vid]
+      const stat = addRates['upsell:' + pid]
       // Ignore thin data so a brand-new product isn't buried before it's had a
       // fair chance to be seen.
       if (stat && stat.impressions >= minImpressions) {

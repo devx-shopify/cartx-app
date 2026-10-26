@@ -8,7 +8,7 @@ import {
 
 // Parse a Shopify Admin REST order JSON into a list of analytics rows.
 //
-// Two attribution paths:
+// Three attribution paths:
 //
 // 1. Line-property path (`_offer_id`) — GWP, claim-gift, and other offers
 //    that tag the lines they affect. For each group:
@@ -25,6 +25,10 @@ import {
 //    the lines it touched, then look up the cartx offer that owns that
 //    variant via the volume_discount config in `ThemeConfig`. Credit each
 //    matched line's post-discount subtotal to the corresponding offer.
+//
+// 3. Upsell path (`_cartx_upsell`) — lines added from an upsell card credit
+//    their post-discount subtotal to `upsell:<product_id>`, the same id the
+//    drawer uses for the card's impressions and adds.
 //
 // When the same promotion attribution exists in both paths, the second pass
 // merges into the same bucket so we don't double-write rows.
@@ -85,6 +89,17 @@ function readFreebieFlag(line) {
     if (p && p.name === '_freebie' && p.value === 'true') return true
   }
   return false
+}
+
+// `_cartx_upsell` is set by the drawer on lines added from an upsell card:
+// "rule:<trigger_product_id>", "default" or "shopify_recs".
+function readUpsellSource(line) {
+  const props = line.properties
+  if (!Array.isArray(props)) return null
+  for (const p of props) {
+    if (p && p.name === '_cartx_upsell') return p.value || null
+  }
+  return null
 }
 
 function normalizeVariantId(id) {
@@ -190,7 +205,7 @@ export async function attributeOrder(shopId, order) {
 
   // Bucket by promotion.
   // promotionType: 'offer' | 'claim-gift' (default 'offer'; set from claim flag).
-  const groups = new Map() // offer_id -> { lineRevenue, lineIds, lineCount, claim, allFreebies, source }
+  const groups = new Map() // offer_id -> { lineRevenue, lineIds, lineCount, claim, upsell, allFreebies, source }
   function bucketFor(offerId, source) {
     let b = groups.get(offerId)
     if (!b) {
@@ -199,8 +214,9 @@ export async function attributeOrder(shopId, order) {
         lineIds: [],
         lineCount: 0,
         claim: false,
+        upsell: null, // { name, sources[] } for upsell buckets
         allFreebies: true,
-        source, // 'line_property' | 'volume_discount'
+        source, // 'line_property' | 'volume_discount' | 'upsell'
       }
       groups.set(offerId, b)
     }
@@ -245,6 +261,19 @@ export async function attributeOrder(shopId, order) {
     }
   }
 
+  // Pass 3: upsell attribution via `_cartx_upsell`.
+  for (const line of order.line_items || []) {
+    const upsellSource = readUpsellSource(line)
+    if (!upsellSource || !line.product_id) continue
+    const bucket = bucketFor(`upsell:${normalizeVariantId(line.product_id)}`, 'upsell')
+    bucket.lineRevenue += lineSubtotalCents(line)
+    bucket.lineIds.push(String(line.id))
+    bucket.lineCount += line.quantity ?? 1
+    bucket.allFreebies = false
+    bucket.upsell = bucket.upsell || { name: line.title || null, sources: [] }
+    if (!bucket.upsell.sources.includes(upsellSource)) bucket.upsell.sources.push(upsellSource)
+  }
+
   const rows = []
   // Shop-wide order row. Carries the order subtotal and whether any cartx promo
   // fired, so the rollup can compute de-duplicated shop metrics (attributed vs
@@ -274,13 +303,15 @@ export async function attributeOrder(shopId, order) {
     // Volume discount / other: matched lines carry real post-discount
     // revenue → credit that directly.
     const attribution = bucket.allFreebies ? orderSubtotalCents : bucket.lineRevenue
+    let promotionType = bucket.claim ? 'claim-gift' : 'offer'
+    if (bucket.upsell) promotionType = 'upsell'
     rows.push({
       shopId,
       event: ANALYTICS_EVENTS.ORDER_ATTRIBUTED,
       source: ANALYTICS_SOURCES.SERVER,
       promotionId: offerId,
-      promotionType: bucket.claim ? 'claim-gift' : 'offer',
-      promotionName: promoMeta.get(offerId)?.name ?? null,
+      promotionType,
+      promotionName: promoMeta.get(offerId)?.name ?? bucket.upsell?.name ?? null,
       customerId,
       cartTotal: totalCents,
       revenue: attribution,
@@ -290,6 +321,7 @@ export async function attributeOrder(shopId, order) {
         line_quantity: bucket.lineCount,
         attribution_source: bucket.source,
         attribution_mode: bucket.allFreebies ? 'non_freebie_subtotal' : 'line_subtotal',
+        ...(bucket.upsell ? { upsell_sources: bucket.upsell.sources } : {}),
       },
       occurredAt,
     })

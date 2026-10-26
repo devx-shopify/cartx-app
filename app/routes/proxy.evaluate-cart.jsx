@@ -1,14 +1,14 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { EvaluateCartRequestSchema } from "../lib/schemas.js";
 import { checkRateLimit } from "../lib/rate-limit.server.js";
-import { loadConfig } from "../lib/config.server.js";
+import { loadConfig, normalizeThemeId } from "../lib/config.server.js";
+import { buildUpsellsPayload } from "../lib/upsells.server.js";
 import { loadStorefrontToken } from "../lib/storefront-token.server.js";
 import { adjustedTotal, adjustedQty, isFrozenPage, computeTotalSavings } from "../lib/helpers.server.js";
 import { evaluateOffers } from "../lib/evaluate/triggers.server.js";
 import { buildBar, getRibbonFromBar } from "../lib/evaluate/bar.server.js";
 import { resolveAvailableCoupons } from "../lib/evaluate/coupons.server.js";
 import { resolveClaimGifts } from "../lib/evaluate/claims.server.js";
-import { rankUpsells, computeGap } from "../lib/upsell-rank.js";
 import { loadUpsellAddRates } from "../lib/upsell-stats.server.js";
 
 function verifyProxyHmac(requestUrl) {
@@ -170,6 +170,24 @@ export const action = async ({ request }) => {
     console.error('[cartx] loadStorefrontToken error:', err);
   }
 
+  // Upsells never fail the whole response: on a DB hiccup the drawer just
+  // renders without them.
+  let upsells = null;
+  if (config.upsells?.enabled) {
+    try {
+      upsells = await buildUpsellsPayload({
+        shopId,
+        themeId: normalizeThemeId(String(themeId)),
+        upsells: config.upsells,
+        items: cartItems,
+        bar,
+        addRates: upsellAddRates,
+      });
+    } catch (err) {
+      console.error('[cartx] upsells payload error:', err);
+    }
+  }
+
   // Build lightweight config for client-side caching
   const clientConfig = {
     offers: (config.offers || []).filter((o) => o.enabled).map((o) => ({
@@ -214,24 +232,6 @@ export const action = async ({ request }) => {
     volume_discounts: offerResult.volume_discounts || [],
     _config: clientConfig,
     drawer: config.drawer,
-    upsells: config.upsells?.enabled ? {
-      enabled: true,
-      heading: config.upsells.heading,
-      show_on_empty_cart: config.upsells.show_on_empty_cart || false,
-      // Echoed so the drawer can re-rank locally as the cart changes without
-      // waiting for a server roundtrip (same inputs => same order).
-      strategies: config.upsells.strategies || {},
-      max_visible: config.upsells.max_visible || 4,
-      // Echoed so a local re-rank scores identically to the server's.
-      add_rates: upsellAddRates,
-      products: rankUpsells({
-        pool: config.upsells.products || [],
-        cartItems,
-        gap: computeGap(bar, adjTotal),
-        strategies: config.upsells.strategies,
-        addRates: upsellAddRates,
-        maxVisible: config.upsells.max_visible,
-      }),
-    } : null,
+    upsells,
   });
 };

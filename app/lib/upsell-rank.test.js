@@ -5,7 +5,6 @@ import {
   adjustedQty,
   computeGap,
   scoreGapFiller,
-  matchPairingRules,
   rankUpsells,
 } from './upsell-rank.js'
 
@@ -152,32 +151,6 @@ describe('scoreGapFiller', () => {
   })
 })
 
-describe('matchPairingRules', () => {
-  const rules = [
-    { when_product_ids: [111], then_variant_ids: [99], boost: 2 },
-    { when_product_ids: [999], then_variant_ids: [88], boost: 5 },
-  ]
-
-  test('boosts only the targets whose trigger product is in the cart', () => {
-    const boosts = matchPairingRules(rules, SOULFLOWER_CART)
-    expect(boosts['99']).toBe(2)
-    expect(boosts['88']).toBeUndefined()
-  })
-
-  test('normalizes gid:// ids on both sides', () => {
-    const boosts = matchPairingRules(
-      [{ when_product_ids: ['gid://shopify/Product/111'], then_variant_ids: ['gid://shopify/ProductVariant/99'] }],
-      SOULFLOWER_CART
-    )
-    expect(boosts['99']).toBe(1)
-  })
-
-  test('no rules means no boosts', () => {
-    expect(matchPairingRules([], SOULFLOWER_CART)).toEqual({})
-    expect(matchPairingRules(null, null)).toEqual({})
-  })
-})
-
 describe('rankUpsells', () => {
   const POOL = [
     { variant_id: 501, product_id: 601, title: 'Cheap',     price: '50.00' },
@@ -239,28 +212,14 @@ describe('rankUpsells', () => {
     expect(out.every((p) => p._unlocks_tier === null)).toBe(true)
   })
 
-  test('pairing boost can outrank a gap fit', () => {
-    const out = rankUpsells({
-      pool: POOL,
-      cartItems: SOULFLOWER_CART,
-      gap: computeGap(BAR, 1411.5),
-      strategies: {
-        gap_filler: { enabled: true },
-        pairing: { enabled: true, rules: [{ when_product_ids: [444], then_variant_ids: [501], boost: 5 }] },
-      },
-      maxVisible: 10,
-    })
-    expect(out[0].title).toBe('Cheap')
-  })
-
   test('performance ranking ignores products below the impression floor', () => {
     const out = rankUpsells({
       pool: POOL,
       cartItems: [],
       strategies: { performance: { enabled: true, min_impressions: 50 } },
       addRates: {
-        'upsell:503': { impressions: 500, rate: 0.9 },  // proven
-        'upsell:501': { impressions: 3, rate: 1.0 },    // too thin to trust
+        'upsell:603': { impressions: 500, rate: 0.9 },  // proven
+        'upsell:601': { impressions: 3, rate: 1.0 },    // too thin to trust
       },
       maxVisible: 10,
     })

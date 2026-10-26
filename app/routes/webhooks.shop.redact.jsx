@@ -1,5 +1,6 @@
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { deleteShopUpsellData } from "../lib/upsells.server.js";
 
 export const action = async ({ request }) => {
   const { shop, topic } = await authenticate.webhook(request);
@@ -8,6 +9,7 @@ export const action = async ({ request }) => {
 
   await db.session.deleteMany({ where: { shop } });
   await db.themeConfig.deleteMany({ where: { shopId: shop } });
+  await deleteShopUpsellData(shop);
   await db.store.deleteMany({ where: { storeDomain: shop } });
 
   return new Response();

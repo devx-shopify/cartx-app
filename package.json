@@ -43,7 +43,7 @@
     "react-dom": "^18.3.1",
     "react-router": "^7.18.2",
     "vite-tsconfig-paths": "^5.1.4",
-    "zod": "^4.3.6"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@shopify/api-codegen-preset": "^1.2.0",
@@ -63,7 +63,7 @@
     "graphql-config": "^5.1.1",
     "prettier": "^3.6.2",
     "typescript": "^5.9.3",
-    "vite": "^6.3.6"
+    "vite": "^6.4.4"
   },
   "workspaces": [
     "extensions/*"
@@ -75,21 +75,30 @@
     "p-map": "^4.0.0",
     "lodash": "^4.18.0",
     "immutable": "^5.1.8",
-    "js-yaml": "^4.3.0",
+    "js-yaml": "^4.3.2",
     "postcss": "^8.5.18",
     "nanoid": "^3.3.17",
     "minimatch@3.1.5": {
-      "brace-expansion": "1.1.16"
+      "brace-expansion": "1.1.21"
     },
     "minimatch@9.0.9": {
-      "brace-expansion": "2.1.2"
+      "brace-expansion": "2.1.7"
     },
     "minimatch@9.0.3": {
-      "brace-expansion": "2.1.2"
+      "brace-expansion": "2.1.7"
     },
     "minimatch@10.2.5": {
-      "brace-expansion": "5.0.8"
-    }
+      "brace-expansion": "5.0.12"
+    },
+    "deepmerge-ts": "^8.0.2",
+    "@fastify/busboy": "^3.2.1",
+    "@graphql-tools/executor-legacy-ws": "^1.1.35",
+    "@graphql-tools/utils": "^12.0.1",
+    "compression": "^1.8.2",
+    "proxy-addr": "^2.0.8",
+    "shell-quote": "^1.11.0",
+    "source-map-js": "^1.2.2",
+    "body-parser@1": "^1.20.9"
   },
   "author": "ansh"
 }
