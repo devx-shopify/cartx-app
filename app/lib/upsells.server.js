@@ -361,3 +361,53 @@ export async function buildUpsellsPayload({ shopId, themeId, upsells, items, bar
 
   return { ...base, products, rules, catalog };
 }
+
+// ── Product webhooks / shop data removal ──────────────────
+
+// products/update. Refreshes the snapshot when a rule references the product
+// (status included, so a drafted product is skipped until it's republished).
+// A product the Admin API no longer returns is handled as a delete.
+export async function syncUpsellProduct(shopId, admin, productId) {
+  const id = numericId(productId);
+  const known = await prisma.upsellProduct.findUnique({
+    where: { shopId_productId: { shopId, productId: id } },
+    select: { id: true },
+  });
+  if (!known || !admin) return { skipped: true };
+  const [row] = await fetchProductSnapshots(admin, [id]);
+  if (!row) return removeUpsellProduct(shopId, id);
+  await upsertSnapshots(shopId, [row]);
+  return { refreshed: true };
+}
+
+// products/delete. Drops the rules the product triggers (every theme), removes
+// it from every recommendation list, drops rules left empty, and deletes the
+// snapshot. One transaction, so a rule is never left half-updated.
+export async function removeUpsellProduct(shopId, productId) {
+  const id = numericId(productId);
+  const listing = await prisma.upsellRule.findMany({
+    where: { shopId, recommendedIds: { has: id } },
+    select: { id: true, triggerProductId: true, recommendedIds: true },
+  });
+  const ops = [prisma.upsellRule.deleteMany({ where: { shopId, triggerProductId: id } })];
+  const emptied = [];
+  for (const rule of listing) {
+    if (rule.triggerProductId === id) continue;
+    const rest = rule.recommendedIds.filter((r) => r !== id);
+    if (rest.length === 0) emptied.push(rule.id);
+    else ops.push(prisma.upsellRule.update({ where: { id: rule.id }, data: { recommendedIds: rest } }));
+  }
+  if (emptied.length) ops.push(prisma.upsellRule.deleteMany({ where: { shopId, id: { in: emptied } } }));
+  ops.push(prisma.upsellProduct.deleteMany({ where: { shopId, productId: id } }));
+  await prisma.$transaction(ops);
+  return { removed: true, rulesUpdated: listing.length };
+}
+
+// shop/redact: every upsell row for the shop.
+export async function deleteShopUpsellData(shopId) {
+  await prisma.$transaction([
+    prisma.upsellRule.deleteMany({ where: { shopId } }),
+    prisma.upsellProduct.deleteMany({ where: { shopId } }),
+    prisma.upsellImport.deleteMany({ where: { shopId } }),
+  ]);
+}
