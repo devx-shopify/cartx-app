@@ -14,10 +14,13 @@ import { UpsellSettingsSchema, UPSELL_CAP_LIMIT } from "../lib/schemas.js";
 import { listRules, deleteRules, setRulesEnabled, fetchDefaultProducts, getShopCurrency, friendlyError } from "../lib/upsells.server.js";
 import { planImport, applyImport, undoLastImport, lastImport } from "../lib/upsell-import.server.js";
 import { MAX_IMPORT_BYTES } from "../lib/upsell-csv.js";
-import { numericId } from "../drawer-src/src/upsell-recs.js";
+import { numericId } from "../lib/upsell-recs.js";
 
 const PAGE_SIZE = 25;
-const SETTINGS_KEYS = ["enabled", "mode", "no_match", "fill_with_default", "sold_out", "max_items", "max_per_trigger"];
+const SETTINGS_KEYS = ["enabled", "mode", "no_match", "fill_with_default", "sold_out", "max_visible", "max_per_trigger"];
+// Ranking strategies, shown in the form as flat on/off keys ("strategy_gap_filler").
+const STRATEGY_KEYS = ["gap_filler", "shopify_recs", "performance"];
+const FORM_KEYS = [...SETTINGS_KEYS, ...STRATEGY_KEYS.map((k) => `strategy_${k}`)];
 const TABS = [
   { id: "settings", label: "Settings" },
   { id: "defaults", label: "Default products" },
@@ -58,7 +61,7 @@ export const loader = async ({ request }) => {
 // Settings validation shared by the form (inline field errors) and the action.
 function settingsErrors(settings) {
   const errors = {};
-  for (const key of ["max_items", "max_per_trigger"]) {
+  for (const key of ["max_visible", "max_per_trigger"]) {
     const n = Number(settings[key]);
     if (!Number.isInteger(n) || n < 1 || n > UPSELL_CAP_LIMIT) errors[key] = `Enter a whole number from 1 to ${UPSELL_CAP_LIMIT}.`;
   }
@@ -73,8 +76,13 @@ async function saveSettings({ admin, session, shopId, themeId }, body) {
   }
   const fieldErrors = settingsErrors(merged);
   if (Object.keys(fieldErrors).length) return { error: "Fix the highlighted fields.", fieldErrors };
-  merged.max_items = Number(merged.max_items);
+  merged.max_visible = Number(merged.max_visible);
   merged.max_per_trigger = Number(merged.max_per_trigger);
+  merged.strategies = { ...(config.upsells.strategies || {}) };
+  for (const key of STRATEGY_KEYS) {
+    const on = body.settings?.[`strategy_${key}`];
+    if (on !== undefined) merged.strategies[key] = { ...(merged.strategies[key] || {}), enabled: on === true };
+  }
   if (Array.isArray(body.product_ids)) {
     const current = (config.upsells.products || []).map((p) => numericId(p.product_id));
     const next = body.product_ids.map(numericId);
@@ -249,10 +257,10 @@ function SettingsTab({ form, setForm, fieldErrors, totalRules, totalDefaults, go
               label="Maximum products shown"
               min={1}
               max={UPSELL_CAP_LIMIT}
-              value={String(form.max_items)}
-              onInput={(e) => set("max_items")(e.target.value)}
+              value={String(form.max_visible)}
+              onInput={(e) => set("max_visible")(e.target.value)}
               details={`1 to ${UPSELL_CAP_LIMIT}`}
-              error={fieldErrors.max_items || ""}
+              error={fieldErrors.max_visible || ""}
             />
             {cartBased && (
               <s-number-field
@@ -266,6 +274,32 @@ function SettingsTab({ form, setForm, fieldErrors, totalRules, totalDefaults, go
               />
             )}
           </div>
+        </VStack>
+      </s-section>
+
+      <s-section
+        heading="Ranking"
+        description="Orders the recommended products. With none selected they show in rule order (newest cart item first), then the default products."
+      >
+        <VStack gap={200}>
+          <s-checkbox
+            label="Close the gap to the next reward"
+            details="Puts the cheapest product that unlocks the shopper's next milestone first, with an 'unlock' button. Needs the progress bar switched on."
+            checked={form.strategy_gap_filler || undefined}
+            onChange={(e) => set("strategy_gap_filler")(e.target.checked)}
+          />
+          <s-checkbox
+            label="Top up from Shopify recommendations"
+            details="Fills empty slots with Shopify's complementary products. Requires the Search & Discovery app; does nothing if it isn't set up."
+            checked={form.strategy_shopify_recs || undefined}
+            onChange={(e) => set("strategy_shopify_recs")(e.target.checked)}
+          />
+          <s-checkbox
+            label="Favour what actually gets added"
+            details="Ranks by how often each product is added once seen. Ignores products with fewer than 50 views so new ones still get a chance."
+            checked={form.strategy_performance || undefined}
+            onChange={(e) => set("strategy_performance")(e.target.checked)}
+          />
         </VStack>
       </s-section>
 
@@ -727,6 +761,7 @@ function ImportExportTab({ data }) {
 function settingsFrom(upsells) {
   const out = {};
   for (const key of SETTINGS_KEYS) out[key] = upsells[key];
+  for (const key of STRATEGY_KEYS) out[`strategy_${key}`] = upsells.strategies?.[key]?.enabled === true;
   return out;
 }
 function defaultsFrom(upsells) {
@@ -754,7 +789,7 @@ export default function Upsells() {
 
   const dirty = useMemo(() => {
     const saved = settingsFrom(data.upsells);
-    const formChanged = SETTINGS_KEYS.some((k) => String(form[k]) !== String(saved[k]));
+    const formChanged = FORM_KEYS.some((k) => String(form[k]) !== String(saved[k]));
     const productsChanged = products.map((p) => p.id).join(",") !== defaultsFrom(data.upsells).map((p) => p.id).join(",");
     return formChanged || productsChanged;
   }, [form, products, data.upsells]);
@@ -819,7 +854,7 @@ export default function Upsells() {
               goToDefaults={() => setTab("defaults")}
             />
           )}
-          {tab === "defaults" && <DefaultsTab products={products} setProducts={setProducts} currency={data.currency} maxItems={form.max_items} />}
+          {tab === "defaults" && <DefaultsTab products={products} setProducts={setProducts} currency={data.currency} maxItems={form.max_visible} />}
           {tab === "rules" && <RulesTab data={data} cap={Number(data.upsells.max_per_trigger) || 10} />}
           {tab === "import" && <ImportExportTab data={data} />}
         </div>

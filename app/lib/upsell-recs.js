@@ -1,8 +1,11 @@
 // =============================================================
 // cartx — Upsell recommendations (cart-based + static)
-// Pure, dependency-free: the drawer bundles it and the server imports it
+// Pure, no Node or DOM APIs: the drawer bundles it and the server imports it
 // directly (proxy.evaluate-cart), so both pick the exact same products.
+// pickRecommendations chooses the candidates; upsell-rank.js orders them.
 // =============================================================
+
+import { rankUpsells, computeGap, adjustedTotal } from './upsell-rank.js';
 
 // "gid://shopify/Product/123" | 123 | "123" -> "123"
 export function numericId(id) {
@@ -59,7 +62,7 @@ function toCard(snapshot, source, triggerId) {
  *                                 price, compare_at_price, status)
  * @param {Array}  input.defaults  the default list (config.upsells.products), in order
  * @param {object} input.settings  config.upsells (mode, no_match, fill_with_default,
- *                                 sold_out, max_items, max_per_trigger)
+ *                                 sold_out, max_visible, max_per_trigger)
  * @param {object} [input.unavailable] { productId: true } known sold out; skipped when sold_out = 'hide'
  * @param {number} [input.limit]   override the card cap (the drawer asks for extra to backfill)
  * @returns {Array} cards: { product_id, title, handle, image_url, variant_id, price,
@@ -93,7 +96,7 @@ export function pickRecommendations(input) {
     defaults.forEach(function (p) { take(p, 'default', null); });
   }
 
-  var limit = input.limit || settings.max_items || 8;
+  var limit = input.limit || settings.max_visible || 4;
 
   if (settings.mode !== 'cart_based') {
     takeDefaults();
@@ -118,4 +121,50 @@ export function pickRecommendations(input) {
   }
 
   return cards.slice(0, limit);
+}
+
+/**
+ * The upsell cards for a cart: every candidate from pickRecommendations, topped
+ * up with `extraPool` (Shopify recommendations) only when there is at least one
+ * candidate, then ordered and capped by rankUpsells. With every ranking
+ * strategy off the candidates keep their order.
+ *
+ * @param {object} input  pickRecommendations input, plus:
+ * @param {object} [input.bar]        evaluated progress bar (for the gap-filler)
+ * @param {object} [input.addRates]   { 'upsell:<product_id>': { impressions, rate } }
+ * @param {Array}  [input.extraPool]  Shopify-recommended product snapshots
+ * @returns {Array} cards, annotated by rankUpsells with _score and _unlocks_tier
+ */
+export function selectUpsells(input) {
+  var settings = input.settings || {};
+  var items = input.items || [];
+  var pool = pickRecommendations(Object.assign({}, input, { limit: Infinity }));
+
+  var extra = input.extraPool || [];
+  if (pool.length > 0 && extra.length > 0) {
+    var unavailable = input.unavailable || {};
+    var hideSoldOut = settings.sold_out !== 'show';
+    var have = {};
+    pool.forEach(function (c) { have[c.product_id] = true; });
+    extra.forEach(function (p) {
+      var pid = numericId(p.product_id);
+      if (!pid || have[pid] || (hideSoldOut && unavailable[pid])) return;
+      have[pid] = true;
+      pool.push(Object.assign({}, p, {
+        product_id: pid,
+        variant_id: numericId(p.variant_id),
+        source: 'shopify_recs',
+        trigger_product_id: null,
+      }));
+    });
+  }
+
+  return rankUpsells({
+    pool: pool,
+    cartItems: items,
+    gap: input.bar ? computeGap(input.bar, adjustedTotal(items)) : null,
+    strategies: settings.strategies || {},
+    addRates: input.addRates || {},
+    maxVisible: settings.max_visible || 4,
+  });
 }

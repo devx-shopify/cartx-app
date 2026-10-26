@@ -7,6 +7,7 @@
 import { internalFetch, fetchCart, cartUpdateAll, getContext, normalizeVariantId, formatMoneyTemplate } from './helpers';
 import { localEvaluate } from './rules';
 import { setStorefrontConfig } from './storefront-cart';
+import { adjustedTotal, adjustedQty } from '../../lib/upsell-rank.js';
 
 var PROXY_URL = '/apps/cartx/evaluate-cart';
 
@@ -350,15 +351,13 @@ async function applyResult(result, cart, pendingActions) {
 function recomputeBar(serverBar, cart) {
   if (!serverBar || !serverBar.tiers || serverBar.tiers.length === 0) return serverBar;
 
-  var adjTotal = 0, adjQty = 0;
+  // Qualifying spend comes from the shared module, NOT a local loop. The copy
+  // that used to live here summed original_line_price without subtracting
+  // external discounts, so it ran high and disagreed with the server — which is
+  // exactly the number the gap-filler upsell ranks against.
   var items = cart.items || [];
-  for (var i = 0; i < items.length; i++) {
-    var it = items[i];
-    if (it.properties && (it.properties['_freebie'] === 'true' || it.properties['_cartmax_claim'] === 'true')) continue;
-    adjTotal += (it.original_line_price || it.line_price || 0);
-    adjQty += (it.quantity || 0);
-  }
-  adjTotal /= 100;
+  var adjTotal = adjustedTotal(items);
+  var adjQty = adjustedQty(items);
 
   var tiers = serverBar.tiers;
   var n = tiers.length;

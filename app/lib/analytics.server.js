@@ -270,6 +270,10 @@ export function filterPromotionsForTheme(promotions, config, { showDeleted = fal
     const themeStatus = statusMap.get(p.id)
     if (themeStatus) {
       out.push({ ...p, status: themeStatus })
+    } else if (String(p.id).startsWith('upsell:')) {
+      // Per-product upsell rows (`upsell:<product_id>`): views, adds and
+      // attributed orders. Products aren't promotions in the theme config.
+      out.push({ ...p, type: 'upsell', status: 'active' })
     } else if (showDeleted && p.status === 'deleted') {
       out.push(p)
     }

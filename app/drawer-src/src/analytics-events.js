@@ -9,7 +9,6 @@ export var ANALYTICS_EVENTS = {
   GIFT_CLAIMED: 'gift_claimed',
   GIFT_REMOVED: 'gift_removed',
   UPSELL_ADDED: 'upsell_added',
-  UPSELL_VIEWED: 'upsell_viewed',
   COUPON_APPLIED: 'coupon_applied',
   COUPON_REJECTED: 'coupon_rejected',
 };

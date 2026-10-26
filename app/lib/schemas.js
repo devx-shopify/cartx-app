@@ -178,6 +178,31 @@ export const UpsellProductSchema = z.object({
 // Hard ceiling for both caps: bounds the proxy payload and the import sheet width.
 export const UPSELL_CAP_LIMIT = 20
 
+// Ranking applied to the candidate products (rules + default list). Every one
+// is opt-in: with all off, candidates keep their order (newest cart item first).
+// Cart-based product rules replaced the earlier "pairing" strategy.
+export const UpsellStrategiesSchema = z.object({
+  // Rank by how well a product closes the gap to the next gift milestone.
+  gap_filler: z.object({
+    enabled: z.boolean().default(false),
+    // How much overshoot is tolerable: 1 = a product costing twice the gap
+    // scores at the floor. Higher values are more forgiving.
+    overshoot_tolerance: z.number().min(0.1).max(10).default(1),
+    cta_template: z.string().default('Add to unlock [[reward]]'),
+  }).default({}),
+  // Top the pool up from Shopify's own recommendations when it runs short.
+  shopify_recs: z.object({
+    enabled: z.boolean().default(false),
+    intent: z.enum(['complementary', 'related']).default('complementary'),
+    max_fill: z.number().int().min(1).max(8).default(2),
+  }).default({}),
+  // Rank by observed add-rate, ignoring products with too little data.
+  performance: z.object({
+    enabled: z.boolean().default(false),
+    min_impressions: z.number().int().min(1).default(50),
+  }).default({}),
+}).default({})
+
 export const UpsellSettingsSchema = z.object({
   enabled: z.boolean(),
   heading: z.string(),
@@ -187,8 +212,9 @@ export const UpsellSettingsSchema = z.object({
   no_match: z.enum(['default', 'none']).default('default'),
   fill_with_default: z.boolean().default(false),
   sold_out: z.enum(['hide', 'show']).default('hide'),
-  max_items: z.number().int().min(1).max(UPSELL_CAP_LIMIT).default(8),
+  max_visible: z.number().int().min(1).max(UPSELL_CAP_LIMIT).default(4),
   max_per_trigger: z.number().int().min(1).max(UPSELL_CAP_LIMIT).default(10),
+  strategies: UpsellStrategiesSchema,
 })
 
 // One product → recommended products mapping (admin save + import row).

@@ -41,8 +41,13 @@ export const DEFAULT_CONFIG = {
     no_match: 'default', // cart_based, no rule matched: 'default' (show default list) | 'none'
     fill_with_default: false, // cart_based: top up the remaining slots with the default list
     sold_out: 'hide', // 'hide' (skip, backfill from the next product) | 'show' (disabled "Sold out" card)
-    max_items: 8, // cards shown (both modes)
+    max_visible: 4, // cards shown (both modes)
     max_per_trigger: 10, // recommendations one rule may hold
+    strategies: {
+      gap_filler: { enabled: false, overshoot_tolerance: 1, cta_template: 'Add to unlock [[reward]]' },
+      shopify_recs: { enabled: false, intent: 'complementary', max_fill: 2 },
+      performance: { enabled: false, min_impressions: 50 },
+    },
   },
   drawer: {
     colors: {

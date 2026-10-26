@@ -1,4 +1,4 @@
-import { numericId } from "../drawer-src/src/upsell-recs.js";
+import { numericId } from "../lib/upsell-recs.js";
 
 export const productGid = (id) => `gid://shopify/Product/${numericId(id)}`;
 

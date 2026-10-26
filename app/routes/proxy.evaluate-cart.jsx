@@ -9,6 +9,7 @@ import { evaluateOffers } from "../lib/evaluate/triggers.server.js";
 import { buildBar, getRibbonFromBar } from "../lib/evaluate/bar.server.js";
 import { resolveAvailableCoupons } from "../lib/evaluate/coupons.server.js";
 import { resolveClaimGifts } from "../lib/evaluate/claims.server.js";
+import { loadUpsellAddRates } from "../lib/upsell-stats.server.js";
 
 function verifyProxyHmac(requestUrl) {
   const secret = process.env.SHOPIFY_API_SECRET;
@@ -115,6 +116,11 @@ export const action = async ({ request }) => {
   const adjTotal = adjustedTotal(cartItems);
   const adjQty = adjustedQty(cartItems);
 
+  // Only pay for the analytics read when a shop actually ranks by performance.
+  const upsellAddRates = config.upsells?.strategies?.performance?.enabled
+    ? await loadUpsellAddRates(shopId)
+    : {};
+
   let offerResult, bar, ribbon_message, availableCoupons, claimGifts;
   try {
     offerResult = evaluateOffers(config.offers || [], cart, adjTotal, adjQty, page, customer);
@@ -174,6 +180,8 @@ export const action = async ({ request }) => {
         themeId: normalizeThemeId(String(themeId)),
         upsells: config.upsells,
         items: cartItems,
+        bar,
+        addRates: upsellAddRates,
       });
     } catch (err) {
       console.error('[cartx] upsells payload error:', err);

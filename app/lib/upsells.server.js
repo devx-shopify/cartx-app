@@ -5,8 +5,9 @@ import prisma from "../db.server.js";
 import {
   numericId,
   pickRecommendations,
+  selectUpsells,
   triggerProductIds,
-} from "../drawer-src/src/upsell-recs.js";
+} from "./upsell-recs.js";
 import { UPSELL_CAP_LIMIT } from "./schemas.js";
 
 export { numericId };
@@ -314,16 +315,19 @@ function settingsOf(upsells) {
     no_match: upsells.no_match || "default",
     fill_with_default: upsells.fill_with_default === true,
     sold_out: upsells.sold_out || "hide",
-    max_items: upsells.max_items || 8,
+    max_visible: upsells.max_visible || 4,
     max_per_trigger: upsells.max_per_trigger || 10,
+    strategies: upsells.strategies || {},
   };
 }
 
-// `products` is the resolved list, so drawer bundles that predate cart-based
-// upsells still render the right cards. Cart-based mode also sends the rules for
-// the cart's products plus the rules of the products being recommended, so the
-// drawer can show a recommendation's own recommendations the moment it's added.
-export async function buildUpsellsPayload({ shopId, themeId, upsells, items }) {
+// `products` is the resolved, ranked list, so drawer bundles that predate
+// cart-based upsells still render the right cards. The drawer re-runs the same
+// selection locally from the rest (defaults, rules, catalog, add-rates). Cart-based
+// mode sends the rules for the cart's products plus the rules of the products
+// being recommended, so a recommendation's own recommendations show the moment
+// it's added. `bar` and `addRates` feed the gap-filler and performance ranking.
+export async function buildUpsellsPayload({ shopId, themeId, upsells, items, bar, addRates = {} }) {
   const settings = settingsOf(upsells);
   const defaults = upsells.products || [];
   const base = {
@@ -331,19 +335,21 @@ export async function buildUpsellsPayload({ shopId, themeId, upsells, items }) {
     heading: upsells.heading,
     show_on_empty_cart: upsells.show_on_empty_cart || false,
     settings,
+    add_rates: addRates,
+    defaults,
   };
 
   if (settings.mode !== "cart_based") {
-    return { ...base, products: pickRecommendations({ items, defaults, settings }), defaults };
+    return { ...base, products: selectUpsells({ items, defaults, settings, bar, addRates }) };
   }
 
   const rules = await loadRulesForProducts(shopId, themeId, triggerProductIds(items));
   const catalog = await loadCatalog(shopId, Object.values(rules).flat());
-  const products = pickRecommendations({ items, rules, catalog, defaults, settings });
+  const products = selectUpsells({ items, rules, catalog, defaults, settings, bar, addRates });
 
   // Lookahead: rules of everything we might show (twice the cap, so sold-out
   // backfill candidates are covered too).
-  const candidates = pickRecommendations({ items, rules, catalog, defaults, settings, limit: settings.max_items * 2 });
+  const candidates = pickRecommendations({ items, rules, catalog, defaults, settings, limit: settings.max_visible * 2 });
   const lookahead = await loadRulesForProducts(
     shopId,
     themeId,
@@ -353,5 +359,5 @@ export async function buildUpsellsPayload({ shopId, themeId, upsells, items }) {
   const missing = Object.values(lookahead).flat().filter((id) => !catalog[id]);
   Object.assign(catalog, await loadCatalog(shopId, missing));
 
-  return { ...base, products, rules, catalog, defaults };
+  return { ...base, products, rules, catalog };
 }

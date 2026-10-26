@@ -35,6 +35,21 @@ Prisma/Postgres; deployed on Fly.io; Sentry monitoring; two Shopify Functions
   `extensions/cart-max-drawer/assets/cartmax.js`.
 - Storefront token is delivered via the `/apps/cartmax` proxy `_config` (NOT a
   Liquid filter — none exists for it).
+- **Deploy split:** drawer/extension changes ship with `shopify app deploy`
+  (Shopify CDN); server changes ship to Fly. CI (`.github/workflows/fly-deploy.yml`)
+  deliberately excludes `app/drawer-src/**`, so a drawer-only push runs no CI —
+  that is correct, not a failure.
+- `app/lib/upsell-rank.js` and `app/lib/upsell-recs.js` are imported by BOTH the
+  server and the drawer bundle (esbuild follows the relative import). They must
+  stay dependency-free (upsell-recs may import upsell-rank), and a change to
+  either needs BOTH deploys. upsell-rank.js is also the single home for
+  `adjustedTotal` / `adjustedQty` — do not reintroduce local copies; three had
+  already drifted apart once.
+- Upsells: `upsell-recs.js` picks the candidates (cart-based product rules from
+  the `UpsellRule` table, then the default list); `upsell-rank.js` orders them
+  (gap-filler, Shopify recommendations, performance). Upsell analytics use the
+  id `upsell:<product_id>`; lines added from a card carry `_cartx_upsell` for
+  order attribution.
 
 ## Quality gates
 - `npm test` runs both Shopify Function suites (freebie + volume) via the

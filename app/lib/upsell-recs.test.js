@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest'
-import { pickRecommendations, triggerProductIds, isGiftLine, numericId } from './upsell-recs.js'
+import { pickRecommendations, selectUpsells, triggerProductIds, isGiftLine, numericId } from './upsell-recs.js'
 
 const snap = (id, extra = {}) => ({
   product_id: `gid://shopify/Product/${id}`,
@@ -13,7 +13,7 @@ const snap = (id, extra = {}) => ({
 })
 const catalogOf = (...ids) => Object.fromEntries(ids.map((id) => [String(id), snap(id)]))
 const line = (productId, properties = {}) => ({ product_id: productId, properties })
-const CART_BASED = { mode: 'cart_based', no_match: 'default', fill_with_default: false, sold_out: 'show', max_items: 8, max_per_trigger: 10 }
+const CART_BASED = { mode: 'cart_based', no_match: 'default', fill_with_default: false, sold_out: 'show', max_visible: 8, max_per_trigger: 10 }
 const ids = (cards) => cards.map((c) => c.product_id)
 
 describe('numericId', () => {
@@ -80,9 +80,9 @@ describe('pickRecommendations: cart_based', () => {
     expect(ids(cards)).toEqual(['11', '12'])
   })
 
-  test('max_items caps the total across lines; limit overrides it', () => {
+  test('max_visible caps the total across lines; limit overrides it', () => {
     const rules = { 1: ['11', '12'], 2: ['21', '22'] }
-    const input = { items: [line(2), line(1)], rules, catalog: catalogOf(11, 12, 21, 22), settings: { ...CART_BASED, max_items: 3 } }
+    const input = { items: [line(2), line(1)], rules, catalog: catalogOf(11, 12, 21, 22), settings: { ...CART_BASED, max_visible: 3 } }
     expect(ids(pickRecommendations(input))).toEqual(['21', '22', '11'])
     expect(ids(pickRecommendations({ ...input, limit: 4 }))).toEqual(['21', '22', '11', '12'])
   })
@@ -113,8 +113,8 @@ describe('pickRecommendations: cart_based', () => {
 
   test('sold_out = hide skips known-unavailable products and backfills from later ones', () => {
     const base = { items: [line(1)], rules: { 1: ['11', '12', '13'] }, catalog: catalogOf(11, 12, 13), unavailable: { 11: true } }
-    expect(ids(pickRecommendations({ ...base, settings: { ...CART_BASED, sold_out: 'hide', max_items: 2 } }))).toEqual(['12', '13'])
-    expect(ids(pickRecommendations({ ...base, settings: { ...CART_BASED, sold_out: 'show', max_items: 2 } }))).toEqual(['11', '12'])
+    expect(ids(pickRecommendations({ ...base, settings: { ...CART_BASED, sold_out: 'hide', max_visible: 2 } }))).toEqual(['12', '13'])
+    expect(ids(pickRecommendations({ ...base, settings: { ...CART_BASED, sold_out: 'show', max_visible: 2 } }))).toEqual(['11', '12'])
   })
 })
 
@@ -126,14 +126,14 @@ describe('pickRecommendations: static mode', () => {
       rules: { 51: ['11'] },
       catalog: catalogOf(11),
       defaults,
-      settings: { mode: 'static', max_items: 8 },
+      settings: { mode: 'static', max_visible: 8 },
     })
     expect(ids(cards)).toEqual(['50', '52'])
   })
 
-  test('max_items caps static mode too', () => {
+  test('max_visible caps static mode too', () => {
     const defaults = [snap(50), snap(51), snap(52)]
-    expect(ids(pickRecommendations({ items: [], defaults, settings: { mode: 'static', max_items: 2 } }))).toEqual(['50', '51'])
+    expect(ids(pickRecommendations({ items: [], defaults, settings: { mode: 'static', max_visible: 2 } }))).toEqual(['50', '51'])
   })
 
   test('sold-out defaults are hidden unless sold_out = show', () => {
@@ -144,5 +144,55 @@ describe('pickRecommendations: static mode', () => {
 
   test('missing settings behave as static', () => {
     expect(ids(pickRecommendations({ items: [], defaults: [snap(50)] }))).toEqual(['50'])
+  })
+})
+
+describe('selectUpsells: candidates, then ranking', () => {
+  const settings = { ...CART_BASED, max_visible: 3 }
+  // Next milestone at 500; the cart is worth 300, so the gap is 200.
+  const bar = { mode: 'price', tiers: [{ threshold: 500, trigger_type: 'price', label: 'Free tote' }] }
+  const cartLine = { ...line(1), original_line_price: 30000, line_price: 30000, quantity: 1 }
+  const priced = (id, price) => snap(id, { price })
+  const catalog = { 11: priced(11, '900.00'), 12: priced(12, '50.00'), 13: priced(13, '210.00') }
+  const base = { items: [cartLine], rules: { 1: ['11', '12', '13'] }, catalog, bar, settings }
+
+  test('with ranking off, keeps the rule order and caps at max_visible', () => {
+    expect(ids(selectUpsells(base))).toEqual(['11', '12', '13'])
+  })
+
+  test('gap-filler puts the cheapest product that closes the gap first, with the unlock tier', () => {
+    const cards = selectUpsells({ ...base, settings: { ...settings, strategies: { gap_filler: { enabled: true } } } })
+    expect(cards[0].product_id).toBe('13')
+    expect(cards[0]._unlocks_tier.label).toBe('Free tote')
+    expect(cards[0].source).toBe('rule')
+  })
+
+  test('ranks over every candidate, not just the first max_visible', () => {
+    const many = { 1: ['11', '12', '14', '15', '13'] }
+    const cat = { ...catalog, 14: priced(14, '5.00'), 15: priced(15, '6.00') }
+    const cards = selectUpsells({ ...base, rules: many, catalog: cat, settings: { ...settings, strategies: { gap_filler: { enabled: true } } } })
+    expect(cards[0].product_id).toBe('13')
+  })
+
+  test('performance ranking reads add-rates by product id', () => {
+    const cards = selectUpsells({
+      ...base,
+      settings: { ...settings, strategies: { performance: { enabled: true, min_impressions: 10 } } },
+      addRates: { 'upsell:12': { impressions: 100, rate: 0.5 } },
+    })
+    expect(cards[0].product_id).toBe('12')
+  })
+
+  test('Shopify recommendations top up candidates, deduped, never alone', () => {
+    const extraPool = [snap(12), snap(40), snap(1)]
+    const cards = selectUpsells({ ...base, rules: { 1: ['11'] }, settings: { ...settings, max_visible: 5 }, extraPool })
+    expect(ids(cards)).toEqual(['11', '12', '40'])
+    expect(cards[2].source).toBe('shopify_recs')
+    expect(selectUpsells({ ...base, rules: {}, settings: { ...settings, no_match: 'none' }, extraPool })).toEqual([])
+  })
+
+  test('sold-out products are dropped before ranking', () => {
+    const cards = selectUpsells({ ...base, unavailable: { 11: true }, settings: { ...settings, sold_out: 'hide' } })
+    expect(ids(cards)).toEqual(['12', '13'])
   })
 })

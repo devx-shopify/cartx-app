@@ -98,8 +98,9 @@ cartx is built to Shopify App Store security standards:
 
 ## 4. Deployment & infrastructure
 
-- **Platform:** Fly.io, primary region **Mumbai (bom)** — optimized for our
-  current merchant base.
+- **Platform:** Fly.io, primary region **Singapore (sin)** — co-located with
+  the Postgres instance. (Was Mumbai/bom until Fly deprecated that region in
+  Oct 2026.)
 - **CI/CD:** GitHub Actions auto-deploys on every push to `main`.
 - **Containerized:** hardened Docker image (non-root, production-only deps),
   database migrations run automatically on boot.

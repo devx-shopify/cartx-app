@@ -5,47 +5,9 @@
 // =============================================================
 
 import { normalizeVariantId as normalizeId, formatMoneyTemplate } from './helpers';
-
-function isDiscountedItem(item) {
-  return (item.properties && item.properties['_freebie'] === 'true') ||
-    (item.properties && item.properties['_cartmax_claim'] === 'true');
-}
-
-// cartx's own discounts ("cartx free gift" / "cartx volume discount") are the
-// REWARD, not a reduction in qualifying spend, so they must not lower a
-// threshold. Any OTHER discount (e.g. a merchant Buy X Get Y) reduces what the
-// customer pays and SHOULD count. Mirror of helpers.server.js.
-var CARTX_DISCOUNT_TITLES = ['cartx free gift', 'cartx volume discount'];
-
-function externalDiscountCents(item) {
-  var allocs = item.line_level_discount_allocations || [];
-  var cents = 0;
-  for (var i = 0; i < allocs.length; i++) {
-    var app = allocs[i].discount_application || {};
-    var title = String(app.title || allocs[i].title || '').toLowerCase();
-    if (CARTX_DISCOUNT_TITLES.indexOf(title) === -1) cents += (allocs[i].amount || 0);
-  }
-  return cents;
-}
-
-function adjustedTotal(items) {
-  var cents = 0;
-  for (var i = 0; i < items.length; i++) {
-    if (isDiscountedItem(items[i])) continue;
-    var gross = items[i].original_line_price || items[i].line_price || 0;
-    cents += Math.max(0, gross - externalDiscountCents(items[i]));
-  }
-  return cents / 100;
-}
-
-function adjustedQty(items) {
-  var qty = 0;
-  for (var i = 0; i < items.length; i++) {
-    if (isDiscountedItem(items[i])) continue;
-    qty += items[i].quantity || 0;
-  }
-  return qty;
-}
+import { adjustedTotal, adjustedQty } from '../../lib/upsell-rank.js';
+// ^ shared with the server (helpers.server.js re-exports the same functions),
+// so qualifying spend is computed identically on both sides.
 
 function pageMatch(handles, path) {
   if (!handles || handles.length === 0) return false;
