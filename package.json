@@ -43,7 +43,7 @@
     "react-dom": "^18.3.1",
     "react-router": "^7.18.2",
     "vite-tsconfig-paths": "^5.1.4",
-    "zod": "^4.3.6"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@shopify/api-codegen-preset": "^1.2.0",
@@ -63,7 +63,7 @@
     "graphql-config": "^5.1.1",
     "prettier": "^3.6.2",
     "typescript": "^5.9.3",
-    "vite": "^6.3.6"
+    "vite": "^6.4.4"
   },
   "workspaces": [
     "extensions/*"
@@ -97,7 +97,8 @@
     "compression": "^1.8.2",
     "proxy-addr": "^2.0.8",
     "shell-quote": "^1.11.0",
-    "source-map-js": "^1.2.2"
+    "source-map-js": "^1.2.2",
+    "body-parser@1": "^1.20.9"
   },
   "author": "ansh"
 }
