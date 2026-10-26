@@ -213,16 +213,21 @@ function toIsoDate(d) {
 // or recreated — its config entry is gone). A short id suffix keeps rows
 // distinguishable without exposing a full UUID.
 function unknownPromotionLabel(id) {
+  // An upsell product no rule or default list uses any more (or one Shopify
+  // recommended): name it by product id rather than as a deleted promotion.
+  if (typeof id === 'string' && id.startsWith('upsell:')) return `Upsell product ${id.slice('upsell:'.length)}`
   const short = typeof id === 'string' ? id.slice(0, 8) : ''
   return short ? `Deleted promotion (${short})` : 'Deleted promotion'
 }
 
-// Type-aware "view → action" rate. Claim-gifts convert a view into a claim;
-// auto-add offers have no claim step, so their funnel is view → attributed
-// order. Using claims/impressions for offers would always read 0%.
+// Type-aware "view → action" rate. Claim-gifts convert a view into a claim and
+// upsells into an add; auto-add offers have no such step, so their funnel is
+// view → attributed order. Using claims/impressions for offers would always read 0%.
 function conversionRateFor(p) {
   if (!p.impressions) return 0
-  return p.type === 'claim-gift' ? p.claims / p.impressions : p.orders / p.impressions
+  if (p.type === 'claim-gift') return p.claims / p.impressions
+  if (p.type === 'upsell') return (p.upsellAdds || 0) / p.impressions
+  return p.orders / p.impressions
 }
 
 // Set of promotion ids configured on a single theme's config
@@ -272,8 +277,9 @@ export function filterPromotionsForTheme(promotions, config, { showDeleted = fal
       out.push({ ...p, status: themeStatus })
     } else if (String(p.id).startsWith('upsell:')) {
       // Per-product upsell rows (`upsell:<product_id>`): views, adds and
-      // attributed orders. Products aren't promotions in the theme config.
-      out.push({ ...p, type: 'upsell', status: 'active' })
+      // attributed orders. Shop-level, so not scoped to the theme's config; a
+      // product no longer used by any rule or default list counts as deleted.
+      if (p.status !== 'deleted' || showDeleted) out.push({ ...p, type: 'upsell' })
     } else if (showDeleted && p.status === 'deleted') {
       out.push(p)
     }

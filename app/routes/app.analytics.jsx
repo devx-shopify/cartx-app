@@ -182,7 +182,7 @@ const SORTABLE_COLUMNS = {
   name:           { label: "Promotion",   align: "left",  type: "string" },
   type:           { label: "Type",        align: "left",  type: "string" },
   impressions:    { label: "Impressions", align: "right", type: "number" },
-  claims:         { label: "Claims",      align: "right", type: "number" },
+  claims:         { label: "Claims / adds", align: "right", type: "number" },
   conversionRate: { label: "Conv. rate",  align: "right", type: "number" },
   orders:         { label: "Orders",      align: "right", type: "number" },
   revenue:        { label: "Influenced revenue", align: "right", type: "number" },
@@ -196,14 +196,19 @@ const COLUMN_ORDER = ["name", "type", "status", "impressions", "claims", "conver
 const DEFAULT_SORT = "revenue";
 const DEFAULT_DIR = "desc";
 
+// Claims for claim gifts; adds for upsell products (their "view → action").
+function claimsOrAdds(p) {
+  return p.type === "upsell" ? p.upsellAdds || 0 : p.claims;
+}
+
 function sortPromotions(rows, key, dir) {
   const col = SORTABLE_COLUMNS[key];
   if (!col) return rows;
   const sign = dir === "asc" ? 1 : -1;
   const out = rows.slice();
   out.sort((a, b) => {
-    const av = a[key];
-    const bv = b[key];
+    const av = key === "claims" ? claimsOrAdds(a) : a[key];
+    const bv = key === "claims" ? claimsOrAdds(b) : b[key];
     if (col.type === "string") {
       return sign * String(av || "").localeCompare(String(bv || ""));
     }
@@ -261,7 +266,7 @@ function PromotionRow({ p, onClick, currency }) {
         <StatusBadge status={p.status} />
       </td>
       <td style={{ padding: "12px 10px", textAlign: "right" }}>{p.impressions.toLocaleString()}</td>
-      <td style={{ padding: "12px 10px", textAlign: "right" }}>{p.claims.toLocaleString()}</td>
+      <td style={{ padding: "12px 10px", textAlign: "right" }}>{claimsOrAdds(p).toLocaleString()}</td>
       <td style={{ padding: "12px 10px", textAlign: "right" }}>{formatPct(p.conversionRate)}</td>
       <td style={{ padding: "12px 10px", textAlign: "right" }}>{p.orders.toLocaleString()}</td>
       <td style={{ padding: "12px 10px", textAlign: "right" }}>{formatMoneyCents(p.revenue, currency)}</td>
@@ -456,7 +461,7 @@ export default function Analytics() {
                 Influenced revenue = value of orders that used each promotion; an order using
                 multiple promotions is counted under each (so rows can overlap — the summary
                 counts each order once). Conversion rate = claims ÷ views for claim gifts,
-                orders ÷ views for offers.
+                adds ÷ views for upsell products, orders ÷ views for offers.
               </s-text>
             </div>
             </div>
