@@ -14,6 +14,7 @@ import { getActivePlan, planAllowsDrawer } from "../lib/billing.server.js";
 import { syncDrawerMetafield } from "../lib/drawer-metafield.server.js";
 import { ensureStorefrontToken } from "../lib/storefront-token.server.js";
 import CartPreview from "../components/CartPreview.jsx";
+import TabNav from "../components/TabNav.jsx";
 
 // GoKwik "open checkout" snippet used by the customizer's checkout action. Calls
 // GoKwik's handler when present, else falls back to native /checkout so a store
@@ -242,49 +243,6 @@ const TABS = [
   { id: "advanced", label: "Advanced" },
 ];
 
-function TabNav({ value, onChange }) {
-  return (
-    <div
-      role="tablist"
-      style={{
-        display: "flex",
-        gap: 28,
-        borderBottom: "1px solid #e3e3e3",
-        paddingInline: 4,
-      }}
-    >
-      {TABS.map((tab) => {
-        const active = value === tab.id;
-        return (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            onClick={() => onChange(tab.id)}
-            style={{
-              padding: "12px 0",
-              marginBottom: -1,
-              fontSize: 14,
-              fontWeight: active ? 600 : 500,
-              border: "none",
-              borderBottom: active ? "2px solid #1a1a1a" : "2px solid transparent",
-              borderRadius: 0,
-              background: "transparent",
-              color: active ? "#1a1a1a" : "#6d7175",
-              cursor: "pointer",
-              fontFamily: "inherit",
-              transition: "color 0.12s ease, border-color 0.12s ease",
-            }}
-          >
-            {tab.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 // ── Section visibility toggles ───────────────────────────────
 
 function SectionToggles({ sections, onToggle }) {
@@ -511,7 +469,7 @@ export default function CartCustomizer() {
         <div style={{ display: "grid", gridTemplateColumns: `minmax(0, 1fr) ${PREVIEW_VISUAL_WIDTH}px`, gap: 24, alignItems: "start" }}>
           {/* ── Left: Settings ─────────────────── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-            <TabNav value={activeTab} onChange={setActiveTab} />
+            <TabNav tabs={TABS} value={activeTab} onChange={setActiveTab} />
 
             {activeTab === "design" && (
               <DesignTab s={s} update={update} />

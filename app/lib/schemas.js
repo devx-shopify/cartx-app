@@ -175,15 +175,12 @@ export const UpsellProductSchema = z.object({
   compare_at_price: z.string().optional(),
 })
 
-export const UpsellPairingRuleSchema = z.object({
-  id: z.string().min(1),
-  // "When the cart contains any of these products…"
-  when_product_ids: z.array(z.string()).default([]),
-  // "…promote these variants." Must be variants that exist in the curated pool.
-  then_variant_ids: z.array(z.string()).default([]),
-  boost: z.number().min(0).max(10).default(1),
-})
+// Hard ceiling for both caps: bounds the proxy payload and the import sheet width.
+export const UPSELL_CAP_LIMIT = 20
 
+// Ranking applied to the candidate products (rules + default list). Every one
+// is opt-in: with all off, candidates keep their order (newest cart item first).
+// Cart-based product rules replaced the earlier "pairing" strategy.
 export const UpsellStrategiesSchema = z.object({
   // Rank by how well a product closes the gap to the next gift milestone.
   gap_filler: z.object({
@@ -192,11 +189,6 @@ export const UpsellStrategiesSchema = z.object({
     // scores at the floor. Higher values are more forgiving.
     overshoot_tolerance: z.number().min(0.1).max(10).default(1),
     cta_template: z.string().default('Add to unlock [[reward]]'),
-  }).default({}),
-  // "Cart contains X -> promote Y", merchant-authored.
-  pairing: z.object({
-    enabled: z.boolean().default(false),
-    rules: z.array(UpsellPairingRuleSchema).default([]),
   }).default({}),
   // Top the pool up from Shopify's own recommendations when it runs short.
   shopify_recs: z.object({
@@ -210,6 +202,27 @@ export const UpsellStrategiesSchema = z.object({
     min_impressions: z.number().int().min(1).default(50),
   }).default({}),
 }).default({})
+
+export const UpsellSettingsSchema = z.object({
+  enabled: z.boolean(),
+  heading: z.string(),
+  show_on_empty_cart: z.boolean().optional(),
+  products: z.array(UpsellProductSchema),
+  mode: z.enum(['static', 'cart_based']).default('static'),
+  no_match: z.enum(['default', 'none']).default('default'),
+  fill_with_default: z.boolean().default(false),
+  sold_out: z.enum(['hide', 'show']).default('hide'),
+  max_visible: z.number().int().min(1).max(UPSELL_CAP_LIMIT).default(4),
+  max_per_trigger: z.number().int().min(1).max(UPSELL_CAP_LIMIT).default(10),
+  strategies: UpsellStrategiesSchema,
+})
+
+// One product → recommended products mapping (admin save + import row).
+export const UpsellRuleInputSchema = z.object({
+  trigger_product_id: z.string().min(1),
+  recommended_ids: z.array(z.string().min(1)).min(1).max(UPSELL_CAP_LIMIT),
+  enabled: z.boolean().default(true),
+})
 
 export const EvaluateCartRequestSchema = z.object({
   cart: z.object({
@@ -350,15 +363,6 @@ export const ConfigSchema = z.object({
     oos_message_override: z.string().optional(),
   }),
   cross_page_removal_behavior: z.enum(['silent', 'notice', 'modal']),
-  upsells: z.object({
-    enabled: z.boolean(),
-    heading: z.string(),
-    show_on_empty_cart: z.boolean().optional(),
-    products: z.array(UpsellProductSchema),
-    // Ranking strategies. Every one is opt-in: with all disabled the curated
-    // pool renders in its authored order, exactly as it did before the engine.
-    strategies: UpsellStrategiesSchema.default({}),
-    max_visible: z.number().int().min(1).max(12).default(4),
-  }),
+  upsells: UpsellSettingsSchema,
   drawer: DrawerConfigSchema,
 })

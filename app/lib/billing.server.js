@@ -433,6 +433,13 @@ export function planAllowsDrawer(planData) {
   return PLANS[planData?.plan]?.allowsDrawer !== false;
 }
 
+// Cart-based upsells (product → product rules). Billing for it isn't decided
+// yet, so every plan allows it; gate here once it is (e.g. a
+// `cartBasedUpsells: false` descriptor on the plans that shouldn't have it).
+export function planAllowsCartBasedUpsells(planData) {
+  return PLANS[planData?.plan]?.cartBasedUpsells !== false;
+}
+
 // ── Promotion policy guards (server-side enforcement) ────
 //
 // Used by the promotion write actions to enforce a plan's promotion policy.
