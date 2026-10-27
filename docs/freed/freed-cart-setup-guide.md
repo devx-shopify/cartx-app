@@ -61,7 +61,7 @@ Nothing needs uploading to Shopify Files:
 | Fonts | Montserrat (base), Anton (headings, buttons), Roboto (cart items), loaded from Google Fonts. This can only be set by import, because Customize Cart has no font URL field. |
 | Colours | Text `#18181B`, secondary text `#52525C`, borders `#D4D4D8`, accent pink `#F238A7`, secondary accent lime `#CFF665`, checkout `#000000`, savings strip `#333333` with white text |
 | Drawer | 560 px wide on desktop (the app maximum; the Figma frame is 600 px), full width on mobile, square images |
-| Text | Title "Cart" with item count "(2)", checkout "Check out", savings "You are saving {amount} on this product", gift heading "Pick one free gift", empty title "Your cart is empty" with no subtitle and no button, no trust message |
+| Text | Title "Cart" with item count "(2)", checkout "Check out", savings "You are saving {amount} on this order" (Figma says "on this product", but the amount is the whole cart's saving), gift heading "Pick one free gift", empty title "Your cart is empty" with no subtitle and no button, no trust message |
 | Announcement bar | "Free Shipping on All Orders ₹399 & Above" *(placeholder)*, static |
 | Progress bar | Thin track. Milestone icons from Figma: dark gift (not reached), white gift on pink (reached), blue tick badge |
 | Sections | Progress bar, claim gifts, offer cards, coupons, upsells on. Bottom ribbon off (not in the design). |

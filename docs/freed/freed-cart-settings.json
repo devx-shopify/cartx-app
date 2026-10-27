@@ -33,7 +33,7 @@
     "coupon_placeholder": "Apply Coupon",
     "total_label": "Total",
     "subtotal_label": "Subtotal",
-    "savings_label": "You are saving {amount} on this product",
+    "savings_label": "You are saving {amount} on this order",
     "offer_cards_heading": "Pick one free gift",
     "checkout_trust_message": ""
   },

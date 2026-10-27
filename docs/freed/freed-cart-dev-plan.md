@@ -9,11 +9,29 @@ This plans the cartx changes the FREED design needs beyond settings and CSS: the
 | Phase | Scope | Effort | Blocked on |
 |---|---|---|---|
 | A1 | FREED design features #1–#11, except #5 (dropped) | ~1.5–2 weeks | Client approval of which items to build |
-| A2 | Customization settings #12–#21: FREED needs these today through Custom CSS, and other stores would use them too | ~2–2.5 weeks | Nothing (our call) |
+| A2 | Customization settings #12–#22: FREED needs these today through Custom CSS, and other stores would use them too | ~2–2.5 weeks | Nothing (our call) |
 | B | Judge.me stars on recommendations | M (2–4 days) | Client confirms Judge.me and turns on metafield sync |
 | C | Pincode / delivery date / COD check | M–L (1–2 weeks) | Client's logistics provider and API access |
 
-A1 and A2 can ship in one release or separately. If time is short, do the A2 items marked **priority** first.
+**Decisions (27 Oct 2026)**
+- **Build everything in A1 and A2**, in one release. Each item is a general option that's off by default, so building it doesn't depend on client approval. The client's answers only set FREED's values.
+- **FREED's values follow Figma.** Every 🟡 difference in the feasibility doc gets closed:
+  - locked coupons on (#1), shipping box (#3), applied card (#4)
+  - "Apply Coupon ›" link row, text REMOVE, "01" quantities (#8)
+  - 600 px width (#10)
+  - variant pill above the name (#22)
+- **Exceptions to Figma:**
+  - two shared milestone icons, not per-milestone icons (#5 dropped)
+  - the savings strip says "on this order", because the amount is the whole cart's saving
+  - the footer and the price breakup both show the real total after discounts (the Figma ₹1988 / ₹799 mismatch is a mock-up error)
+- **No option needed for milestone spacing:** Figma spaces milestones evenly (equal segments with fixed ends), as cartx does.
+- **Coupon starburst:** export the real starburst SVG from Figma into the FREED Custom CSS. It's FREED-only, so it doesn't need a setting.
+
+**Build order:**
+1. #12, #13
+2. #9, #14
+3. #1, #2, #4, #8
+4. the rest
 
 ---
 
@@ -70,6 +88,8 @@ All under `drawer` (Customize Cart), unless noted.
 | `layout.coupon_cards_layout` | `scroll` \| `list` | `scroll` | `list` | #19 |
 | `layout.gift_line_style` | `plain` \| `highlight` | `plain` | `highlight` | #20 |
 | `layout.savings_show_icon` / `line_discount_show_icon` | boolean | `true` | `false` | #21 |
+| `layout.variant_position` | `actions` \| `above_title` | `actions` | `above_title` | #22 |
+| `layout.variant_style` | `switcher` \| `label` | `switcher` | `switcher` | #22 |
 
 ## 3. Work items
 
@@ -204,6 +224,14 @@ Every item follows the §1 ground rules: the default keeps today's output, there
 ### #21 Small display fixes — S
 - Don't render the empty-cart subtitle when it's blank. Today an empty `<p>` still takes up space.
 - `layout.savings_show_icon` and `layout.line_discount_show_icon`, to hide the icons on the savings strip and the line discount badge.
+
+### #22 Variant pill position and style — S
+- **Today:** the variant pill sits next to the quantity and always opens the variant switcher. Turning off `show_variant_switcher` hides the pill completely, so the variant name disappears.
+- **Change:**
+  - `layout.variant_position`: next to the quantity (today) or above the product name (Figma)
+  - `layout.variant_style`: `switcher` (tappable, opens the variant list; today) or `label` (plain text, not tappable)
+  - `show_variant_switcher` keeps its meaning: off hides the pill
+- **For FREED:** above the name, and still tappable, so shoppers can change size in the cart. Either value can be changed in Customize Cart.
 
 ### Stays in the FREED Custom CSS
 These are FREED's own styling, and a setting for them wouldn't help other stores:

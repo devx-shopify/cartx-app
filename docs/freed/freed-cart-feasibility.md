@@ -167,7 +167,7 @@ Each one is built as a general option that other merchants can turn on too. Noth
 | 2 | Which total does the footer show? (Figma shows ₹1988 in the footer and ₹799 in the price breakup) | cartx shows the cart total after discounts |
 | 3 | Is the "Pick one free gift" row always visible, or only after a threshold? Which gifts? | Offer trigger setup |
 | 4 | Should coupons the cart can't use yet be listed with "Add ₹X more"? | Needs 🔧 #1 |
-| 5 | Savings strip text: "on this product" or "on this order"? | It shows the saving for the whole cart |
+| 5 | ~~Savings strip text~~ | **Decided:** "on this order", because the amount is the whole cart's saving. Set in the import file. |
 | 6 | Is the "SPECIAL OFFER" sticker always on, or only during campaigns? | Custom CSS on/off |
 | 7 | Are the 🟡 differences acceptable, or should any of them be built (§3)? | Scope of the 🔧 release |
 
