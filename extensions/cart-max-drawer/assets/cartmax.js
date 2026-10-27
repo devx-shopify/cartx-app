@@ -1275,8 +1275,8 @@
     }
     discountCodes { applicable code }
     # Order-level discounts (for "You saved \u20B9X" on an applied coupon). Deprecated
-    # in 2026-01 in favour of line allocations with lineLevelOnly: false, but
-    # switching would also change what each line shows; revisit with the API bump.
+    # in 2026-01; its replacement, lines.discountAllocations(lineLevelOnly: false),
+    # only exists from 2026-10. Switch when apiVersion is bumped past 2026-01.
     discountAllocations {
       discountedAmount { amount currencyCode }
       ... on CartCodeDiscountAllocation { code }
@@ -3306,6 +3306,12 @@
         coupon_apply: "Apply",
         coupon_remove: "Remove",
         coupon_invalid: "Invalid or inapplicable code",
+        coupon_failed: "Failed to apply coupon",
+        out_of_stock: "Out of stock",
+        gift_paid_badge: "GIFT",
+        gift_unavailable_notice: "A gift product is currently unavailable",
+        upsell_adding: "Adding...",
+        checkout_preparing: "Preparing...",
         coupon_locked_message: "Add {amount} more to apply this coupon",
         coupon_locked_qty_message: "Add {count} more items to apply this coupon",
         coupon_saved_message: "You saved {amount} with this coupon",
@@ -4883,7 +4889,7 @@
             },
             /* @__PURE__ */ k("span", null, v2.title),
             isCurrent ? /* @__PURE__ */ k(IconCheck, null) : null,
-            !v2.available ? /* @__PURE__ */ k("span", { class: "cartmax-variant-oos-label" }, "Out of stock") : null
+            !v2.available ? /* @__PURE__ */ k("span", { class: "cartmax-variant-oos-label" }, this._t("out_of_stock", "Out of stock")) : null
           );
         })) : null);
       }
@@ -4900,13 +4906,13 @@
         /* @__PURE__ */ k("span", { key: "cp" }, formatMoney(claimPriceLine, curr)),
         item.original_line_price > claimPriceLine ? /* @__PURE__ */ k("span", { key: "orig", class: "cartmax-line-price-original" }, formatMoney(item.original_line_price, curr)) : null,
         // Keep the freebie identity even at a nominal price.
-        /* @__PURE__ */ k("span", { key: "giftbadge", class: "cartmax-gift-badge" }, "GIFT")
+        /* @__PURE__ */ k("span", { key: "giftbadge", class: "cartmax-gift-badge" }, this._t("gift_paid_badge", "GIFT"))
       ] : giftChargedLine > 0 ? [
         /* @__PURE__ */ k("span", { key: "gp" }, formatMoney(giftChargedLine, curr)),
         item.original_line_price > giftChargedLine ? /* @__PURE__ */ k("span", { key: "gorig", class: "cartmax-line-price-original" }, formatMoney(item.original_line_price, curr)) : null,
         // Still a gift line (no qty selector / switcher), but
         // the shopper is being charged — show the truth.
-        /* @__PURE__ */ k("span", { key: "giftbadge", class: "cartmax-gift-badge" }, "GIFT")
+        /* @__PURE__ */ k("span", { key: "giftbadge", class: "cartmax-gift-badge" }, this._t("gift_paid_badge", "GIFT"))
       ] : /* @__PURE__ */ k("span", { class: "cartmax-gift-badge" }, this._t("free_badge", "FREE")) : (() => {
         var compareAtUnit = this._layout.show_compare_price ? this._compareAtCache[String(item.variant_id)] : null;
         var compareAtLine = compareAtUnit ? compareAtUnit * item.quantity : 0;
@@ -4935,7 +4941,7 @@
           "aria-label": displayQty <= 1 ? "Remove " + item.product_title : "Decrease quantity"
         },
         displayQty <= 1 ? /* @__PURE__ */ k(IconTrash, null) : /* @__PURE__ */ k(IconMinus, null)
-      ), /* @__PURE__ */ k("span", { class: "cartmax-qty-value" + (isPending ? " cartmax-qty-pending" : ""), "aria-label": "Quantity " + displayQty }, formatQty(displayQty, layout.qty_zero_pad)), /* @__PURE__ */ k(
+      ), /* @__PURE__ */ k("span", { class: "cartmax-qty-value" + (isPending ? " cartmax-qty-pending" : "") }, layout.qty_zero_pad ? [/* @__PURE__ */ k("span", { key: "v", "aria-hidden": "true" }, formatQty(displayQty, true)), /* @__PURE__ */ k("span", { key: "sr", class: "visually-hidden" }, "Quantity " + displayQty)] : displayQty), /* @__PURE__ */ k(
         "button",
         {
           class: "cartmax-qty-btn",
@@ -5041,7 +5047,7 @@
           var nextClaimed = Object.assign({}, this.state.claimed);
           delete nextClaimed[key];
           this.setState({ claimed: nextClaimed });
-          this._showClaimError(key, "Out of stock");
+          this._showClaimError(key, this._t("out_of_stock", "Out of stock"));
           console.error("[cartx] Claim add error:", err);
         }
         if (added) {
@@ -5143,7 +5149,7 @@
           var nextClaimed = Object.assign({}, this.state.claimed);
           delete nextClaimed[key];
           this.setState({ claimed: nextClaimed });
-          this._showClaimError(key, "Out of stock");
+          this._showClaimError(key, this._t("out_of_stock", "Out of stock"));
           console.error("[cartx] Offer display add error:", err);
         }
         if (added) {
@@ -5450,7 +5456,7 @@
         );
       } catch (err) {
         this.setState({ couponLoading: false });
-        this._flashCouponError("Failed to apply coupon");
+        this._flashCouponError(this._t("coupon_failed", "Failed to apply coupon"));
         tracker.track(ANALYTICS_EVENTS.COUPON_REJECTED, {
           promotion_type: "coupon",
           code: newCode,
@@ -5949,6 +5955,7 @@
       if (items.length === 0 && this._text.upsells_empty_heading) headingText = this._text.upsells_empty_heading;
       var btnText = u2.btn_text || "ADD TO CART";
       var soldOutText = this._t("upsell_sold_out", "Sold out");
+      var addingText = this._t("upsell_adding", "Adding...");
       var discountTpl = this._t("line_discount_format", "{pct}% off");
       var btnOverImage = u2.btn_position === "over_image";
       var gapCfg = picked.strategies.gap_filler || {};
@@ -5979,7 +5986,7 @@
             },
             disabled: isAdding || soldOut
           },
-          soldOut ? soldOutText : isAdding ? "Adding..." : unlockLabel || btnText
+          soldOut ? soldOutText : isAdding ? addingText : unlockLabel || btnText
         );
         return /* @__PURE__ */ k(
           "div",
@@ -6103,7 +6110,7 @@
             }
           }
         },
-        /* @__PURE__ */ k("span", { class: "cartmax-checkout-label" }, this.state.checkoutWaiting ? "Preparing..." : this._text.checkout_button),
+        /* @__PURE__ */ k("span", { class: "cartmax-checkout-label" }, this.state.checkoutWaiting ? this._t("checkout_preparing", "Preparing...") : this._text.checkout_button),
         this._layout.show_payment_icons && !this.state.checkoutWaiting ? /* @__PURE__ */ k("span", { class: "cartmax-payment-methods" }, /* @__PURE__ */ k(IconPaymentMethods, null)) : null
       )), trustMsg ? /* @__PURE__ */ k("div", { class: "cartmax-footer-trust" }, /* @__PURE__ */ k(IconLock, null), /* @__PURE__ */ k("span", null, trustMsg), /* @__PURE__ */ k(IconLock, null)) : null);
     }
@@ -6212,7 +6219,7 @@
           },
           this.renderAnnouncementBar(),
           /* @__PURE__ */ k("div", { class: "cartmax-header" }, /* @__PURE__ */ k("span", { class: "cartmax-title" }, this._text.cart_title, count > 0 && countStyle !== "hidden" ? /* @__PURE__ */ k("span", { class: "cartmax-header-count" + (countStyle === "brackets" ? " cartmax-header-count--brackets" : "") }, countStyle === "brackets" ? "(" + count + ")" : count) : null), /* @__PURE__ */ k("button", { class: "cartmax-close", onClick: this.close, "aria-label": "Close cart" }, /* @__PURE__ */ k(IconClose, null))),
-          this.state.unavailableGifts.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-gift-unavailable" }, "A gift product is currently unavailable") : null,
+          this.state.unavailableGifts.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-gift-unavailable" }, this._t("gift_unavailable_notice", "A gift product is currently unavailable")) : null,
           /* @__PURE__ */ k("div", { class: "cartmax-body" }, sec.order.map((key) => /* @__PURE__ */ k(S, { key }, bodySections[key]()))),
           hasItems && sec.show_ribbon ? this.renderRibbon() : null,
           isEmpty && sec.show_upsells ? this.renderUpsells() : null,

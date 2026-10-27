@@ -238,7 +238,9 @@ export default class CartDrawer extends Component {
       claim_gift_button: 'Claim gift', claim_limit_reached: 'Limit reached',
       free_badge: 'FREE', line_remove: 'Remove', line_discount_format: '{pct}% off',
       coupon_view_all: 'View All', coupon_apply: 'Apply', coupon_remove: 'Remove',
-      coupon_invalid: 'Invalid or inapplicable code',
+      coupon_invalid: 'Invalid or inapplicable code', coupon_failed: 'Failed to apply coupon',
+      out_of_stock: 'Out of stock', gift_paid_badge: 'GIFT', gift_unavailable_notice: 'A gift product is currently unavailable',
+      upsell_adding: 'Adding...', checkout_preparing: 'Preparing...',
       coupon_locked_message: 'Add {amount} more to apply this coupon',
       coupon_locked_qty_message: 'Add {count} more items to apply this coupon',
       coupon_saved_message: 'You saved {amount} with this coupon',
@@ -2186,7 +2188,7 @@ export default class CartDrawer extends Component {
                     >
                       <span>{v.title}</span>
                       {isCurrent ? <IconCheck /> : null}
-                      {!v.available ? <span class="cartmax-variant-oos-label">Out of stock</span> : null}
+                      {!v.available ? <span class="cartmax-variant-oos-label">{this._t('out_of_stock', 'Out of stock')}</span> : null}
                     </button>
                   );
                 })}
@@ -2236,7 +2238,7 @@ export default class CartDrawer extends Component {
                         ? <span key="orig" class="cartmax-line-price-original">{formatMoney(item.original_line_price, curr)}</span>
                         : null,
                       // Keep the freebie identity even at a nominal price.
-                      <span key="giftbadge" class="cartmax-gift-badge">GIFT</span>,
+                      <span key="giftbadge" class="cartmax-gift-badge">{this._t('gift_paid_badge', 'GIFT')}</span>,
                     ]
                   : (giftChargedLine > 0
                       ? [
@@ -2246,7 +2248,7 @@ export default class CartDrawer extends Component {
                             : null,
                           // Still a gift line (no qty selector / switcher), but
                           // the shopper is being charged — show the truth.
-                          <span key="giftbadge" class="cartmax-gift-badge">GIFT</span>,
+                          <span key="giftbadge" class="cartmax-gift-badge">{this._t('gift_paid_badge', 'GIFT')}</span>,
                         ]
                       : <span class="cartmax-gift-badge">{this._t('free_badge', 'FREE')}</span>))
               : (() => {
@@ -2306,8 +2308,10 @@ export default class CartDrawer extends Component {
                             aria-label={displayQty <= 1 ? ('Remove ' + item.product_title) : 'Decrease quantity'}
                           >{displayQty <= 1 ? <IconTrash /> : <IconMinus />}</button>
                       }
-                      <span class={'cartmax-qty-value' + (isPending ? ' cartmax-qty-pending' : '')} aria-label={'Quantity ' + displayQty}>
-                        {formatQty(displayQty, layout.qty_zero_pad)}
+                      <span class={'cartmax-qty-value' + (isPending ? ' cartmax-qty-pending' : '')}>
+                        {layout.qty_zero_pad
+                          ? [<span key="v" aria-hidden="true">{formatQty(displayQty, true)}</span>, <span key="sr" class="visually-hidden">{'Quantity ' + displayQty}</span>]
+                          : displayQty}
                       </span>
                       <button
                         class="cartmax-qty-btn"
@@ -2467,7 +2471,7 @@ export default class CartDrawer extends Component {
         var nextClaimed = Object.assign({}, this.state.claimed);
         delete nextClaimed[key];
         this.setState({ claimed: nextClaimed });
-        this._showClaimError(key, 'Out of stock');
+        this._showClaimError(key, this._t('out_of_stock', 'Out of stock'));
         console.error('[cartx] Claim add error:', err);
       }
       // Post-add reconcile is best-effort: a failure here must NOT roll back a
@@ -2575,7 +2579,7 @@ export default class CartDrawer extends Component {
         var nextClaimed = Object.assign({}, this.state.claimed);
         delete nextClaimed[key];
         this.setState({ claimed: nextClaimed });
-        this._showClaimError(key, 'Out of stock');
+        this._showClaimError(key, this._t('out_of_stock', 'Out of stock'));
         console.error('[cartx] Offer display add error:', err);
       }
       // Post-add reconcile is best-effort — never roll back a successful add.
@@ -2924,7 +2928,7 @@ export default class CartDrawer extends Component {
       );
     } catch (err) {
       this.setState({ couponLoading: false });
-      this._flashCouponError('Failed to apply coupon');
+      this._flashCouponError(this._t('coupon_failed', 'Failed to apply coupon'));
       tracker.track(ANALYTICS_EVENTS.COUPON_REJECTED, {
         promotion_type: 'coupon', code: newCode, reason: 'request_failed',
       });
@@ -3483,6 +3487,7 @@ export default class CartDrawer extends Component {
     if (items.length === 0 && this._text.upsells_empty_heading) headingText = this._text.upsells_empty_heading;
     var btnText = u.btn_text || 'ADD TO CART';
     var soldOutText = this._t('upsell_sold_out', 'Sold out');
+    var addingText = this._t('upsell_adding', 'Adding...');
     var discountTpl = this._t('line_discount_format', '{pct}% off');
     var btnOverImage = u.btn_position === 'over_image';
     // Shown instead of the generic label on a product that actually closes the
@@ -3531,7 +3536,7 @@ export default class CartDrawer extends Component {
                 class={'cartmax-upsell-add' + (soldOut ? ' cartmax-upsell-add--soldout' : '')}
                 onClick={function () { if (!soldOut) self.handleUpsellAdd(vid, productMeta, card); }}
                 disabled={isAdding || soldOut}
-              >{soldOut ? soldOutText : (isAdding ? 'Adding...' : (unlockLabel || btnText))}</button>
+              >{soldOut ? soldOutText : (isAdding ? addingText : (unlockLabel || btnText))}</button>
             );
             return (
               <div
@@ -3684,7 +3689,7 @@ export default class CartDrawer extends Component {
               }
             }}
           >
-            <span class="cartmax-checkout-label">{this.state.checkoutWaiting ? 'Preparing...' : this._text.checkout_button}</span>
+            <span class="cartmax-checkout-label">{this.state.checkoutWaiting ? this._t('checkout_preparing', 'Preparing...') : this._text.checkout_button}</span>
             {this._layout.show_payment_icons && !this.state.checkoutWaiting ? (
               <span class="cartmax-payment-methods"><IconPaymentMethods /></span>
             ) : null}
@@ -3895,7 +3900,7 @@ export default class CartDrawer extends Component {
 
             {/* Gift unavailable notice */}
             {this.state.unavailableGifts.length > 0
-              ? <div class="cartmax-gift-unavailable">A gift product is currently unavailable</div>
+              ? <div class="cartmax-gift-unavailable">{this._t('gift_unavailable_notice', 'A gift product is currently unavailable')}</div>
               : null
             }
 

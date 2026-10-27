@@ -129,8 +129,8 @@ var CART_FRAGMENT = `
     }
     discountCodes { applicable code }
     # Order-level discounts (for "You saved ₹X" on an applied coupon). Deprecated
-    # in 2026-01 in favour of line allocations with lineLevelOnly: false, but
-    # switching would also change what each line shows; revisit with the API bump.
+    # in 2026-01; its replacement, lines.discountAllocations(lineLevelOnly: false),
+    # only exists from 2026-10. Switch when apiVersion is bumped past 2026-01.
     discountAllocations {
       discountedAmount { amount currencyCode }
       ... on CartCodeDiscountAllocation { code }

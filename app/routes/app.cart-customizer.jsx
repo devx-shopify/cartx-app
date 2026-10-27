@@ -355,6 +355,24 @@ function OptionalColorField({ label, value, fallback, onChange }) {
   );
 }
 
+// Rarely used settings, folded away so each section stays short.
+function MoreOptions({ children }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open ? "true" : "false"}
+        style={{ border: "none", background: "none", padding: 0, color: "#005bd3", cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}
+      >
+        {open ? "Fewer options" : "More options"}
+      </button>
+      {open ? <div style={{ display: "flex", flexDirection: "column", gap: 20, marginTop: 16 }}>{children}</div> : null}
+    </div>
+  );
+}
+
 // A grid of text settings, each with its default shown as the placeholder.
 function TextFields({ s, update, fields }) {
   return (
@@ -380,7 +398,8 @@ export default function CartCustomizer() {
   const { themes, activeThemeId, mainThemeId } = useOutletContext();
   const [settings, setSettings] = useState(initial);
   const [dirty, setDirty] = useState(false);
-  const [showEmpty, setShowEmpty] = useState(false);
+  const [previewView, setPreviewView] = useState("filled");
+  const showEmpty = previewView === "empty";
   const [activeTab, setActiveTab] = useState("design");
   const fetcher = useFetcher();
   const shopify = useAppBridge();
@@ -607,15 +626,17 @@ export default function CartCustomizer() {
               </span>
               <div style={{ display: "inline-flex", padding: 3, background: "#f1f1f1", borderRadius: 8 }}>
                 {[
-                  { id: false, label: "Filled" },
-                  { id: true, label: "Empty" },
+                  { id: "filled", label: "Filled" },
+                  { id: "empty", label: "Empty" },
+                  { id: "coupons", label: "Coupons" },
+                  { id: "breakup", label: "Breakup" },
                 ].map((opt) => {
-                  const active = showEmpty === opt.id;
+                  const active = previewView === opt.id;
                   return (
                     <button
-                      key={String(opt.id)}
+                      key={opt.id}
                       type="button"
-                      onClick={() => setShowEmpty(opt.id)}
+                      onClick={() => setPreviewView(opt.id)}
                       style={{
                         padding: "4px 12px",
                         fontSize: 11,
@@ -649,6 +670,7 @@ export default function CartCustomizer() {
                   settings={settings}
                   promotionCoupons={promotionCoupons}
                   showEmpty={showEmpty}
+                  view={previewView}
                   minHeight={showEmpty ? PREVIEW_EMPTY_MIN_HEIGHT : undefined}
                 />
               </div>
@@ -783,13 +805,6 @@ function DesignTab({ s, update }) {
             placeholder="Same as body"
             details="A font family name, e.g. Anton. Used for titles, buttons and coupon codes. Load it in the Google Fonts URL above."
           />
-          <s-text-field
-            label="Product font"
-            value={s.typography.item_font || ""}
-            onInput={(e) => update("typography.item_font", e.target.value)}
-            placeholder="Same as body"
-            details="A font family name for product names and prices, e.g. Roboto. Load it in the Google Fonts URL above."
-          />
           <SegmentedControl
             label="Heading case"
             options={[
@@ -798,15 +813,6 @@ function DesignTab({ s, update }) {
             ]}
             value={s.typography.heading_case || "normal"}
             onChange={(v) => update("typography.heading_case", v)}
-          />
-          <SliderField
-            label="Heading letter spacing"
-            value={s.typography.heading_letter_spacing || 0}
-            min={0}
-            max={6}
-            step={0.5}
-            onChange={(v) => update("typography.heading_letter_spacing", v)}
-            suffix="px"
           />
           <SegmentedControl
             label="Heading size"
@@ -828,6 +834,24 @@ function DesignTab({ s, update }) {
             value={s.typography.body_size}
             onChange={(v) => update("typography.body_size", v)}
           />
+          <MoreOptions>
+            <s-text-field
+              label="Product font"
+              value={s.typography.item_font || ""}
+              onInput={(e) => update("typography.item_font", e.target.value)}
+              placeholder="Same as body"
+              details="A font family name for product names and prices, e.g. Roboto. Load it in the Google Fonts URL above."
+            />
+            <SliderField
+              label="Heading letter spacing"
+              value={s.typography.heading_letter_spacing || 0}
+              min={0}
+              max={6}
+              step={0.5}
+              onChange={(v) => update("typography.heading_letter_spacing", v)}
+              suffix="px"
+            />
+          </MoreOptions>
         </div>
       </CollapsibleSection>
 
@@ -868,27 +892,6 @@ function DesignTab({ s, update }) {
             onChange={(v) => update("layout.drawer_width", v)}
             suffix="px"
           />
-          <SliderField
-            label="Side padding (desktop)"
-            value={s.layout.content_padding || 0}
-            min={0}
-            max={48}
-            step={2}
-            onChange={(v) => update("layout.content_padding", v)}
-            suffix="px"
-          />
-          <SliderField
-            label="Side padding (mobile)"
-            value={s.layout.content_padding_mobile || 0}
-            min={0}
-            max={48}
-            step={2}
-            onChange={(v) => update("layout.content_padding_mobile", v)}
-            suffix="px"
-          />
-          <div style={{ fontSize: 12, color: "#6d7175", marginTop: -8, lineHeight: 1.4 }}>
-            0 keeps the built-in spacing. Mobile 0 uses the desktop value.
-          </div>
           <SegmentedControl
             label="Header title"
             options={[
@@ -917,6 +920,29 @@ function DesignTab({ s, update }) {
             value={s.layout.drawer_position}
             onChange={(v) => update("layout.drawer_position", v)}
           />
+          <MoreOptions>
+            <SliderField
+              label="Side padding (desktop)"
+              value={s.layout.content_padding || 0}
+              min={0}
+              max={48}
+              step={2}
+              onChange={(v) => update("layout.content_padding", v)}
+              suffix="px"
+            />
+            <SliderField
+              label="Side padding (mobile)"
+              value={s.layout.content_padding_mobile || 0}
+              min={0}
+              max={48}
+              step={2}
+              onChange={(v) => update("layout.content_padding_mobile", v)}
+              suffix="px"
+            />
+            <div style={{ fontSize: 12, color: "#6d7175", marginTop: -8, lineHeight: 1.4 }}>
+              0 keeps the built-in spacing. Mobile 0 uses the desktop value.
+            </div>
+          </MoreOptions>
         </div>
       </CollapsibleSection>
 
@@ -989,15 +1015,6 @@ function DesignTab({ s, update }) {
             onChange={(v) => update("layout.variant_position", v)}
           />
           <SegmentedControl
-            label="Variant style"
-            options={[
-              { value: "switcher", label: "Switcher" },
-              { value: "label", label: "Plain label" },
-            ]}
-            value={s.layout.variant_style || "switcher"}
-            onChange={(v) => update("layout.variant_style", v)}
-          />
-          <SegmentedControl
             label="Free gift line"
             options={[
               { value: "plain", label: "Plain" },
@@ -1028,6 +1045,17 @@ function DesignTab({ s, update }) {
               checked={s.layout.show_remove_btn || undefined}
               onChange={(e) => update("layout.show_remove_btn", e.target.checked)}
             />
+          </div>
+          <MoreOptions>
+            <SegmentedControl
+              label="Variant style"
+              options={[
+                { value: "switcher", label: "Switcher" },
+                { value: "label", label: "Plain label" },
+              ]}
+              value={s.layout.variant_style || "switcher"}
+              onChange={(v) => update("layout.variant_style", v)}
+            />
             <s-checkbox
               label="Show quantities as 01, 02…"
               checked={s.layout.qty_zero_pad || undefined}
@@ -1044,7 +1072,7 @@ function DesignTab({ s, update }) {
               checked={s.layout.line_discount_show_icon !== false || undefined}
               onChange={(e) => update("layout.line_discount_show_icon", e.target.checked)}
             />
-          </div>
+          </MoreOptions>
         </div>
       </CollapsibleSection>
     </div>
@@ -1096,6 +1124,8 @@ function ContentTab({ s, update }) {
             ["gift_free_label", "Price label", "Free", "Shown after the struck price, e.g. ₹999 Free."],
             ["gift_adding", "While adding", "Adding..."],
             ["gift_claimed", "After claiming", "Claimed"],
+            ["gift_paid_badge", "Badge on a gift with a price", "GIFT"],
+            ["gift_unavailable_notice", "Gift unavailable notice", "A gift product is currently unavailable"],
             ["gift_unavailable", "Unavailable", "Unavailable"],
             ["claim_limit_reached", "Claim limit reached", "Limit reached"],
           ]} />
@@ -1105,6 +1135,8 @@ function ContentTab({ s, update }) {
             ["free_badge", "Free gift badge", "FREE"],
             ["line_remove", "Remove text", "Remove", 'Used when the remove button is set to "Remove" text.'],
             ["line_discount_format", "Discount badge", "{pct}% off", "{pct} is the percentage. Also used on upsell cards."],
+            ["out_of_stock", "Out of stock", "Out of stock", "Variant list and gift errors."],
+            ["checkout_preparing", "Checkout button while waiting", "Preparing..."],
           ]} />
           <s-divider />
           <FieldLabel>Coupons</FieldLabel>
@@ -1113,6 +1145,7 @@ function ContentTab({ s, update }) {
             ["coupon_apply", "Apply button", "Apply"],
             ["coupon_remove", "Remove (applied card)", "Remove"],
             ["coupon_invalid", "Invalid code message", "Invalid or inapplicable code"],
+            ["coupon_failed", "Network error message", "Failed to apply coupon"],
             ["coupon_locked_message", "Not yet reachable (amount)", "Add {amount} more to apply this coupon"],
             ["coupon_locked_qty_message", "Not yet reachable (items)", "Add {count} more items to apply this coupon"],
             ["coupon_saved_message", "Saved message (applied card)", "You saved {amount} with this coupon"],
@@ -1125,6 +1158,7 @@ function ContentTab({ s, update }) {
           <TextFields s={s} update={update} fields={[
             ["upsells_empty_heading", "Heading on an empty cart", "Same as the upsell heading"],
             ["upsell_sold_out", "Sold out", "Sold out"],
+            ["upsell_adding", "While adding", "Adding..."],
           ]} />
         </div>
       </CollapsibleSection>

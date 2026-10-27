@@ -89,7 +89,7 @@ function UpsellsPreviewBlock({ bg, border, text, upsellLayout, upsellHDim, upsel
   );
 }
 
-export default function CartPreview({ settings, promotionCoupons, showEmpty, minHeight }) {
+export default function CartPreview({ settings, promotionCoupons, showEmpty, view = "filled", minHeight }) {
   const c = settings.colors || {};
   const sh = settings.shape || {};
   const t = settings.typography || {};
@@ -217,6 +217,79 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
   const badgeBg = pb.badge_bg_color || `${accent}1a`;
   const badgeText = pb.badge_text_color || accent;
 
+
+  // A coupon the cart can't use yet (grey badge, "Add ₹X more").
+  const lockedCouponCard = (width) => (
+    <div key="locked" style={{ display: "flex", alignItems: "center", flexShrink: 0, width, height: 67, background: bg, border: `1px dashed ${text}`, borderRadius: 6, overflow: "hidden" }}>
+      <div style={{ width: 34, height: "100%", background: "#e4e4e7", flexShrink: 0 }} />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 3, padding: "0 16px", minWidth: 0 }}>
+        <span style={{ fontSize: 14, fontWeight: 500, color: text, ...headingStyle }}>BIG500</span>
+        <span style={{ fontSize: 12, color: c.danger || "#dc2626" }}>
+          {fill(label("coupon_locked_message", "Add {amount} more to apply this coupon"), { amount: "$20.00" })}
+        </span>
+      </div>
+    </div>
+  );
+
+  // "Offers & Coupons" panel, as the Coupons preview view.
+  const couponsView = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: `20px ${padX ?? 24}px`, background: bg }}>
+      {sec.coupon_panel_input && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 6px 6px 16px", border: `1px solid ${border}`, borderRadius: 8 }}>
+          <span style={{ flex: 1, fontSize: 14, color: textSec }}>{label("coupons_panel_placeholder", "Enter Coupon Code")}</span>
+          <span style={{ padding: "8px 18px", borderRadius: 6, fontSize: 12, fontWeight: 600, textTransform: "uppercase", background: primary, color: primaryText, ...headingStyle, ...addBtnStyle }}>
+            {label("coupon_apply", "Apply")}
+          </span>
+        </div>
+      )}
+      <span style={{ fontSize: 13, letterSpacing: 0.7, textTransform: "uppercase", color: textSec }}>{label("coupons_panel_label", "Available Coupons")}</span>
+      {(promotionCoupons || []).map((cp, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", height: 67, border: `1px dashed ${text}`, borderRadius: 6, overflow: "hidden" }}>
+          <div style={{ width: 34, height: "100%", background: accent, flexShrink: 0 }} />
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 3, padding: "0 16px", minWidth: 0 }}>
+            <span style={{ fontSize: 14, fontWeight: 500, color: text, ...headingStyle }}>{cp.code}</span>
+            <span style={{ fontSize: 12, color: textSec }}>{cp.display_message}</span>
+          </div>
+          <span style={{ marginRight: 12, padding: "5px 12px", borderRadius: 6, fontSize: 12, background: accent, color: bg, ...headingStyle }}>{label("coupon_apply", "Apply")}</span>
+        </div>
+      ))}
+      {sec.show_locked_coupons && lockedCouponCard("100%")}
+      {(promotionCoupons || []).length === 0 && !sec.show_locked_coupons && (
+        <span style={{ fontSize: 12, color: textSec }}>No coupons yet. Add them under Promotions.</span>
+      )}
+    </div>
+  );
+
+  // Price breakup sheet, as the Breakup preview view.
+  const pbRow = (name, value, color) => (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13 }}>
+      <span style={{ color: c.muted || "#5c6770", display: "inline-flex", alignItems: "center", gap: 4 }}>{name}</span>
+      <span style={{ fontWeight: 500, color: color || "#000000" }}>{value}</span>
+    </div>
+  );
+  const breakupView = (
+    <div style={{ background: bg }}>
+      <div style={{ padding: `12px ${padX ?? 24}px`, fontSize: 17, fontWeight: 500, color: text, borderBottom: "1px solid #d9d9d9", ...headingStyle }}>
+        {label("price_breakup_title", "Price Break Up")}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: `24px ${padX ?? 24}px` }}>
+        {pbRow(label("pb_total_mrp", "Total MRP"), "$128.00")}
+        {pbRow(label("pb_discount_mrp", "Discount on MRP"), "-$15.00", c.success || "#2fc01a")}
+        {pbRow(label("pb_coupon_discount", "Coupon Discount"), "-$10.00", c.success || "#2fc01a")}
+        {pbRow(<>{label("pb_shipping", "Shipping Fee")}{tx.shipping_note ? " ⓘ" : ""}</>, label("pb_shipping_value", "Calculated at checkout"), c.danger || "#000000")}
+        {tx.shipping_note && (
+          <div style={{ padding: 12, background: "#f4f4f5", borderRadius: 6, fontSize: 12, lineHeight: 1.5, color: textSec, whiteSpace: "pre-line" }}>
+            {tx.shipping_note}
+          </div>
+        )}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", padding: `20px ${padX ?? 24}px`, borderTop: "1px solid #d9d9d9", fontSize: 15, fontWeight: 500 }}>
+        <span>{label("pb_total", "Total Amount")}</span>
+        <span>$103.00</span>
+      </div>
+    </div>
+  );
+  const panelView = view === "coupons" || view === "breakup";
 
   // Body blocks, rendered in the merchant's section order.
   const previewBlocks = {
@@ -427,6 +500,12 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
                   >
                     {gift.title}
                   </div>
+                  {l.gift_show_price && (
+                    <div style={{ display: "flex", gap: 4, fontSize: 12 }}>
+                      <span style={{ textDecoration: "line-through", color: c.muted || textSec }}>$25.00</span>
+                      <span style={{ fontWeight: 700, color: c.success || accent }}>{label("gift_free_label", "Free")}</span>
+                    </div>
+                  )}
                   {isInCart ? (
                     <span
                       style={{
@@ -741,6 +820,18 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
             )}
           </div>
 
+          {sec.coupon_applied_style === "card" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", border: `1px solid ${accent}`, borderRadius: 6, background: `color-mix(in srgb, ${accent} 8%, ${bg})` }}>
+                <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: text, ...headingStyle }}>{(promotionCoupons || [])[0]?.code || "SAVE10"}</span>
+                <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: text, ...headingStyle }}>{label("coupon_remove", "Remove")}</span>
+              </div>
+              <div style={{ textAlign: "center", fontSize: 11, fontWeight: 500, color: c.success || accent }}>
+                ✓ {fill(label("coupon_saved_message", "You saved {amount} with this coupon"), { amount: "$10.00" })}
+              </div>
+            </div>
+          )}
+
           {/* Horizontal scrollable coupon cards */}
           <div style={{ display: "flex", flexDirection: couponList ? "column" : "row", gap: 8, overflowX: couponList ? "visible" : "auto", overflowY: "hidden", scrollbarWidth: "none", msOverflowStyle: "none" }}>
             {(promotionCoupons || []).map((c, i) => (
@@ -807,6 +898,7 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
                 </div>
               </div>
             ))}
+            {sec.show_locked_coupons && lockedCouponCard(couponList ? "100%" : 280)}
           </div>
         </div>
       )}
@@ -916,9 +1008,9 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
             ...headingStyle,
           }}
         >
-          {tx.cart_title || "Your Cart"}
-          {!showEmpty && countStyle === "brackets" && <span>(4)</span>}
-          {!showEmpty && countStyle === "badge" && (
+          {view === "coupons" ? label("coupons_panel_title", "Offers & Coupons") : (tx.cart_title || "Your Cart")}
+          {!showEmpty && view !== "coupons" && countStyle === "brackets" && <span>(4)</span>}
+          {!showEmpty && view !== "coupons" && countStyle === "badge" && (
             <span
               style={{
                 background: primary,
@@ -948,7 +1040,10 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
       </div>
 
       {/* ── Empty state ── */}
-      {showEmpty && (<>
+      {view === "coupons" && couponsView}
+      {view === "breakup" && breakupView}
+
+      {showEmpty && !panelView && (<>
         <div style={{
           flex: 1, display: "flex", flexDirection: "column",
           alignItems: "center", justifyContent: "center",
@@ -992,7 +1087,7 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
         )}
       </>)}
 
-      {!showEmpty && (<>
+      {!showEmpty && !panelView && (<>
       {order.map((key) => <Fragment key={key}>{previewBlocks[key]}</Fragment>)}
 
       {/* ── Footer ── */}
