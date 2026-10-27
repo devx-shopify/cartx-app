@@ -161,7 +161,7 @@ cart-notification-component [role="dialog"] {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
+  padding: 12px var(--cartmax-pad-x, 20px);
   border-bottom: 1px solid var(--cartmax-border, #f0f0f0);
   flex-shrink: 0;
   background: var(--cartmax-bg, #ffffff);
@@ -244,7 +244,7 @@ cart-notification-component [role="dialog"] {
   z-index: 0;
   display: flex;
   gap: 12px;
-  padding: var(--cartmax-density-padding, 16px) 20px;
+  padding: var(--cartmax-density-padding, 16px) var(--cartmax-pad-x, 20px);
   border-bottom: 1px solid var(--cartmax-border, #f5f5f5);
   opacity: 1;
   max-height: 400px;
@@ -351,7 +351,7 @@ cart-notification-component [role="dialog"] {
 
 .cartmax-line-price-original {
   text-decoration: line-through;
-  color: #80828d;
+  color: var(--cartmax-muted, #80828d);
   font-weight: 400;
 }
 
@@ -394,7 +394,7 @@ cart-notification-component [role="dialog"] {
   gap: 3px;
   font-size: 10px;
   font-weight: 400;
-  color: #2fc01a;
+  color: var(--cartmax-success, #2fc01a);
 }
 
 .cartmax-gift-badge {
@@ -730,7 +730,7 @@ cart-notification-component [role="dialog"] {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 16px 20px;
+  padding: 16px var(--cartmax-pad-x, 20px);
 }
 
 .cartmax-footer-price {
@@ -757,7 +757,7 @@ cart-notification-component [role="dialog"] {
 .cartmax-price-breakup-link {
   font-size: 12px;
   font-weight: 500;
-  color: #2fc01a;
+  color: var(--cartmax-success, #2fc01a);
   text-decoration: underline;
   text-transform: uppercase;
   letter-spacing: 0.3px;
@@ -933,7 +933,7 @@ cart-notification-component [role="dialog"] {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 24px;
+  padding: 12px var(--cartmax-pad-x, 24px);
   font-size: 18px;
   font-weight: 500;
   color: var(--cartmax-text, #1a1a1a);
@@ -960,7 +960,7 @@ cart-notification-component [role="dialog"] {
 }
 
 .cartmax-price-breakup-rows {
-  padding: 24px;
+  padding: 24px var(--cartmax-pad-x, 24px);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -975,7 +975,7 @@ cart-notification-component [role="dialog"] {
 .cartmax-pb-label {
   font-size: 14px;
   font-weight: 400;
-  color: #5c6770;
+  color: var(--cartmax-muted, #5c6770);
 }
 
 .cartmax-pb-amount {
@@ -985,14 +985,18 @@ cart-notification-component [role="dialog"] {
 }
 
 .cartmax-pb-discount {
-  color: #2fc01a;
+  color: var(--cartmax-success, #2fc01a);
+}
+
+.cartmax-pb-amount.cartmax-pb-shipping {
+  color: var(--cartmax-danger, #000000);
 }
 
 .cartmax-price-breakup-total {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 24px;
+  padding: 20px var(--cartmax-pad-x, 24px);
   border-top: 1px solid #d9d9d9;
   font-size: 16px;
   font-weight: 500;
@@ -1329,7 +1333,7 @@ cart-notification-component [role="dialog"] {
 /* --- Claim Gifts --- */
 
 .cartmax-claims {
-  padding: 16px 20px;
+  padding: 16px var(--cartmax-pad-x, 20px);
   flex-shrink: 0;
   background: color-mix(
     in srgb,
@@ -1357,11 +1361,11 @@ cart-notification-component [role="dialog"] {
   -webkit-overflow-scrolling: touch;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
-  scroll-padding-left: 20px;
-  margin-left: -20px;
-  margin-right: -20px;
-  padding-left: 20px;
-  padding-right: 20px;
+  scroll-padding-left: var(--cartmax-pad-x, 20px);
+  margin-left: calc(-1 * var(--cartmax-pad-x, 20px));
+  margin-right: calc(-1 * var(--cartmax-pad-x, 20px));
+  padding-left: var(--cartmax-pad-x, 20px);
+  padding-right: var(--cartmax-pad-x, 20px);
 }
 
 .cartmax-claims-scroll::-webkit-scrollbar {
@@ -1595,7 +1599,7 @@ cart-notification-component [role="dialog"] {
   );
   border: 1px solid
     color-mix(in srgb, var(--cartmax-accent, #ff4b7e) 30%, transparent);
-  padding: 16px 20px;
+  padding: 16px var(--cartmax-pad-x, 20px);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1679,10 +1683,10 @@ cart-notification-component [role="dialog"] {
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  margin-left: -20px;
-  margin-right: -20px;
-  padding-left: 20px;
-  padding-right: 20px;
+  margin-left: calc(-1 * var(--cartmax-pad-x, 20px));
+  margin-right: calc(-1 * var(--cartmax-pad-x, 20px));
+  padding-left: var(--cartmax-pad-x, 20px);
+  padding-right: var(--cartmax-pad-x, 20px);
 }
 
 .cartmax-discount-cards::-webkit-scrollbar {
@@ -1835,7 +1839,7 @@ cart-notification-component [role="dialog"] {
 .cartmax-offers-body {
   flex: 1;
   overflow-y: auto;
-  padding: 20px 24px;
+  padding: 20px var(--cartmax-pad-x, 24px);
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -1845,7 +1849,7 @@ cart-notification-component [role="dialog"] {
 /* Input row inside offers panel */
 
 .cartmax-coupon-error {
-  color: #dc2626;
+  color: var(--cartmax-danger, #dc2626);
   font-size: 12px;
 }
 
@@ -1959,7 +1963,7 @@ cart-notification-component [role="dialog"] {
 /* --- Upsells --- */
 
 .cartmax-upsells {
-  padding: 16px 20px;
+  padding: 16px var(--cartmax-pad-x, 20px);
   border-top: 1px solid var(--cartmax-border, #f0f0f0);
   flex-shrink: 0;
   background: var(--cartmax-bg, #ffffff);
@@ -1991,12 +1995,12 @@ cart-notification-component [role="dialog"] {
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   scroll-snap-type: x mandatory;
-  scroll-padding-left: 20px;
+  scroll-padding-left: var(--cartmax-pad-x, 20px);
   scrollbar-width: none;
-  margin-left: -20px;
-  margin-right: -20px;
-  padding-left: 20px;
-  padding-right: 20px;
+  margin-left: calc(-1 * var(--cartmax-pad-x, 20px));
+  margin-right: calc(-1 * var(--cartmax-pad-x, 20px));
+  padding-left: var(--cartmax-pad-x, 20px);
+  padding-right: var(--cartmax-pad-x, 20px);
 }
 
 .cartmax-upsells-scroll::-webkit-scrollbar {
@@ -2117,7 +2121,7 @@ cart-notification-component [role="dialog"] {
 
 .cartmax-upsell-compare {
   text-decoration: line-through;
-  color: #80828d;
+  color: var(--cartmax-muted, #80828d);
   font-weight: 400;
 }
 
@@ -2383,7 +2387,7 @@ cart-notification-component [role="dialog"] {
 
 /* Milestone card + corner badge */
 .cartmax-progress--card {
-  margin: 20px 16px 8px;
+  margin: 20px var(--cartmax-pad-x, 16px) 8px;
   padding: 16px 32px 0 16px;
   border: 1px solid var(--cartmax-pb-card-border, var(--cartmax-border, #f0f0f0));
   border-radius: var(--cartmax-radius, 10px);
@@ -2441,12 +2445,12 @@ cart-notification-component [role="dialog"] {
 
 .cartmax-claim-price-original {
   text-decoration: line-through;
-  color: var(--cartmax-text-secondary, #6b7280);
+  color: var(--cartmax-muted, var(--cartmax-text-secondary, #6b7280));
 }
 
 .cartmax-claim-price-free {
   font-weight: 700;
-  color: var(--cartmax-accent, #16a34a);
+  color: var(--cartmax-success, var(--cartmax-accent, #16a34a));
 }
 
 /* Line items: variant row above the name, text REMOVE, plain variant label */
@@ -2485,7 +2489,7 @@ cart-notification-component [role="dialog"] {
 
 /* Free-gift line highlight */
 .cartmax-line-item.cartmax-line-gift--highlight {
-  margin: 8px 16px;
+  margin: 8px var(--cartmax-pad-x, 16px);
   border: 1px solid var(--cartmax-accent, #16a34a);
   border-radius: var(--cartmax-radius, 10px);
   background: color-mix(in srgb, var(--cartmax-accent, #16a34a) 8%, var(--cartmax-bg, #ffffff));
@@ -2551,7 +2555,7 @@ cart-notification-component [role="dialog"] {
 .cartmax-offers-card-locked-msg {
   font-size: 12px;
   line-height: 16px;
-  color: #dc2626;
+  color: var(--cartmax-danger, #dc2626);
 }
 
 /* Applied coupon as a full card */
@@ -2585,7 +2589,7 @@ cart-notification-component [role="dialog"] {
   margin-top: 6px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--cartmax-accent, #16a34a);
+  color: var(--cartmax-success, var(--cartmax-accent, #16a34a));
 }
 
 /* Code input inside Offers & Coupons */
@@ -2639,7 +2643,7 @@ cart-notification-component [role="dialog"] {
 /* Recommendations: discount %, ADD over the image */
 .cartmax-upsell-discount {
   font-weight: 600;
-  color: var(--cartmax-accent, #16a34a);
+  color: var(--cartmax-success, var(--cartmax-accent, #16a34a));
 }
 
 .cartmax-upsell-media {
@@ -2687,11 +2691,46 @@ cart-notification-component [role="dialog"] {
   white-space: pre-line;
 }
 
+/* Side padding (Customize Cart → Drawer). Unset keeps each block's own padding. */
+.cartmax-drawer {
+  --cartmax-pad-x: var(--cartmax-pad-x-desktop);
+}
+
+/* Checkout bar */
+.cartmax-footer-checkout {
+  background: var(--cartmax-footer-bg, transparent);
+}
+
+.cartmax-checkout-full .cartmax-checkout-btn {
+  flex: 1;
+}
+
+/* Portrait product images (10:11, e.g. 82 × 90) */
+.cartmax-img-portrait .cartmax-line-image {
+  height: calc(var(--cartmax-img-size, 90px) * 1.1);
+}
+
+.cartmax-img-portrait .cartmax-claim-img,
+.cartmax-img-portrait .cartmax-claim-img-placeholder {
+  height: 77px;
+}
+
+.cartmax-img-portrait .cartmax-upsells--horizontal .cartmax-upsell-img,
+.cartmax-img-portrait .cartmax-upsells--horizontal .cartmax-upsell-img-placeholder {
+  height: 99px;
+}
+
+/* Item font: product names and prices */
+.cartmax-overlay.cartmax-item-font :is(.cartmax-line-title, .cartmax-line-price, .cartmax-claim-title, .cartmax-claim-price-original, .cartmax-upsell-title, .cartmax-discount-input, .cartmax-offers-input) {
+  font-family: var(--cartmax-item-font, inherit);
+}
+
 /* --- Mobile --- */
 
 @media (max-width: 768px) {
   .cartmax-drawer {
     width: 100%;
+    --cartmax-pad-x: var(--cartmax-pad-x-mobile, var(--cartmax-pad-x-desktop));
   }
 
   .cartmax-qty-btn {

@@ -65,6 +65,10 @@ export const DEFAULT_CONFIG = {
       savings_amount: '#22c55e',
       add_button_bg: '',
       add_button_text: '',
+      success: '',
+      danger: '',
+      muted: '',
+      footer_bg: '',
     },
     shape: {
       border_radius: 'medium',
@@ -78,6 +82,7 @@ export const DEFAULT_CONFIG = {
       heading_font: '',
       heading_case: 'normal',
       heading_letter_spacing: 0,
+      item_font: '',
     },
     text: {
       cart_title: 'Your Cart',
@@ -150,6 +155,10 @@ export const DEFAULT_CONFIG = {
       upsells_show_discount: false,
       upsells_btn_position: 'below',
       savings_show_icon: true,
+      content_padding: 0,
+      content_padding_mobile: 0,
+      checkout_full_width: false,
+      image_ratio: 'square',
     },
     sections: {
       show_coupons: true,

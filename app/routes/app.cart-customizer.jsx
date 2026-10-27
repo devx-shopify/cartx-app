@@ -736,6 +736,10 @@ function DesignTab({ s, update }) {
             <ColorField label="Secondary Accent (announcement, buttons)" value={s.colors.secondary_accent} onChange={(v) => update("colors.secondary_accent", v)} />
             <OptionalColorField label="Add buttons (gift cards, upsells)" value={s.colors.add_button_bg} fallback={s.colors.secondary_accent} onChange={(v) => update("colors.add_button_bg", v)} />
             <OptionalColorField label="Add button text" value={s.colors.add_button_text} fallback={s.colors.text} onChange={(v) => update("colors.add_button_text", v)} />
+            <OptionalColorField label="Success (discounts, Free, saved)" value={s.colors.success} fallback="#2fc01a" onChange={(v) => update("colors.success", v)} />
+            <OptionalColorField label="Warning (Add ₹X more, errors)" value={s.colors.danger} fallback="#dc2626" onChange={(v) => update("colors.danger", v)} />
+            <OptionalColorField label="Muted (struck prices, labels)" value={s.colors.muted} fallback="#80828d" onChange={(v) => update("colors.muted", v)} />
+            <OptionalColorField label="Checkout bar background" value={s.colors.footer_bg} fallback={s.colors.background} onChange={(v) => update("colors.footer_bg", v)} />
           </div>
 
 
@@ -778,6 +782,13 @@ function DesignTab({ s, update }) {
             onInput={(e) => update("typography.heading_font", e.target.value)}
             placeholder="Same as body"
             details="A font family name, e.g. Anton. Used for titles, buttons and coupon codes. Load it in the Google Fonts URL above."
+          />
+          <s-text-field
+            label="Product font"
+            value={s.typography.item_font || ""}
+            onInput={(e) => update("typography.item_font", e.target.value)}
+            placeholder="Same as body"
+            details="A font family name for product names and prices, e.g. Roboto. Load it in the Google Fonts URL above."
           />
           <SegmentedControl
             label="Heading case"
@@ -857,6 +868,27 @@ function DesignTab({ s, update }) {
             onChange={(v) => update("layout.drawer_width", v)}
             suffix="px"
           />
+          <SliderField
+            label="Side padding (desktop)"
+            value={s.layout.content_padding || 0}
+            min={0}
+            max={48}
+            step={2}
+            onChange={(v) => update("layout.content_padding", v)}
+            suffix="px"
+          />
+          <SliderField
+            label="Side padding (mobile)"
+            value={s.layout.content_padding_mobile || 0}
+            min={0}
+            max={48}
+            step={2}
+            onChange={(v) => update("layout.content_padding_mobile", v)}
+            suffix="px"
+          />
+          <div style={{ fontSize: 12, color: "#6d7175", marginTop: -8, lineHeight: 1.4 }}>
+            0 keeps the built-in spacing. Mobile 0 uses the desktop value.
+          </div>
           <SegmentedControl
             label="Header title"
             options={[
@@ -899,6 +931,15 @@ function DesignTab({ s, update }) {
             ]}
             value={s.layout.image_style}
             onChange={(v) => update("layout.image_style", v)}
+          />
+          <SegmentedControl
+            label="Image shape"
+            options={[
+              { value: "square", label: "Square" },
+              { value: "portrait", label: "Portrait (10:11)" },
+            ]}
+            value={s.layout.image_ratio || "square"}
+            onChange={(v) => update("layout.image_ratio", v)}
           />
           <SegmentedControl
             label="Image size"
@@ -1218,6 +1259,11 @@ function ContentTab({ s, update }) {
             details="Shown between two lock icons below the checkout button. Leave empty to hide."
             value={s.text.checkout_trust_message}
             onInput={(e) => update("text.checkout_trust_message", e.target.value)}
+          />
+          <s-checkbox
+            label="Full-width checkout button"
+            checked={s.layout.checkout_full_width || undefined}
+            onChange={(e) => update("layout.checkout_full_width", e.target.checked)}
           />
           <s-checkbox
             label="Show sparkle icons on the savings ribbon"

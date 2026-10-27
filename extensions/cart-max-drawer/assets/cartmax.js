@@ -505,6 +505,14 @@
     if (c2) {
       setOrClear(s2, "--cartmax-add-btn-bg", c2.add_button_bg);
       setOrClear(s2, "--cartmax-add-btn-text", c2.add_button_text);
+      setOrClear(s2, "--cartmax-success", c2.success);
+      setOrClear(s2, "--cartmax-danger", c2.danger);
+      setOrClear(s2, "--cartmax-muted", c2.muted);
+      setOrClear(s2, "--cartmax-footer-bg", c2.footer_bg);
+    }
+    if (l2) {
+      setOrClear(s2, "--cartmax-pad-x-desktop", Number(l2.content_padding) > 0 ? Number(l2.content_padding) + "px" : "");
+      setOrClear(s2, "--cartmax-pad-x-mobile", Number(l2.content_padding_mobile) > 0 ? Number(l2.content_padding_mobile) + "px" : "");
     }
     var ab = settings.announcement_bar;
     if (ab) {
@@ -512,8 +520,9 @@
       setOrClear(s2, "--cartmax-announce-text", ab.text_color);
     }
     if (t2) {
-      setOrClear(s2, "--cartmax-heading-font", t2.heading_font ? '"' + String(t2.heading_font).replace(/["\\]/g, "") + '"' : "");
+      setOrClear(s2, "--cartmax-heading-font", t2.heading_font ? '"' + String(t2.heading_font).replace(/["\\]/g, "") + '", sans-serif' : "");
       setOrClear(s2, "--cartmax-heading-spacing", Number(t2.heading_letter_spacing) > 0 ? Number(t2.heading_letter_spacing) + "px" : "");
+      setOrClear(s2, "--cartmax-item-font", t2.item_font ? '"' + String(t2.item_font).replace(/["\\]/g, "") + '", sans-serif' : "");
     }
   }
   function setOrClear(style, name, value) {
@@ -3796,7 +3805,9 @@
         gift_show_price: l2.gift_show_price === true,
         coupon_entry: l2.coupon_entry === "link" ? "link" : "input",
         coupon_cards_layout: l2.coupon_cards_layout === "list" ? "list" : "scroll",
-        savings_show_icon: l2.savings_show_icon !== false
+        savings_show_icon: l2.savings_show_icon !== false,
+        checkout_full_width: l2.checkout_full_width === true,
+        image_ratio: l2.image_ratio === "portrait" ? "portrait" : "square"
       };
       this._upsells = {
         card_layout: l2.upsells_card_layout || "horizontal",
@@ -3829,7 +3840,8 @@
       this._typography = {
         heading_font: ty.heading_font || "",
         heading_case: ty.heading_case === "uppercase" ? "uppercase" : "normal",
-        heading_letter_spacing: Number(ty.heading_letter_spacing) || 0
+        heading_letter_spacing: Number(ty.heading_letter_spacing) || 0,
+        item_font: ty.item_font || ""
       };
       var sh = drawer.shape || {};
       this._shape = { button_style: sh.button_style || "solid" };
@@ -6166,6 +6178,9 @@
       if (typo.heading_letter_spacing > 0) overlayClass += " cartmax-heading-spaced";
       if (this._layout.header_align === "center") overlayClass += " cartmax-header-center";
       if (this._addBtnColored) overlayClass += " cartmax-add-btn-colored";
+      if (typo.item_font) overlayClass += " cartmax-item-font";
+      if (this._layout.checkout_full_width) overlayClass += " cartmax-checkout-full";
+      if (this._layout.image_ratio === "portrait") overlayClass += " cartmax-img-portrait";
       var sec = this._sections;
       var countStyle = this._layout.header_count_style;
       var bodySections = {

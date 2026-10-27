@@ -860,6 +860,8 @@ export default class CartDrawer extends Component {
       coupon_entry: l.coupon_entry === 'link' ? 'link' : 'input',
       coupon_cards_layout: l.coupon_cards_layout === 'list' ? 'list' : 'scroll',
       savings_show_icon: l.savings_show_icon !== false,
+      checkout_full_width: l.checkout_full_width === true,
+      image_ratio: l.image_ratio === 'portrait' ? 'portrait' : 'square',
     };
     this._upsells = {
       card_layout: l.upsells_card_layout || 'horizontal',
@@ -893,6 +895,7 @@ export default class CartDrawer extends Component {
       heading_font: ty.heading_font || '',
       heading_case: ty.heading_case === 'uppercase' ? 'uppercase' : 'normal',
       heading_letter_spacing: Number(ty.heading_letter_spacing) || 0,
+      item_font: ty.item_font || '',
     };
     var sh = drawer.shape || {};
     this._shape = { button_style: sh.button_style || 'solid' };
@@ -3832,6 +3835,9 @@ export default class CartDrawer extends Component {
     if (typo.heading_letter_spacing > 0) overlayClass += ' cartmax-heading-spaced';
     if (this._layout.header_align === 'center') overlayClass += ' cartmax-header-center';
     if (this._addBtnColored) overlayClass += ' cartmax-add-btn-colored';
+    if (typo.item_font) overlayClass += ' cartmax-item-font';
+    if (this._layout.checkout_full_width) overlayClass += ' cartmax-checkout-full';
+    if (this._layout.image_ratio === 'portrait') overlayClass += ' cartmax-img-portrait';
 
     var sec = this._sections;
     var countStyle = this._layout.header_count_style;

@@ -327,6 +327,14 @@ export function applyDrawerSettings(settings) {
   if (c) {
     setOrClear(s, '--cartmax-add-btn-bg', c.add_button_bg);
     setOrClear(s, '--cartmax-add-btn-text', c.add_button_text);
+    setOrClear(s, '--cartmax-success', c.success);
+    setOrClear(s, '--cartmax-danger', c.danger);
+    setOrClear(s, '--cartmax-muted', c.muted);
+    setOrClear(s, '--cartmax-footer-bg', c.footer_bg);
+  }
+  if (l) {
+    setOrClear(s, '--cartmax-pad-x-desktop', Number(l.content_padding) > 0 ? Number(l.content_padding) + 'px' : '');
+    setOrClear(s, '--cartmax-pad-x-mobile', Number(l.content_padding_mobile) > 0 ? Number(l.content_padding_mobile) + 'px' : '');
   }
   var ab = settings.announcement_bar;
   if (ab) {
@@ -334,8 +342,9 @@ export function applyDrawerSettings(settings) {
     setOrClear(s, '--cartmax-announce-text', ab.text_color);
   }
   if (t) {
-    setOrClear(s, '--cartmax-heading-font', t.heading_font ? '"' + String(t.heading_font).replace(/["\\]/g, '') + '"' : '');
+    setOrClear(s, '--cartmax-heading-font', t.heading_font ? '"' + String(t.heading_font).replace(/["\\]/g, '') + '", sans-serif' : '');
     setOrClear(s, '--cartmax-heading-spacing', Number(t.heading_letter_spacing) > 0 ? Number(t.heading_letter_spacing) + 'px' : '');
+    setOrClear(s, '--cartmax-item-font', t.item_font ? '"' + String(t.item_font).replace(/["\\]/g, '') + '", sans-serif' : '');
   }
 }
 

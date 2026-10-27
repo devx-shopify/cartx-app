@@ -268,6 +268,11 @@ export const DrawerConfigSchema = z.object({
     // ADD buttons on gift cards and recommendations. Empty keeps today's colours.
     add_button_bg: z.string().default(''),
     add_button_text: z.string().default(''),
+    // Empty = the colours each element uses today.
+    success: z.string().default(''), // discounts, "Free", amount saved
+    danger: z.string().default(''), // "Add ₹X more", coupon errors, shipping value
+    muted: z.string().default(''), // struck-through prices, price breakup labels
+    footer_bg: z.string().default(''), // checkout bar
   }).default({}),
   shape: z.object({
     border_radius: z.enum(['none', 'small', 'medium', 'large', 'pill']).default('medium'),
@@ -283,6 +288,8 @@ export const DrawerConfigSchema = z.object({
     heading_font: z.string().default(''),
     heading_case: z.enum(['normal', 'uppercase']).default('normal'),
     heading_letter_spacing: z.number().min(0).max(10).default(0),
+    // Product names and prices; empty = the body font.
+    item_font: z.string().default(''),
   }).default({}),
   text: z.object({
     cart_title: z.string().default('Your Cart'),
@@ -367,6 +374,11 @@ export const DrawerConfigSchema = z.object({
     upsells_show_discount: z.boolean().default(false),
     upsells_btn_position: z.enum(['below', 'over_image']).default('below'),
     savings_show_icon: z.boolean().default(true),
+    // Left/right padding of the drawer's blocks, in px. 0 = each block's own.
+    content_padding: z.number().min(0).max(48).default(0),
+    content_padding_mobile: z.number().min(0).max(48).default(0),
+    checkout_full_width: z.boolean().default(false),
+    image_ratio: z.enum(['square', 'portrait']).default('square'),
   }).default({}),
   sections: z.object({
     show_coupons: z.boolean().default(true),

@@ -210,6 +210,9 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
   const BODY_SECTIONS = ["progress_bar", "claim_gifts", "offer_cards", "line_items", "coupons", "upsells"];
   const order = (sec.order || []).filter((k, i, a) => BODY_SECTIONS.includes(k) && a.indexOf(k) === i);
   BODY_SECTIONS.forEach((k) => { if (!order.includes(k)) order.push(k); });
+  const itemFontStyle = t.item_font ? { fontFamily: `"${String(t.item_font).replace(/["\\]/g, "")}", sans-serif` } : {};
+  const padX = Number(l.content_padding) > 0 ? Number(l.content_padding) : null;
+  const imgH = l.image_ratio === "portrait" ? Math.round(imgSize * 1.1) : imgSize;
   const fontUrl = t.font_source === "custom" && /^https:\/\/fonts\.googleapis\.com\//.test(t.custom_font_url || "") ? t.custom_font_url : "";
   const badgeBg = pb.badge_bg_color || `${accent}1a`;
   const badgeText = pb.badge_text_color || accent;
@@ -507,7 +510,7 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
             style={{
               display: "flex",
               gap: 10,
-              padding: `${density}px 16px`,
+              padding: `${density}px ${padX ?? 16}px`,
               borderBottom: `1px solid ${border}`,
               background: bg,
             }}
@@ -515,7 +518,7 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
             <div
               style={{
                 width: imgSize,
-                height: imgSize,
+                height: imgH,
                 minWidth: imgSize,
                 borderRadius: imgRadius,
                 background: "#f3f4f6",
@@ -554,6 +557,7 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
                     textOverflow: "ellipsis",
                     flex: 1,
                     minWidth: 0,
+                    ...itemFontStyle,
                   }}
                 >
                   {item.title}
@@ -580,12 +584,12 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
               >
                 {item.price}
                 {i === 0 && (
-                  <span style={{ textDecoration: "line-through", color: "#80828D", fontWeight: 400 }}>
+                  <span style={{ textDecoration: "line-through", color: c.muted || "#80828D", fontWeight: 400 }}>
                     $39.00
                   </span>
                 )}
                 {i === 0 && (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 400, color: "#2FC01A" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 400, color: c.success || "#2FC01A" }}>
                     {l.line_discount_show_icon !== false && (
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <path d="M7.99996 14.3334C7.75896 14.3334 7.52935 14.2883 7.31113 14.1982C7.09279 14.1081 6.89935 13.9779 6.73079 13.8077C6.39568 13.4769 6.10829 13.2605 5.86863 13.1584C5.62885 13.0562 5.26924 13.0052 4.78979 13.0052C4.29113 13.0052 3.86729 12.8307 3.51829 12.4817C3.16929 12.1327 2.99479 11.7089 2.99479 11.2102C2.99479 10.7351 2.94357 10.3764 2.84113 10.1342C2.73868 9.89196 2.5224 9.60363 2.19229 9.26919C2.02051 9.09741 1.88996 8.90258 1.80063 8.68469C1.71129 8.4668 1.66663 8.23902 1.66663 8.00135C1.66663 7.76369 1.71129 7.53547 1.80063 7.31669C1.88996 7.09791 2.02051 6.90263 2.19229 6.73085C2.5224 6.39874 2.73868 6.11246 2.84113 5.87202C2.94357 5.63147 2.99479 5.27074 2.99479 4.78985C2.99479 4.29119 3.16929 3.86735 3.51829 3.51835C3.86729 3.16935 4.29113 2.99485 4.78979 2.99485C5.2649 2.99485 5.62357 2.94363 5.86579 2.84119C6.10802 2.73874 6.39635 2.52246 6.73079 2.19235C6.89968 2.02213 7.0934 1.89196 7.31196 1.80185C7.53052 1.71174 7.75902 1.66669 7.99746 1.66669C8.2359 1.66669 8.46452 1.71135 8.68329 1.80069C8.90207 1.89002 9.09735 2.02058 9.26913 2.19235C9.60124 2.52246 9.88752 2.73874 10.128 2.84119C10.3685 2.94363 10.7292 2.99485 11.2101 2.99485C11.7088 2.99485 12.1326 3.16935 12.4816 3.51835C12.8306 3.86735 13.0051 4.29119 13.0051 4.78985C13.0051 5.26497 13.0563 5.62363 13.1588 5.86585C13.2612 6.10808 13.4775 6.39641 13.8076 6.73085C13.9794 6.90263 14.11 7.09746 14.1993 7.31535C14.2886 7.53324 14.3333 7.76102 14.3333 7.99869C14.3333 8.23635 14.2886 8.46458 14.1993 8.68335C14.11 8.90213 13.9794 9.09741 13.8076 9.26919C13.4768 9.6043 13.2604 9.89169 13.1583 10.1314C13.0562 10.3711 13.0051 10.7307 13.0051 11.2102C13.0051 11.7089 12.8306 12.1327 12.4816 12.4817C12.1326 12.8307 11.7088 13.0052 11.2101 13.0052C10.735 13.0052 10.3763 13.0564 10.1341 13.1589C9.8919 13.2613 9.60357 13.4776 9.26913 13.8077C9.10057 13.9779 8.90713 14.1081 8.68879 14.1982C8.47057 14.2883 8.24096 14.3334 7.99996 14.3334ZM8.00079 13.3334C8.10624 13.3334 8.20918 13.3118 8.30963 13.2687C8.41007 13.2255 8.49446 13.1697 8.56279 13.1014C8.98413 12.6757 9.38229 12.3866 9.75729 12.234C10.1322 12.0815 10.6165 12.0052 11.2101 12.0052C11.4353 12.0052 11.6242 11.929 11.7766 11.7767C11.929 11.6242 12.0051 11.4354 12.0051 11.2102C12.0051 10.6129 12.0814 10.1287 12.234 9.75769C12.3865 9.3868 12.6735 8.98852 13.0948 8.56285C13.2538 8.40385 13.3333 8.21624 13.3333 8.00002C13.3333 7.7838 13.256 7.5983 13.1013 7.44352C12.6756 7.01796 12.3865 6.61769 12.234 6.24269C12.0814 5.8678 12.0051 5.38352 12.0051 4.78985C12.0051 4.56463 11.929 4.3758 11.7766 4.22335C11.6242 4.07102 11.4353 3.99485 11.2101 3.99485C10.6066 3.99485 10.1201 3.91963 9.75063 3.76919C9.38118 3.61863 8.98313 3.33063 8.55646 2.90519C8.48802 2.83674 8.40357 2.77991 8.30313 2.73469C8.20268 2.68935 8.10163 2.66669 7.99996 2.66669C7.89829 2.66669 7.79618 2.68985 7.69363 2.73619C7.59096 2.78263 7.50546 2.83896 7.43713 2.90519C7.01579 3.32652 6.61763 3.61347 6.24263 3.76602C5.86774 3.91858 5.38346 3.99485 4.78979 3.99485C4.56457 3.99485 4.37574 4.07102 4.22329 4.22335C4.07096 4.3758 3.99479 4.56463 3.99479 4.78985C3.99479 5.39152 3.91852 5.8778 3.76596 6.24869C3.6134 6.61969 3.32429 7.01796 2.89863 7.44352C2.74396 7.5983 2.66663 7.7838 2.66663 8.00002C2.66663 8.21624 2.74396 8.40385 2.89863 8.56285C3.32429 8.98852 3.6134 9.38747 3.76596 9.75969C3.91852 10.1319 3.99479 10.6154 3.99479 11.2102C3.99479 11.4354 4.07096 11.6242 4.22329 11.7767C4.37574 11.929 4.56457 12.0052 4.78979 12.0052C5.3919 12.0052 5.87724 12.0815 6.24579 12.234C6.61435 12.3866 7.01357 12.6757 7.44346 13.1014C7.5119 13.1697 7.59552 13.2255 7.69429 13.2687C7.79318 13.3118 7.89535 13.3334 8.00079 13.3334ZM9.62296 10.4424C9.85296 10.4424 10.047 10.3633 10.2051 10.2052C10.3632 10.0471 10.4423 9.85302 10.4423 9.62302C10.4423 9.39291 10.3632 9.19735 10.2051 9.03635C10.047 8.87535 9.85296 8.79485 9.62296 8.79485C9.39285 8.79485 9.19729 8.87535 9.03629 9.03635C8.87529 9.19735 8.79479 9.39291 8.79479 9.62302C8.79479 9.85302 8.87529 10.0471 9.03629 10.2052C9.19729 10.3633 9.39285 10.4424 9.62296 10.4424ZM6.34479 10.3514L10.3513 6.35135L9.64863 5.64869L5.64863 9.65519L6.34479 10.3514ZM6.37696 7.20519C6.60707 7.20519 6.80263 7.12469 6.96363 6.96369C7.12463 6.80269 7.20513 6.60713 7.20513 6.37702C7.20513 6.14702 7.12463 5.95297 6.96363 5.79485C6.80263 5.63674 6.60707 5.55769 6.37696 5.55769C6.14696 5.55769 5.9529 5.63674 5.79479 5.79485C5.63668 5.95297 5.55763 6.14702 5.55763 6.37702C5.55763 6.60713 5.63668 6.80269 5.79479 6.96369C5.9529 7.12469 6.14696 7.20519 6.37696 7.20519Z" fill="#2FC01A"/>
@@ -640,7 +644,7 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
         style={giftHighlight ? {
           display: "flex",
           gap: 10,
-          padding: `${density}px 16px`,
+          padding: `${density}px ${padX ?? 16}px`,
           margin: "8px 16px",
           border: `1px solid ${accent}`,
           borderRadius: radius,
@@ -648,7 +652,7 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
         } : {
           display: "flex",
           gap: 10,
-          padding: `${density}px 16px`,
+          padding: `${density}px ${padX ?? 16}px`,
           borderBottom: `1px solid ${border}`,
           background: bg,
         }}
@@ -656,7 +660,7 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
         <div
           style={{
             width: imgSize,
-            height: imgSize,
+            height: imgH,
             minWidth: imgSize,
             borderRadius: imgRadius,
             background: "#f3f4f6",
@@ -1036,16 +1040,16 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
             </div>
           );
         })() : null}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: `16px ${padX ?? 20}px`, background: c.footer_bg || "transparent" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <span style={{ fontSize: 20, fontWeight: 700, color: text, lineHeight: 1.2 }}>$103.00</span>
-            <span style={{ fontSize: 11, color: "#2fc01a", textDecoration: "underline", textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 600, cursor: "default" }}>
+            <span style={{ fontSize: 11, color: c.success || "#2fc01a", textDecoration: "underline", textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 600, cursor: "default" }}>
               {label("price_breakup_link", "VIEW PRICE BREAKUP")}
             </span>
           </div>
           <div style={{
             ...btnStyle,
-            flex: "0 0 auto",
+            flex: l.checkout_full_width ? 1 : "0 0 auto",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
