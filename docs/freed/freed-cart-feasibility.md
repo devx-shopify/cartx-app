@@ -30,7 +30,7 @@ Effort is rough: **S** = up to 1 day, **M** = 2–4 days, **L** = 1–2 weeks (i
 | Header "CART (2)" and close | ✅ | |
 | Milestone card: gradient, progress track, tier icons, labels, top message | ✅ | |
 | "SPECIAL OFFER" sticker | ✅ | Embedded in the Custom CSS, no upload needed |
-| Milestone reward icons (truck, Arm Cuff) | 🔧 | One icon for all tiers today, not one per tier. Icons are exported in `assets/milestones/`. |
+| Milestone icons | ✅ | Two shared icons for all milestones: not reached (dark gift) and reached (white gift). One icon per milestone (truck, Arm Cuff) is not planned. |
 | "Pick one free gift" cards | ✅ / 🟡 | Card shows title and ADD, not "~~₹999~~ Free" |
 | Free gift line (pink, FREE, gift icon, no quantity) | ✅ | |
 | Cart items: image, name, price, compare-at, discount %, quantity | ✅ / 🟡 | Small differences, see §3 |
@@ -112,7 +112,7 @@ Each one is built as a general option that other merchants can turn on too. Noth
 | 2 | Code input in Offers & Coupons | "Enter Coupon Code" field with an APPLY button at the top of the view | Drawer | S |
 | 3 | Shipping info in the price breakup | Info icon next to Shipping Fee, plus a grey box with the merchant's shipping-rules text (e.g. prepaid and COD tiers) | Admin setting + drawer | S–M |
 | 4 | Applied-coupon card | Full applied card with REMOVE and "You saved ₹X with this coupon" (amount read from the cart's discount allocations) | Drawer | S–M |
-| 5 | Milestone reward icons | Show a different icon per tier (truck for free delivery, Arm Cuff for the gift; both exported to `assets/milestones/`). Tiers already carry an `icon_url`, but the drawer doesn't display it. Needed for the reward-first card style. | Drawer (+ upload field) | S |
+| 5 | ~~Milestone reward icons~~ | **Dropped.** The two shared icons (not reached / reached) stay for all milestones, so the card uses the spend-first style. | | |
 | 6 | Price on gift picker cards | "~~₹999~~ Free" on the "Pick one free gift" cards | Server + drawer | S |
 | 7 | Discount % on recommendations | "50%" next to the price on recommendation cards | Drawer | S |
 | 8 | Small layout options | Text REMOVE link, zero-padded quantity, single "Apply Coupon" row, empty-cart recommendations heading | Admin + drawer | S each |
@@ -120,7 +120,7 @@ Each one is built as a general option that other merchants can turn on too. Noth
 | 10 | Wider drawer | Allow up to 600 px | Admin + schema | S |
 | 11 | Claim Gift button text | The Claim Gift button always reads "Claim gift". Make the text a setting so it can say "Add". Not needed if "Pick one free gift" is set up as an Offer with "Show offer card only", whose button already reads "Add". | Admin + drawer | S |
 
-**Rough total for #1–#11:** about 1.5–2 weeks, in one PR and one `shopify app deploy`.
+**Rough total for #1–#11 (without #5):** about 1.5–2 weeks, in one PR and one `shopify app deploy`.
 
 ## 5. Not possible with the current setup (⛔)
 
@@ -163,7 +163,7 @@ Each one is built as a general option that other merchants can turn on too. Noth
 
 | # | Question | Why it matters |
 |---|---|---|
-| 1 | Milestone card style: spend-first ("Spend ₹999 / Free Delivery") or reward-first ("Free Delivery / Spend ₹999" with images)? | Reward-first needs 🔧 #5 |
+| 1 | Milestone card: we use the spend-first style ("Spend ₹999 / Free Delivery") with the shared gift icons. OK with the client? | The reward-first style with a picture per milestone is not planned |
 | 2 | Which total does the footer show? (Figma shows ₹1988 in the footer and ₹799 in the price breakup) | cartx shows the cart total after discounts |
 | 3 | Is the "Pick one free gift" row always visible, or only after a threshold? Which gifts? | Offer trigger setup |
 | 4 | Should coupons the cart can't use yet be listed with "Add ₹X more"? | Needs 🔧 #1 |

@@ -12,7 +12,7 @@ How to set up the FREED cart design (Figma "FREED / CartX") on FREED's store usi
 | `assets/milestones/gift-icon.svg` | Milestone icon, not yet reached (dark gift, from Figma) |
 | `assets/milestones/gift-icon-reached.svg` | Milestone icon, reached (white gift on the pink dot, from Figma) |
 | `assets/milestones/tick-badge.svg` | Blue tick on a reached milestone (already inside the Custom CSS) |
-| `assets/milestones/truck-icon.svg`, `arm-cuff-icon.svg` | Reward icons from the reward-first design. Not usable yet: the drawer can't show a different icon per milestone (feasibility doc, 🔧 #5) |
+| `assets/milestones/truck-icon.svg`, `arm-cuff-icon.svg` | Reward icons from the reward-first design, for reference only. cartx uses the two shared milestone icons above for every milestone. |
 | `assets/empty-cart.svg` | Empty-cart illustration for the Empty cart icon upload (29 KB) |
 
 **Values marked *(placeholder)*** come from the Figma mock-up. Replace them with FREED's real offers, products and copy.
