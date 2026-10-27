@@ -15,7 +15,14 @@ describe("Default Integration Test", () => {
   beforeAll(async () => {
     functionDir = path.dirname(__dirname);
     await buildFunction(functionDir);
-    functionInfo = await getFunctionInfo(functionDir);
+    // Shopify CLI 5 changed `app function info --json`: the info is wrapped in
+    // { function: { ... } } and targets are a list, not a map keyed by target.
+    // The test helper (1.1.0, the latest) still expects the old shape, so
+    // accept both.
+    const info = await getFunctionInfo(functionDir);
+    const fn = info.function || info;
+    const byTarget = Object.fromEntries((fn.targets || []).map((t) => [t.target, t]));
+    functionInfo = { ...fn, targeting: fn.targeting || byTarget };
     ({ schemaPath, functionRunnerPath, wasmPath, targeting } = functionInfo);
     schema = await loadSchema(schemaPath);
   }, 45000);
