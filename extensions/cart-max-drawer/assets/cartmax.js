@@ -496,7 +496,104 @@
       }
       if (pb.badge_bg_color) s2.setProperty("--cartmax-badge-bg", pb.badge_bg_color);
       if (pb.badge_text_color) s2.setProperty("--cartmax-badge-text", pb.badge_text_color);
+      setOrClear(s2, "--cartmax-pb-card-bg", pb.card_bg);
+      setOrClear(s2, "--cartmax-pb-card-bg-end", pb.card_bg_end || pb.card_bg);
+      setOrClear(s2, "--cartmax-pb-card-border", pb.card_border);
+      setOrClear(s2, "--cartmax-pb-fill", pb.fill_color);
+      setOrClear(s2, "--cartmax-pb-reached", pb.reached_dot_color);
     }
+    if (c2) {
+      setOrClear(s2, "--cartmax-add-btn-bg", c2.add_button_bg);
+      setOrClear(s2, "--cartmax-add-btn-text", c2.add_button_text);
+    }
+    var ab = settings.announcement_bar;
+    if (ab) {
+      setOrClear(s2, "--cartmax-announce-bg", ab.bg_color);
+      setOrClear(s2, "--cartmax-announce-text", ab.text_color);
+    }
+    if (t2) {
+      setOrClear(s2, "--cartmax-heading-font", t2.heading_font ? '"' + String(t2.heading_font).replace(/["\\]/g, "") + '"' : "");
+      setOrClear(s2, "--cartmax-heading-spacing", Number(t2.heading_letter_spacing) > 0 ? Number(t2.heading_letter_spacing) + "px" : "");
+    }
+  }
+  function setOrClear(style, name, value) {
+    if (value) style.setProperty(name, value);
+    else style.removeProperty(name);
+  }
+  var BODY_SECTIONS = ["progress_bar", "claim_gifts", "offer_cards", "line_items", "coupons", "upsells"];
+  function normalizeSectionOrder(order) {
+    var out = [];
+    (Array.isArray(order) ? order : []).forEach(function(key) {
+      if (BODY_SECTIONS.indexOf(key) !== -1 && out.indexOf(key) === -1) out.push(key);
+    });
+    BODY_SECTIONS.forEach(function(key) {
+      if (out.indexOf(key) === -1) out.push(key);
+    });
+    return out;
+  }
+  function fillTemplate(template, values) {
+    return String(template || "").replace(/\{(\w+)\}/g, function(match, key) {
+      return Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : match;
+    });
+  }
+  function formatQty(qty, zeroPad) {
+    var n2 = Number(qty) || 0;
+    return zeroPad && n2 >= 0 && n2 < 10 ? "0" + n2 : String(n2);
+  }
+  function discountPercent(price, compareAt) {
+    var p2 = Number(price) || 0;
+    var c2 = Number(compareAt) || 0;
+    if (c2 <= 0 || p2 >= c2) return 0;
+    return Math.round((c2 - p2) / c2 * 100);
+  }
+  function couponShortfall(coupon, cartTotal, itemCount) {
+    var minPrice = Math.round((Number(coupon && coupon.trigger_price) || 0) * 100);
+    var minQty = Number(coupon && coupon.trigger_qty) || 0;
+    var total = Number(cartTotal) || 0;
+    var count = Number(itemCount) || 0;
+    if (minPrice > 0 && total < minPrice) {
+      return { locked: true, by: "price", amount: minPrice - total, progress: total / minPrice };
+    }
+    if (minQty > 0 && count < minQty) {
+      return { locked: true, by: "qty", count: minQty - count, progress: count / minQty };
+    }
+    return { locked: false };
+  }
+  function splitCoupons(coupons, cart, appliedCodes, showLocked) {
+    var applied = (appliedCodes || []).map(function(c2) {
+      return String(c2).toUpperCase();
+    });
+    var total = cart ? cart.total_price || 0 : 0;
+    var count = cart ? cart.item_count || 0 : 0;
+    var available = [];
+    var locked = [];
+    (coupons || []).forEach(function(c2) {
+      if (applied.indexOf(String(c2.code || "").toUpperCase()) !== -1) return;
+      var gap = couponShortfall(c2, total, count);
+      if (!gap.locked) available.push(c2);
+      else if (showLocked) locked.push(Object.assign({}, c2, { _shortfall: gap }));
+    });
+    locked.sort(function(a2, b2) {
+      return b2._shortfall.progress - a2._shortfall.progress;
+    });
+    return { available, locked };
+  }
+  function savingsForCode(cart, code) {
+    if (!cart || !code) return 0;
+    var up = String(code).toUpperCase();
+    var lineSum = 0;
+    (cart.items || []).forEach(function(it) {
+      (it.line_level_discount_allocations || []).forEach(function(a2) {
+        var da = a2.discount_application || {};
+        if (da.title && da.title.toUpperCase() === up) lineSum += a2.amount || 0;
+      });
+    });
+    if (lineSum > 0) return lineSum;
+    var cartSum = 0;
+    (cart.cart_level_discount_applications || []).forEach(function(d2) {
+      if (d2.title && d2.title.toUpperCase() === up) cartSum += d2.total_allocated_amount || 0;
+    });
+    return cartSum;
   }
   function normalizeVariantId(id) {
     if (typeof id === "string" && id.startsWith("gid://")) return id.split("/").pop();
@@ -1168,6 +1265,15 @@
       totalTaxAmount { amount currencyCode }
     }
     discountCodes { applicable code }
+    # Order-level discounts (for "You saved \u20B9X" on an applied coupon). Deprecated
+    # in 2026-01 in favour of line allocations with lineLevelOnly: false, but
+    # switching would also change what each line shows; revisit with the API bump.
+    discountAllocations {
+      discountedAmount { amount currencyCode }
+      ... on CartCodeDiscountAllocation { code }
+      ... on CartAutomaticDiscountAllocation { title }
+      ... on CartCustomDiscountAllocation { title }
+    }
     lines(first: 250) {
       edges {
         node {
@@ -1441,7 +1547,15 @@
       total_discount: Math.max(0, originalTotal - total),
       items_subtotal_price: subtotal,
       currency,
-      cart_level_discount_applications: [],
+      // Order-level discounts, in /cart.js's shape. A code allocation is titled
+      // with its code, which is how the drawer matches applied coupons.
+      cart_level_discount_applications: (gqlCart.discountAllocations || []).map(function(d2) {
+        return {
+          type: d2.code ? "discount_code" : "automatic",
+          title: d2.code || d2.title || "Discount",
+          total_allocated_amount: toCents(d2.discountedAmount && d2.discountedAmount.amount)
+        };
+      }),
       discount_codes: (gqlCart.discountCodes || []).map(function(d2) {
         return { code: d2.code, applicable: d2.applicable };
       }),
@@ -3095,6 +3209,12 @@
   function IconPaymentMethods() {
     return /* @__PURE__ */ k("svg", { width: "62", height: "24", viewBox: "0 0 62 24", fill: "none", xmlns: "http://www.w3.org/2000/svg" }, /* @__PURE__ */ k("rect", { x: "0.5", y: "0.5", width: "23", height: "23", rx: "11.5", fill: "white" }), /* @__PURE__ */ k("rect", { x: "0.5", y: "0.5", width: "23", height: "23", rx: "11.5", stroke: "#D8D9E0" }), /* @__PURE__ */ k("path", { d: "M18.286 7.99168C16.7707 7.11701 14.833 7.63668 13.9577 9.15201L11.75 12.9757C11.1113 14.0797 11.9337 14.4657 12.8503 15.0153L14.9743 16.2413C15.6937 16.6563 16.6123 16.41 17.027 15.6917L19.296 11.762C20.0587 10.4417 19.6063 8.75401 18.286 7.99168Z", fill: "#E64A19" }), /* @__PURE__ */ k("path", { d: "M15.7884 9.57436L13.6644 8.34836C12.492 7.69736 11.828 7.65436 11.3464 8.41969L8.21369 13.8447C7.33902 15.359 7.85969 17.2957 9.37402 18.1684C10.6944 18.9307 12.382 18.4784 13.1444 17.158L16.337 11.628C16.7537 10.909 16.5077 9.98936 15.7884 9.57436Z", fill: "#FBC02D" }), /* @__PURE__ */ k("path", { d: "M16.197 6.78532L14.705 5.92366C13.055 4.97133 10.945 5.53599 9.99265 7.18599L7.15232 12.1057C6.73265 12.8313 6.98199 13.7603 7.70765 14.179L9.37832 15.1437C10.2033 15.6203 11.258 15.3377 11.7347 14.5123L14.9797 8.89232C15.652 7.72832 17.14 7.32932 18.3043 8.00166L16.197 6.78532Z", fill: "#43A047" }), /* @__PURE__ */ k("path", { d: "M10.3963 8.59369L8.78367 7.66469C8.06434 7.25069 7.14567 7.49602 6.73101 8.21336L4.79634 11.5567C3.84401 13.202 4.40867 15.3074 6.05867 16.257L7.28634 16.964L8.77534 17.8217L9.42167 18.1934C8.27434 17.4254 7.91001 15.8867 8.61167 14.675L9.11267 13.8097L10.9473 10.6397C11.361 9.92469 11.1147 9.00769 10.3963 8.59369Z", fill: "#1E88E5" }), /* @__PURE__ */ k("rect", { x: "19.5", y: "0.5", width: "23", height: "23", rx: "11.5", fill: "white" }), /* @__PURE__ */ k("rect", { x: "19.5", y: "0.5", width: "23", height: "23", rx: "11.5", stroke: "#D8D9E0" }), /* @__PURE__ */ k("g", { "clip-path": "url(#cartmax-clip-phonepe)" }, /* @__PURE__ */ k("path", { d: "M37.9467 17.0556C37.9467 18.1297 37.0763 19 36.0022 19H25.8911C24.8174 19 23.9467 18.1297 23.9467 17.0556V6.94444C23.9467 5.87033 24.8174 5 25.8911 5H36.0022C37.0763 5 37.9467 5.87033 37.9467 6.94444V17.0556Z", fill: "#4527A0" }), /* @__PURE__ */ k("path", { d: "M34.1616 10.5109C34.1616 10.2461 33.9345 10.0194 33.67 10.0194H32.7624L30.6818 7.58883C30.4928 7.36171 30.1903 7.28627 29.8873 7.36171L29.1687 7.58883C29.0551 7.62655 29.0174 7.77783 29.0928 7.85366L31.3624 10.0571H27.9203C27.8068 10.0571 27.7313 10.1329 27.7313 10.2461V10.6245C27.7313 10.8893 27.9584 11.2102 28.2229 11.2102H28.9898V12.8843C28.9898 14.2462 29.6163 15.0403 30.8265 15.0403C31.2049 15.0403 31.3624 15.0026 31.7404 14.8513V16.0615C31.7404 16.4018 32.0052 16.6667 32.3455 16.6667H32.6512C32.7647 16.6667 32.8783 16.5531 32.8783 16.4395V11.2102H33.9718C34.0854 11.2102 34.1608 11.1343 34.1608 11.0212V10.5109H34.1616ZM31.7412 13.7162C31.514 13.8297 31.2115 13.8674 30.9848 13.8674C30.3797 13.8674 30.1693 13.5649 30.1693 12.8839V11.2098H31.7415V13.7162H31.7412Z", fill: "white" })), /* @__PURE__ */ k("rect", { x: "38.5", y: "0.5", width: "23", height: "23", rx: "11.5", fill: "white" }), /* @__PURE__ */ k("rect", { x: "38.5", y: "0.5", width: "23", height: "23", rx: "11.5", stroke: "#D8D9E0" }), /* @__PURE__ */ k("path", { d: "M61.0915 10.5647C60.8887 9.98508 60.3363 9.56885 59.6874 9.56885H59.6738C59.2519 9.56885 58.8718 9.74442 58.6012 10.0263C58.3301 9.74442 57.9499 9.56885 57.5285 9.56885H57.515C57.1441 9.56885 56.8052 9.70462 56.5449 9.92936V9.81512C56.536 9.70134 56.4423 9.61193 56.3267 9.61193H55.3313C55.2096 9.61193 55.1113 9.71025 55.1113 9.83244V15.2378C55.1113 15.36 55.2096 15.4583 55.3313 15.4583H56.3267C56.4376 15.4583 56.5289 15.3754 56.5435 15.2682L56.543 11.3878C56.5429 11.3748 56.5435 11.3618 56.5449 11.3489C56.5608 11.1757 56.6877 11.0334 56.8881 11.0156H57.0716C57.1554 11.0231 57.2261 11.0526 57.2818 11.097C57.3684 11.1659 57.4166 11.2717 57.4166 11.3878L57.4204 15.249C57.4204 15.3712 57.5191 15.47 57.6404 15.47H58.6358C58.7533 15.47 58.8488 15.3763 58.8544 15.2598L58.854 11.3826C58.8535 11.2553 58.9125 11.1401 59.016 11.0718C59.067 11.039 59.1283 11.017 59.199 11.0104H59.3826C59.5979 11.0291 59.7281 11.1925 59.7276 11.3826L59.7314 15.2387C59.7314 15.3609 59.8302 15.4592 59.9514 15.4592H60.9468C61.068 15.4592 61.1668 15.3609 61.1668 15.2387V11.0914C61.1668 10.8086 61.135 10.6883 61.0915 10.5647ZM54.353 9.62601H53.7837V8.70085C53.7837 8.58989 53.6938 8.5 53.5828 8.5C53.5697 8.5 53.5571 8.50186 53.5449 8.50421C52.9138 8.67744 53.0402 9.55157 51.888 9.62601H51.776C51.7592 9.62601 51.7433 9.62835 51.7278 9.63162C51.6295 9.65364 51.5555 9.74118 51.5555 9.84607V10.8414C51.5555 10.9627 51.6543 11.0615 51.776 11.0615H52.3767L52.3758 15.2823C52.3758 15.4026 52.4732 15.5 52.5935 15.5H53.5777C53.6975 15.5 53.7949 15.4026 53.7949 15.2823L53.7954 11.0615H54.353C54.4742 11.0615 54.573 10.9627 54.573 10.8414V9.84607C54.573 9.72481 54.4742 9.62601 54.353 9.62601Z", fill: "#00BAF2" }), /* @__PURE__ */ k("path", { d: "M50.7715 9.62646H49.7761C49.6549 9.62646 49.5566 9.72525 49.5566 9.8465V11.9047C49.5542 12.032 49.4512 12.1341 49.3234 12.1341H48.9067C48.7775 12.1341 48.6731 12.0302 48.6731 11.901L48.6693 9.84652C48.6693 9.72525 48.5705 9.62647 48.4493 9.62647H47.4539C47.3322 9.62647 47.2339 9.72525 47.2339 9.84652V12.1023C47.2339 12.9591 47.8449 13.5701 48.7021 13.5701C48.7021 13.5701 49.3454 13.5701 49.3651 13.5738C49.4812 13.5869 49.5715 13.6843 49.5715 13.8042C49.5715 13.9226 49.4831 14.0195 49.3683 14.0341C49.3627 14.035 49.3576 14.0364 49.3515 14.0373L47.8959 14.0425C47.7742 14.0425 47.6758 14.1413 47.6758 14.2625V15.2575C47.6758 15.3792 47.7742 15.4775 47.8959 15.4775H49.5233C50.381 15.4775 50.9916 14.867 50.9916 14.0097V9.84652C50.9916 9.72525 50.8932 9.62646 50.7715 9.62646ZM41.137 11.4503V12.0646C41.137 12.1933 41.0326 12.2982 40.9038 12.2982L40.2722 12.2987V11.0678H40.9038C41.0326 11.0678 41.137 11.1717 41.137 11.301V11.4503ZM41.2245 9.62622H39.0488C38.9295 9.62622 38.833 9.72314 38.833 9.84206V10.8173C38.833 10.8192 38.8335 10.8211 38.8335 10.8229C38.8335 10.8276 38.833 10.8323 38.833 10.8365V15.2507C38.833 15.3705 38.9229 15.4684 39.0343 15.4712H40.0484C40.1697 15.4712 40.2685 15.3729 40.2685 15.2511L40.2722 13.7384H41.2245C42.0214 13.7384 42.5767 13.1855 42.5767 12.3853V10.9812C42.5767 10.181 42.0214 9.62622 41.2245 9.62622ZM45.2669 13.7872V13.9426C45.2669 13.9553 45.2651 13.9674 45.2632 13.9791C45.2609 13.9901 45.2577 14.0009 45.2538 14.0114C45.2229 14.0985 45.1358 14.1617 45.0324 14.1617H44.618C44.4888 14.1617 44.3835 14.0634 44.3835 13.9426V13.7549C44.3835 13.7525 44.383 13.7502 44.383 13.7479L44.3835 13.2483V13.0919L44.3839 13.0905C44.3844 12.9702 44.4888 12.8728 44.618 12.8728H45.0324C45.1621 12.8728 45.2669 12.9706 45.2669 13.0919L45.2669 13.7872ZM45.1087 9.63194H43.7275C43.6053 9.63194 43.5066 9.72464 43.5066 9.83841V10.2256C43.5066 10.2279 43.507 10.2308 43.507 10.2331C43.507 10.2359 43.5065 10.2387 43.5065 10.2415V10.772C43.5065 10.8923 43.6114 10.9906 43.7407 10.9906H45.0558C45.1597 11.007 45.2421 11.0829 45.2538 11.2013V11.3296C45.2421 11.4425 45.1607 11.5248 45.0614 11.5342H44.4102C43.544 11.5342 42.9269 12.1096 42.9269 12.9177V14.0751C42.9269 14.8785 43.4574 15.4502 44.3175 15.4502H46.1223C46.4463 15.4502 46.709 15.2049 46.709 14.9029V11.1259C46.709 10.2102 46.2371 9.63194 45.1087 9.63194Z", fill: "#1F336B" }), /* @__PURE__ */ k("defs", null, /* @__PURE__ */ k("clipPath", { id: "cartmax-clip-phonepe" }, /* @__PURE__ */ k("rect", { x: "23.611", y: "5", width: "14.7778", height: "14", rx: "2", fill: "white" }))));
   }
+  function IconTag() {
+    return /* @__PURE__ */ k("svg", { width: "24", height: "24", viewBox: "0 0 24 24", fill: "none", xmlns: "http://www.w3.org/2000/svg" }, /* @__PURE__ */ k("path", { d: "M12 21C11.677 21 11.3714 20.9398 11.0833 20.8195C10.7952 20.6992 10.5399 20.5253 10.3173 20.298C9.79542 19.789 9.34992 19.4563 8.98075 19.3C8.61158 19.1437 8.05775 19.0655 7.31925 19.0655C6.65692 19.0655 6.09383 18.8337 5.63 18.37C5.16633 17.9062 4.9345 17.3431 4.9345 16.6807C4.9345 15.9551 4.85583 15.404 4.6985 15.0275C4.54117 14.651 4.209 14.2028 3.702 13.6827C3.46983 13.4506 3.29483 13.1911 3.177 12.9043C3.059 12.6173 3 12.3173 3 12.0043C3 11.6911 3.059 11.3897 3.177 11.1C3.29483 10.8103 3.46983 10.5494 3.702 10.3173C4.209 9.80442 4.54117 9.36225 4.6985 8.99075C4.85583 8.61925 4.9345 8.06208 4.9345 7.31925C4.9345 6.65692 5.16633 6.09383 5.63 5.63C6.09383 5.16633 6.65692 4.9345 7.31925 4.9345C8.04492 4.9345 8.596 4.85583 8.9725 4.6985C9.349 4.54117 9.79725 4.209 10.3173 3.702C10.5406 3.47467 10.7968 3.30083 11.086 3.1805C11.375 3.06017 11.6772 3 11.9925 3C12.3078 3 12.6103 3.059 12.9 3.177C13.1897 3.29483 13.4506 3.46983 13.6827 3.702C14.1956 4.209 14.6377 4.54117 15.0092 4.6985C15.3807 4.85583 15.9379 4.9345 16.6807 4.9345C17.3431 4.9345 17.9062 5.16633 18.37 5.63C18.8337 6.09383 19.0655 6.65692 19.0655 7.31925C19.0655 8.04492 19.1442 8.596 19.3015 8.9725C19.4588 9.349 19.791 9.79725 20.298 10.3173C20.5302 10.5494 20.7052 10.8089 20.823 11.0958C20.941 11.3828 21 11.6827 21 11.9957C21 12.3089 20.941 12.6103 20.823 12.9C20.7052 13.1897 20.5302 13.4506 20.298 13.6827C19.789 14.2046 19.4563 14.6501 19.3 15.0192C19.1437 15.3884 19.0655 15.9422 19.0655 16.6807C19.0655 17.3431 18.8337 17.9062 18.37 18.37C17.9062 18.8337 17.3431 19.0655 16.6807 19.0655C15.9551 19.0655 15.404 19.1442 15.0275 19.3015C14.651 19.4588 14.2028 19.791 13.6827 20.298C13.4601 20.5253 13.2048 20.6992 12.9167 20.8195C12.6286 20.9398 12.323 21 12 21ZM12.0025 20C12.1855 20 12.3651 19.9644 12.5413 19.8932C12.7176 19.8221 12.8667 19.7256 12.9885 19.6038C13.5692 19.0103 14.122 18.6055 14.647 18.3895C15.1718 18.1735 15.8497 18.0655 16.6807 18.0655C17.0731 18.0655 17.4019 17.9328 17.6673 17.6673C17.9328 17.4019 18.0655 17.0731 18.0655 16.6807C18.0655 15.8551 18.1735 15.1817 18.3895 14.6605C18.6055 14.1393 19.0038 13.582 19.5845 12.9885C19.8615 12.7115 20 12.382 20 12C20 11.618 19.8679 11.2949 19.6038 11.0307C19.0103 10.4372 18.6055 9.878 18.3895 9.353C18.1735 8.82817 18.0655 8.15025 18.0655 7.31925C18.0655 6.92692 17.9328 6.59808 17.6673 6.33275C17.4019 6.06725 17.0731 5.9345 16.6807 5.9345C15.8366 5.9345 15.1562 5.82967 14.6395 5.62C14.1227 5.41017 13.5659 5.00867 12.9693 4.4155C12.8474 4.29367 12.6983 4.19392 12.522 4.11625C12.3458 4.03875 12.1718 4 12 4C11.8282 4 11.6509 4.04042 11.4683 4.12125C11.2856 4.20192 11.1333 4.3 11.0115 4.4155C10.4308 4.99617 9.878 5.3945 9.353 5.6105C8.82817 5.8265 8.15025 5.9345 7.31925 5.9345C6.92692 5.9345 6.59808 6.06725 6.33275 6.33275C6.06725 6.59808 5.9345 6.92692 5.9345 7.31925C5.9345 8.15775 5.8265 8.83758 5.6105 9.35875C5.3945 9.87992 4.98975 10.4372 4.39625 11.0307C4.13208 11.2949 4 11.618 4 12C4 12.382 4.13208 12.7115 4.39625 12.9885C4.98975 13.582 5.3945 14.1371 5.6105 14.6538C5.8265 15.1704 5.9345 15.8461 5.9345 16.6807C5.9345 17.0731 6.06725 17.4019 6.33275 17.6673C6.59808 17.9328 6.92692 18.0655 7.31925 18.0655C8.15908 18.0655 8.836 18.1735 9.35 18.3895C9.86417 18.6055 10.4244 19.0103 11.0308 19.6038C11.1526 19.7256 11.2992 19.8221 11.4707 19.8932C11.6423 19.9644 11.8195 20 12.0025 20ZM14.3688 15.327C14.6421 15.327 14.8702 15.2357 15.053 15.053C15.2357 14.8702 15.327 14.6421 15.327 14.3688C15.327 14.0954 15.2357 13.8631 15.053 13.6718C14.8702 13.4803 14.6421 13.3845 14.3688 13.3845C14.0954 13.3845 13.8631 13.4803 13.6718 13.6718C13.4803 13.8631 13.3845 14.0954 13.3845 14.3688C13.3845 14.6421 13.4803 14.8702 13.6718 15.053C13.8631 15.2357 14.0954 15.327 14.3688 15.327ZM9.5845 15.1038L15.1038 9.60375L14.3962 8.89625L8.89625 14.4155L9.5845 15.1038ZM9.63125 10.6155C9.90458 10.6155 10.1369 10.5198 10.3283 10.3283C10.5198 10.1369 10.6155 9.90458 10.6155 9.63125C10.6155 9.35792 10.5198 9.12983 10.3283 8.947C10.1369 8.76433 9.90458 8.673 9.63125 8.673C9.35792 8.673 9.12983 8.76433 8.947 8.947C8.76433 9.12983 8.673 9.35792 8.673 9.63125C8.673 9.90458 8.76433 10.1369 8.947 10.3283C9.12983 10.5198 9.35792 10.6155 9.63125 10.6155Z", fill: "currentColor" }));
+  }
+  function IconInfo() {
+    return /* @__PURE__ */ k("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" }, /* @__PURE__ */ k("circle", { cx: "12", cy: "12", r: "10" }), /* @__PURE__ */ k("path", { d: "M12 16v-4" }), /* @__PURE__ */ k("path", { d: "M12 8h.01" }));
+  }
   function IconChevronLeft() {
     return /* @__PURE__ */ k("svg", { width: "28", height: "28", viewBox: "0 0 28 28", fill: "none", xmlns: "http://www.w3.org/2000/svg" }, /* @__PURE__ */ k("path", { d: "M16.3335 20.1924L10.1411 14L16.3335 7.80762L17.1592 8.63333L11.7925 14L17.1592 19.3667L16.3335 20.1924Z", fill: "currentColor" }));
   }
@@ -3156,14 +3276,67 @@
         checkout_button: "Checkout",
         continue_shopping: "Continue shopping",
         continue_shopping_url: "",
-        coupon_placeholder: "Discount code",
+        coupon_placeholder: "Apply Coupon",
         total_label: "Total",
         subtotal_label: "Subtotal",
         savings_label: "Congrats! You saved {amount} on this order.",
         offer_cards_heading: "Pick your free gift",
-        checkout_trust_message: "Guaranteed safe & secure checkout"
+        checkout_trust_message: "Guaranteed safe & secure checkout",
+        gift_add_button: "Add",
+        gift_remove_button: "Remove",
+        gift_adding: "Adding...",
+        gift_unavailable: "Unavailable",
+        gift_claimed: "Claimed",
+        gift_free_label: "Free",
+        claim_gift_button: "Claim gift",
+        claim_limit_reached: "Limit reached",
+        free_badge: "FREE",
+        line_remove: "Remove",
+        line_discount_format: "{pct}% off",
+        coupon_view_all: "View All",
+        coupon_apply: "Apply",
+        coupon_remove: "Remove",
+        coupon_invalid: "Invalid or inapplicable code",
+        coupon_locked_message: "Add {amount} more to apply this coupon",
+        coupon_locked_qty_message: "Add {count} more items to apply this coupon",
+        coupon_saved_message: "You saved {amount} with this coupon",
+        coupons_panel_title: "Offers & Coupons",
+        coupons_panel_label: "Available Coupons",
+        coupons_panel_placeholder: "Enter Coupon Code",
+        upsells_empty_heading: "",
+        upsell_sold_out: "Sold out",
+        price_breakup_link: "VIEW PRICE BREAKUP",
+        price_breakup_title: "Price Break Up",
+        pb_total_mrp: "Total MRP",
+        pb_discount_mrp: "Discount on MRP",
+        pb_coupon_discount: "Coupon Discount",
+        pb_shipping: "Shipping Fee",
+        pb_shipping_value: "Calculated at checkout",
+        pb_total: "Total Amount",
+        shipping_note: ""
       };
-      this._layout = { drawer_position: "right", image_style: "rounded", qty_style: "bordered", show_vendor: false, show_variant_switcher: true, show_remove_btn: true, show_payment_icons: true, show_compare_price: true };
+      this._layout = {
+        drawer_position: "right",
+        image_style: "rounded",
+        qty_style: "bordered",
+        show_vendor: false,
+        show_variant_switcher: true,
+        show_remove_btn: true,
+        show_payment_icons: true,
+        show_compare_price: true,
+        header_align: "left",
+        header_count_style: "badge",
+        remove_style: "icon",
+        qty_zero_pad: false,
+        variant_position: "actions",
+        variant_style: "switcher",
+        line_discount_show_icon: true,
+        gift_line_style: "plain",
+        gift_show_price: false,
+        coupon_entry: "input",
+        coupon_cards_layout: "scroll",
+        savings_show_icon: true
+      };
       this._variantCache = {};
       this._compareAtCache = {};
       this._prefetchedHandles = {};
@@ -3173,11 +3346,12 @@
       this._recsFetched = {};
       this._cartReadSeq = 0;
       this._activeOps = /* @__PURE__ */ new Set();
-      this._upsells = { card_layout: "horizontal", card_size: "medium", heading: "", btn_text: "ADD TO CART", show_compare_price: true };
+      this._upsells = { card_layout: "horizontal", card_size: "medium", heading: "", btn_text: "ADD TO CART", show_compare_price: true, show_discount: false, btn_position: "below" };
       this._announcement = { text: "", type: "static" };
-      this._progressBar = { track_thickness: "normal", milestone_icon_svg: "", completed_icon_svg: "" };
+      this._progressBar = { track_thickness: "normal", milestone_icon_svg: "", completed_icon_svg: "", card_style: "plain", badge_image_url: "", badge_corner: "top-left" };
+      this._typography = { heading_font: "", heading_case: "normal", heading_letter_spacing: 0 };
       this._shape = { button_style: "solid" };
-      this._sections = { show_progress_bar: true, show_claim_gifts: true, show_offer_cards: true, show_coupons: true, show_upsells: true, show_ribbon: true };
+      this._sections = { show_progress_bar: true, show_claim_gifts: true, show_offer_cards: true, show_coupons: true, show_upsells: true, show_ribbon: true, show_locked_coupons: false, coupon_panel_input: false, coupon_applied_style: "chip", order: normalizeSectionOrder(null) };
       this._behavior = { auto_open_on_add: true, animation_style: "slide", close_on_overlay_click: true, close_on_esc: true };
     }
     componentDidMount() {
@@ -3588,6 +3762,12 @@
       } catch (_2) {
       }
     }
+    // A label from the merchant's text settings. Empty falls back to the default,
+    // so clearing a button label can never render an empty button.
+    _t(key, fallback) {
+      var v2 = this._text[key];
+      return v2 === void 0 || v2 === null || v2 === "" ? fallback : v2;
+    }
     _applyDrawerConfig(drawer) {
       if (!drawer) return;
       var t2 = drawer.text || {};
@@ -3604,7 +3784,19 @@
         empty_icon_url: l2.empty_icon_url || "",
         empty_icon_size: l2.empty_icon_size || "medium",
         empty_icon_color: l2.empty_icon_color || "",
-        show_payment_icons: l2.show_payment_icons !== false
+        show_payment_icons: l2.show_payment_icons !== false,
+        header_align: l2.header_align === "center" ? "center" : "left",
+        header_count_style: l2.header_count_style || "badge",
+        remove_style: l2.remove_style === "text" ? "text" : "icon",
+        qty_zero_pad: l2.qty_zero_pad === true,
+        variant_position: l2.variant_position === "above_title" ? "above_title" : "actions",
+        variant_style: l2.variant_style === "label" ? "label" : "switcher",
+        line_discount_show_icon: l2.line_discount_show_icon !== false,
+        gift_line_style: l2.gift_line_style === "highlight" ? "highlight" : "plain",
+        gift_show_price: l2.gift_show_price === true,
+        coupon_entry: l2.coupon_entry === "link" ? "link" : "input",
+        coupon_cards_layout: l2.coupon_cards_layout === "list" ? "list" : "scroll",
+        savings_show_icon: l2.savings_show_icon !== false
       };
       this._upsells = {
         card_layout: l2.upsells_card_layout || "horizontal",
@@ -3613,7 +3805,9 @@
         heading_position: l2.upsells_heading_position || "left",
         show_on_empty: l2.upsells_show_on_empty || "filled",
         btn_text: l2.upsells_btn_text || "ADD TO CART",
-        show_compare_price: l2.upsells_show_compare_price !== false
+        show_compare_price: l2.upsells_show_compare_price !== false,
+        show_discount: l2.upsells_show_discount === true,
+        btn_position: l2.upsells_btn_position === "over_image" ? "over_image" : "below"
       };
       var ab = drawer.announcement_bar || {};
       this._announcement = {
@@ -3624,7 +3818,18 @@
       this._progressBar = {
         track_thickness: pb.track_thickness || "normal",
         milestone_icon_svg: pb.milestone_icon_svg || "",
-        completed_icon_svg: pb.completed_icon_svg || ""
+        completed_icon_svg: pb.completed_icon_svg || "",
+        card_style: pb.card_style === "card" ? "card" : "plain",
+        badge_image_url: pb.badge_image_url || "",
+        badge_corner: pb.badge_corner === "top-right" ? "top-right" : "top-left",
+        reached_color: !!pb.reached_dot_color
+      };
+      this._addBtnColored = !!(drawer.colors && drawer.colors.add_button_bg);
+      var ty = drawer.typography || {};
+      this._typography = {
+        heading_font: ty.heading_font || "",
+        heading_case: ty.heading_case === "uppercase" ? "uppercase" : "normal",
+        heading_letter_spacing: Number(ty.heading_letter_spacing) || 0
       };
       var sh = drawer.shape || {};
       this._shape = { button_style: sh.button_style || "solid" };
@@ -3636,7 +3841,11 @@
         show_coupons: sec.show_coupons !== false,
         allow_multiple_coupons: sec.allow_multiple_coupons === true,
         show_upsells: sec.show_upsells !== false,
-        show_ribbon: sec.show_ribbon !== false
+        show_ribbon: sec.show_ribbon !== false,
+        show_locked_coupons: sec.show_locked_coupons === true,
+        coupon_panel_input: sec.coupon_panel_input === true,
+        coupon_applied_style: sec.coupon_applied_style === "card" ? "card" : "chip",
+        order: normalizeSectionOrder(sec.order)
       };
       var beh = drawer.behavior || {};
       this._behavior = {
@@ -4388,7 +4597,16 @@
       var pb = this._progressBar;
       var milestoneIconSvg = pb.milestone_icon_svg || "";
       var completedIconSvg = pb.completed_icon_svg || milestoneIconSvg;
-      return /* @__PURE__ */ k("div", { id: "cartmax-progress", className: "cartmax-progress" }, bar.top_message ? /* @__PURE__ */ k("div", { class: "cartmax-progress-msg-wrap" }, /* @__PURE__ */ k("div", { class: "cartmax-progress-msg" }, /* @__PURE__ */ k("span", null, bar.top_message))) : null, /* @__PURE__ */ k("div", { className: "cartmax-progress-track", style: { marginRight: trackPadRight + "px" } }, /* @__PURE__ */ k("div", { className: "cartmax-progress-fill", style: { width: pct + "%" } }, /* @__PURE__ */ k("span", { className: "visually-hidden" }, "Progress fill")), tiers.map((tier, i2) => {
+      var progressCls = "cartmax-progress" + (pb.card_style === "card" ? " cartmax-progress--card" : "") + (pb.reached_color ? " cartmax-progress--reached-color" : "");
+      return /* @__PURE__ */ k("div", { id: "cartmax-progress", className: progressCls }, pb.badge_image_url ? /* @__PURE__ */ k(
+        "img",
+        {
+          class: "cartmax-progress-badge cartmax-progress-badge--" + pb.badge_corner,
+          src: pb.badge_image_url,
+          alt: "",
+          "aria-hidden": "true"
+        }
+      ) : null, bar.top_message ? /* @__PURE__ */ k("div", { class: "cartmax-progress-msg-wrap" }, /* @__PURE__ */ k("div", { class: "cartmax-progress-msg" }, /* @__PURE__ */ k("span", null, bar.top_message))) : null, /* @__PURE__ */ k("div", { className: "cartmax-progress-track", style: { marginRight: trackPadRight + "px" } }, /* @__PURE__ */ k("div", { className: "cartmax-progress-fill", style: { width: pct + "%" } }, /* @__PURE__ */ k("span", { className: "visually-hidden" }, "Progress fill")), tiers.map((tier, i2) => {
         var pos = (i2 + 1) / n2 * usableWidth;
         var cls = "cartmax-milestone";
         var isActive = tier.state === "active";
@@ -4601,8 +4819,11 @@
       var isVariantOpen = this.state.variantOpen[item.key];
       var isVariantLoading = this.state.variantLoading[item.key];
       var cachedVariants = this._variantCache[String(item.product_id)] || [];
-      var showVariantSwitcher = this._layout.show_variant_switcher && item.variant_title && !isFreebie && !isClaimed;
-      var showRemoveBtn = this._layout.show_remove_btn && displayQty > 1 && !isFreebie && !isClaimed;
+      var layout = this._layout;
+      var showVariantSwitcher = layout.show_variant_switcher && item.variant_title && !isFreebie && !isClaimed;
+      var textRemove = layout.remove_style === "text" && layout.show_remove_btn && !isFreebie && !isClaimed;
+      var showRemoveBtn = !textRemove && layout.show_remove_btn && displayQty > 1 && !isFreebie && !isClaimed;
+      var variantOnTop = layout.variant_position === "above_title";
       var lineTitle = item.product_title;
       if (isFreebie && item.variant_title && item.variant_title !== "Default Title" && String(item.product_title || "").indexOf(item.variant_title) === -1) {
         lineTitle = item.product_title + " - " + item.variant_title;
@@ -4610,8 +4831,51 @@
       var claimPriceUnit = isClaimed && item.properties && item.properties._claim_price ? Number(item.properties._claim_price) : 0;
       var claimPriceLine = claimPriceUnit * (item.quantity || 1);
       var giftChargedLine = giftChargedAmount(item);
-      var cls = "cartmax-line-item" + (isRemoving ? " cartmax-line-removing" : "") + (isFreebie ? " cartmax-line-freebie" : "");
-      return /* @__PURE__ */ k("div", { class: cls, key: item.key }, /* @__PURE__ */ k("div", { class: "cartmax-line-image" }, item.image ? /* @__PURE__ */ k("img", { src: resizeImage(item.image, 96), alt: item.title, width: "64", height: "64", loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-line-image-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image"))), /* @__PURE__ */ k("div", { class: "cartmax-line-details" }, this._layout.show_vendor && item.vendor ? /* @__PURE__ */ k("div", { class: "cartmax-line-vendor" }, item.vendor) : null, /* @__PURE__ */ k("div", { class: "cartmax-line-title-row" }, /* @__PURE__ */ k("div", { class: "cartmax-line-title" }, lineTitle), showRemoveBtn ? /* @__PURE__ */ k(
+      var cls = "cartmax-line-item" + (isRemoving ? " cartmax-line-removing" : "") + (isFreebie ? " cartmax-line-freebie" : "") + ((isFreebie || isClaimed) && layout.gift_line_style === "highlight" ? " cartmax-line-gift--highlight" : "");
+      var removeText = textRemove ? /* @__PURE__ */ k(
+        "button",
+        {
+          class: "cartmax-line-remove-text",
+          onClick: () => this.handleRemove(item.key),
+          disabled: isRemoving,
+          "aria-label": "Remove " + item.product_title
+        },
+        this._t("line_remove", "Remove")
+      ) : null;
+      var variantNode = null;
+      if (showVariantSwitcher && layout.variant_style === "label") {
+        variantNode = /* @__PURE__ */ k("span", { class: "cartmax-variant-pill cartmax-variant-pill--label" }, item.variant_title);
+      } else if (showVariantSwitcher) {
+        variantNode = /* @__PURE__ */ k("div", { class: "cartmax-variant-wrap" }, /* @__PURE__ */ k(
+          "button",
+          {
+            class: "cartmax-variant-pill" + (isVariantOpen ? " cartmax-variant-pill--open" : ""),
+            onClick: () => this.handleVariantToggle(item.key, item),
+            disabled: isUpdating,
+            "aria-haspopup": "listbox",
+            "aria-expanded": isVariantOpen ? "true" : "false"
+          },
+          /* @__PURE__ */ k("span", null, item.variant_title),
+          isVariantLoading ? /* @__PURE__ */ k("span", { class: "cartmax-variant-loading", "aria-hidden": "true" }) : /* @__PURE__ */ k("svg", { class: "cartmax-variant-chevron", width: "12", height: "12", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2.5", "stroke-linecap": "round" }, /* @__PURE__ */ k("path", { d: "m6 9 6 6 6-6" }))
+        ), isVariantOpen && cachedVariants.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-variant-dropdown", role: "listbox" }, cachedVariants.map((v2) => {
+          var isCurrent = String(v2.id) === String(item.variant_id);
+          return /* @__PURE__ */ k(
+            "button",
+            {
+              class: "cartmax-variant-option" + (isCurrent ? " cartmax-variant-option--current" : "") + (!v2.available ? " cartmax-variant-option--oos" : ""),
+              key: v2.id,
+              role: "option",
+              "aria-selected": isCurrent ? "true" : "false",
+              disabled: !v2.available || isUpdating,
+              onClick: () => this.handleVariantSwitch(item, v2.id)
+            },
+            /* @__PURE__ */ k("span", null, v2.title),
+            isCurrent ? /* @__PURE__ */ k(IconCheck, null) : null,
+            !v2.available ? /* @__PURE__ */ k("span", { class: "cartmax-variant-oos-label" }, "Out of stock") : null
+          );
+        })) : null);
+      }
+      return /* @__PURE__ */ k("div", { class: cls, key: item.key }, /* @__PURE__ */ k("div", { class: "cartmax-line-image" }, item.image ? /* @__PURE__ */ k("img", { src: resizeImage(item.image, 96), alt: item.title, width: "64", height: "64", loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-line-image-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image"))), /* @__PURE__ */ k("div", { class: "cartmax-line-details" }, variantOnTop && (variantNode || removeText) ? /* @__PURE__ */ k("div", { class: "cartmax-line-top-row" }, variantNode || /* @__PURE__ */ k("span", null), removeText) : null, this._layout.show_vendor && item.vendor ? /* @__PURE__ */ k("div", { class: "cartmax-line-vendor" }, item.vendor) : null, /* @__PURE__ */ k("div", { class: "cartmax-line-title-row" }, /* @__PURE__ */ k("div", { class: "cartmax-line-title" }, lineTitle), !variantOnTop ? removeText : null, showRemoveBtn ? /* @__PURE__ */ k(
         "button",
         {
           class: "cartmax-line-remove",
@@ -4631,7 +4895,7 @@
         // Still a gift line (no qty selector / switcher), but
         // the shopper is being charged — show the truth.
         /* @__PURE__ */ k("span", { key: "giftbadge", class: "cartmax-gift-badge" }, "GIFT")
-      ] : /* @__PURE__ */ k("span", { class: "cartmax-gift-badge" }, "FREE") : (() => {
+      ] : /* @__PURE__ */ k("span", { class: "cartmax-gift-badge" }, this._t("free_badge", "FREE")) : (() => {
         var compareAtUnit = this._layout.show_compare_price ? this._compareAtCache[String(item.variant_id)] : null;
         var compareAtLine = compareAtUnit ? compareAtUnit * item.quantity : 0;
         var strikethrough = compareAtLine > item.final_line_price ? compareAtLine : item.original_line_price > item.final_line_price ? item.original_line_price : 0;
@@ -4639,36 +4903,18 @@
         return [
           /* @__PURE__ */ k("span", { key: "final" }, formatMoney(item.final_line_price, curr)),
           strikethrough > 0 ? /* @__PURE__ */ k("span", { key: "orig", class: "cartmax-line-price-original" }, formatMoney(strikethrough, curr)) : null,
-          !isClaimed && savingsPct > 0 ? /* @__PURE__ */ k("span", { key: "savings", class: "cartmax-line-savings-badge" }, /* @__PURE__ */ k(IconDiscountBadge, null), savingsPct, "% off") : null
+          !isClaimed && savingsPct > 0 ? /* @__PURE__ */ k("span", { key: "savings", class: "cartmax-line-savings-badge" }, layout.line_discount_show_icon ? /* @__PURE__ */ k(IconDiscountBadge, null) : null, fillTemplate(this._t("line_discount_format", "{pct}% off"), { pct: savingsPct })) : null
         ];
-      })()), !isClaimed && !isFreebie && item.line_level_discount_allocations && item.line_level_discount_allocations.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-line-discounts" }, item.line_level_discount_allocations.map((d2) => /* @__PURE__ */ k("span", { class: "cartmax-line-discount-tag", key: d2.discount_application.title }, d2.discount_application.title))) : null, !isFreebie && !isClaimed ? /* @__PURE__ */ k("div", { class: "cartmax-line-actions" }, showVariantSwitcher ? /* @__PURE__ */ k("div", { class: "cartmax-variant-wrap" }, /* @__PURE__ */ k(
+      })()), !isClaimed && !isFreebie && item.line_level_discount_allocations && item.line_level_discount_allocations.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-line-discounts" }, item.line_level_discount_allocations.map((d2) => /* @__PURE__ */ k("span", { class: "cartmax-line-discount-tag", key: d2.discount_application.title }, d2.discount_application.title))) : null, !isFreebie && !isClaimed ? /* @__PURE__ */ k("div", { class: "cartmax-line-actions" }, !variantOnTop ? variantNode : null, showsQuantitySelector(item) ? /* @__PURE__ */ k("div", { class: "cartmax-qty-controls" }, textRemove ? /* @__PURE__ */ k(
         "button",
         {
-          class: "cartmax-variant-pill" + (isVariantOpen ? " cartmax-variant-pill--open" : ""),
-          onClick: () => this.handleVariantToggle(item.key, item),
-          disabled: isUpdating,
-          "aria-haspopup": "listbox",
-          "aria-expanded": isVariantOpen ? "true" : "false"
+          class: "cartmax-qty-btn",
+          onClick: () => this.queueQuantityChange(item.key, displayQty - 1),
+          disabled: isRemoving || displayQty <= 1,
+          "aria-label": "Decrease quantity"
         },
-        /* @__PURE__ */ k("span", null, item.variant_title),
-        isVariantLoading ? /* @__PURE__ */ k("span", { class: "cartmax-variant-loading", "aria-hidden": "true" }) : /* @__PURE__ */ k("svg", { class: "cartmax-variant-chevron", width: "12", height: "12", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2.5", "stroke-linecap": "round" }, /* @__PURE__ */ k("path", { d: "m6 9 6 6 6-6" }))
-      ), isVariantOpen && cachedVariants.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-variant-dropdown", role: "listbox" }, cachedVariants.map((v2) => {
-        var isCurrent = String(v2.id) === String(item.variant_id);
-        return /* @__PURE__ */ k(
-          "button",
-          {
-            class: "cartmax-variant-option" + (isCurrent ? " cartmax-variant-option--current" : "") + (!v2.available ? " cartmax-variant-option--oos" : ""),
-            key: v2.id,
-            role: "option",
-            "aria-selected": isCurrent ? "true" : "false",
-            disabled: !v2.available || isUpdating,
-            onClick: () => this.handleVariantSwitch(item, v2.id)
-          },
-          /* @__PURE__ */ k("span", null, v2.title),
-          isCurrent ? /* @__PURE__ */ k(IconCheck, null) : null,
-          !v2.available ? /* @__PURE__ */ k("span", { class: "cartmax-variant-oos-label" }, "Out of stock") : null
-        );
-      })) : null) : null, showsQuantitySelector(item) ? /* @__PURE__ */ k("div", { class: "cartmax-qty-controls" }, /* @__PURE__ */ k(
+        /* @__PURE__ */ k(IconMinus, null)
+      ) : /* @__PURE__ */ k(
         "button",
         {
           class: "cartmax-qty-btn",
@@ -4677,7 +4923,7 @@
           "aria-label": displayQty <= 1 ? "Remove " + item.product_title : "Decrease quantity"
         },
         displayQty <= 1 ? /* @__PURE__ */ k(IconTrash, null) : /* @__PURE__ */ k(IconMinus, null)
-      ), /* @__PURE__ */ k("span", { class: "cartmax-qty-value" + (isPending ? " cartmax-qty-pending" : "") }, displayQty), /* @__PURE__ */ k(
+      ), /* @__PURE__ */ k("span", { class: "cartmax-qty-value" + (isPending ? " cartmax-qty-pending" : ""), "aria-label": "Quantity " + displayQty }, formatQty(displayQty, layout.qty_zero_pad)), /* @__PURE__ */ k(
         "button",
         {
           class: "cartmax-qty-btn",
@@ -4702,7 +4948,7 @@
       var iconColor = this._layout.empty_icon_color;
       var iconStyle = iconColor ? { color: iconColor } : void 0;
       var sizeClass = "cartmax-empty-icon cartmax-empty-icon--" + iconSize;
-      return /* @__PURE__ */ k("div", { class: "cartmax-empty" }, /* @__PURE__ */ k("div", { class: sizeClass, style: iconStyle }, iconUrl ? /* @__PURE__ */ k("img", { src: iconUrl, alt: "", "aria-hidden": "true", style: { width: "100%", height: "100%", objectFit: "contain", display: "block" } }) : /* @__PURE__ */ k(IconBag, null)), /* @__PURE__ */ k("div", { class: "cartmax-empty-text-group" }, /* @__PURE__ */ k("p", { class: "cartmax-empty-text" }, this._text.empty_title), /* @__PURE__ */ k("p", { class: "cartmax-empty-subtitle" }, this._text.empty_subtitle)), this._text.empty_button ? /* @__PURE__ */ k("button", { class: "cartmax-empty-btn", onClick: function() {
+      return /* @__PURE__ */ k("div", { class: "cartmax-empty" }, /* @__PURE__ */ k("div", { class: sizeClass, style: iconStyle }, iconUrl ? /* @__PURE__ */ k("img", { src: iconUrl, alt: "", "aria-hidden": "true", style: { width: "100%", height: "100%", objectFit: "contain", display: "block" } }) : /* @__PURE__ */ k(IconBag, null)), /* @__PURE__ */ k("div", { class: "cartmax-empty-text-group" }, /* @__PURE__ */ k("p", { class: "cartmax-empty-text" }, this._text.empty_title), this._text.empty_subtitle ? /* @__PURE__ */ k("p", { class: "cartmax-empty-subtitle" }, this._text.empty_subtitle) : null), this._text.empty_button ? /* @__PURE__ */ k("button", { class: "cartmax-empty-btn", onClick: function() {
         if (self._text.continue_shopping_url) {
           window.location.href = self._text.continue_shopping_url;
         } else {
@@ -4911,6 +5157,14 @@
       var self = this;
       var heading = this._text.offer_cards_heading || "Pick your free gift";
       var cart = this.state.cart;
+      var curr = this._currency;
+      var addLabel = this._t("gift_add_button", "Add");
+      var removeLabel = this._t("gift_remove_button", "Remove");
+      var addingLabel = this._t("gift_adding", "Adding...");
+      var unavailableLabel = this._t("gift_unavailable", "Unavailable");
+      var claimedLabel = this._t("gift_claimed", "Claimed");
+      var freeLabel = this._t("gift_free_label", "Free");
+      var showPrice = this._layout.gift_show_price;
       function isInCart(vid) {
         if (!cart || !cart.items) return false;
         return cart.items.some(function(item) {
@@ -4938,7 +5192,10 @@
             var claimErr = self.state.claimError[btnKey];
             var inCart = isInCart(vid);
             var showClaimedBtn = isClaimedOptimistic && !inCart;
-            return /* @__PURE__ */ k("div", { class: "cartmax-claim-card" + (inCart ? " cartmax-claim-card--in-cart" : ""), key: group.offer_id + ":" + vid }, g2.image ? /* @__PURE__ */ k("img", { class: "cartmax-claim-img", src: resizeImage(g2.image, 96), alt: g2.title, loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-claim-img-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image")), /* @__PURE__ */ k("div", { class: "cartmax-claim-info" }, g2.title ? /* @__PURE__ */ k("div", { class: "cartmax-claim-title" }, g2.title) : null, inCart ? /* @__PURE__ */ k(
+            var price = Number(g2.price) || 0;
+            var compareAt = Number(g2.compare_at_price) || 0;
+            var struck = compareAt > price ? compareAt : price;
+            return /* @__PURE__ */ k("div", { class: "cartmax-claim-card" + (inCart ? " cartmax-claim-card--in-cart" : ""), key: group.offer_id + ":" + vid }, g2.image ? /* @__PURE__ */ k("img", { class: "cartmax-claim-img", src: resizeImage(g2.image, 96), alt: g2.title, loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-claim-img-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image")), /* @__PURE__ */ k("div", { class: "cartmax-claim-info" }, g2.title ? /* @__PURE__ */ k("div", { class: "cartmax-claim-title" }, g2.title) : null, showPrice && struck > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-claim-price" }, /* @__PURE__ */ k("span", { class: "cartmax-claim-price-original" }, formatMoney(Math.round(struck * 100), curr)), /* @__PURE__ */ k("span", { class: "cartmax-claim-price-free" }, freeLabel)) : null, inCart ? /* @__PURE__ */ k(
               "button",
               {
                 class: "cartmax-claim-btn cartmax-claim-btn--remove",
@@ -4946,7 +5203,7 @@
                   self.handleClaimRemove(vid);
                 }
               },
-              "Remove"
+              removeLabel
             ) : showClaimedBtn ? /* @__PURE__ */ k(
               "button",
               {
@@ -4954,7 +5211,8 @@
                 disabled: true
               },
               /* @__PURE__ */ k(IconCheck, null),
-              " Claimed"
+              " ",
+              claimedLabel
             ) : /* @__PURE__ */ k(
               "button",
               {
@@ -4964,7 +5222,7 @@
                 },
                 disabled: isAdding || !g2.available
               },
-              isAdding ? "Adding..." : !g2.available ? "Unavailable" : "Add"
+              isAdding ? addingLabel : !g2.available ? unavailableLabel : addLabel
             ), claimErr ? /* @__PURE__ */ k("div", { class: "cartmax-claim-error" }, claimErr) : null));
           })
         );
@@ -4981,6 +5239,12 @@
       var self = this;
       var cart = this.state.cart;
       var maxClaims = cg.max_claims || allGifts.length;
+      var claimLabel = this._t("claim_gift_button", "Claim gift");
+      var removeLabel = this._t("gift_remove_button", "Remove");
+      var addingLabel = this._t("gift_adding", "Adding...");
+      var unavailableLabel = this._t("gift_unavailable", "Unavailable");
+      var limitLabel = this._t("claim_limit_reached", "Limit reached");
+      var claimedLabel = this._t("gift_claimed", "Claimed");
       function isInCart(vid) {
         if (!cart || !cart.items) return false;
         return cart.items.some(function(item) {
@@ -5025,7 +5289,7 @@
                 self.handleClaimRemove(vid);
               }
             },
-            "Remove"
+            removeLabel
           ) : showClaimedBtn ? /* @__PURE__ */ k(
             "button",
             {
@@ -5033,7 +5297,8 @@
               disabled: true
             },
             /* @__PURE__ */ k(IconCheck, null),
-            " Claimed"
+            " ",
+            claimedLabel
           ) : /* @__PURE__ */ k(
             "button",
             {
@@ -5043,7 +5308,7 @@
               },
               disabled: isClaiming || !g2.available || limitReached
             },
-            isClaiming ? "Adding..." : !g2.available ? "Unavailable" : limitReached ? "Limit reached" : "Claim gift"
+            isClaiming ? addingLabel : !g2.available ? unavailableLabel : limitReached ? limitLabel : claimLabel
           ), claimErr ? /* @__PURE__ */ k("div", { class: "cartmax-claim-error" }, claimErr) : null));
         }))
       );
@@ -5160,7 +5425,7 @@
           couponPanelOpen: didApply ? false : this.state.couponPanelOpen
         });
         if (didApply) this._clearCouponError();
-        else this._flashCouponError("Invalid or inapplicable code");
+        else this._flashCouponError(this._t("coupon_invalid", "Invalid or inapplicable code"));
         tracker.track(
           didApply ? ANALYTICS_EVENTS.COUPON_APPLIED : ANALYTICS_EVENTS.COUPON_REJECTED,
           {
@@ -5227,37 +5492,95 @@
       });
       return codes;
     }
-    // Coupons eligible to SHOW (not yet applied, cart meets min qty/price). Shared
-    // by the in-body block and the slide-in panel.
-    _availableCoupons() {
-      var cart = this.state.cart;
-      var cartQty = cart ? cart.item_count || 0 : 0;
-      var cartTotal = cart ? (cart.total_price || 0) / 100 : 0;
+    // Coupons to SHOW, split into the ones the cart meets the minimum for and
+    // (when "show locked coupons" is on) the ones it doesn't yet. Applied codes are
+    // left out of both. Shared by the in-body block and the slide-in panel.
+    _couponLists() {
       var evalResult = this.state.evalResult;
       var appliedCodes = this.getAppliedDiscounts().map(function(d2) {
         return d2.code;
       });
       var allCoupons = evalResult && evalResult.available_coupons ? evalResult.available_coupons : [];
-      return allCoupons.filter(function(c2) {
-        if (appliedCodes.indexOf(c2.code) !== -1) return false;
-        var minQty = Number(c2.trigger_qty) || 0;
-        var minPrice = Number(c2.trigger_price) || 0;
-        if (minQty > 0 && cartQty < minQty) return false;
-        if (minPrice > 0 && cartTotal < minPrice) return false;
-        return true;
-      });
+      return splitCoupons(allCoupons, this.state.cart, appliedCodes, this._sections.show_locked_coupons);
+    }
+    // One coupon card. `kind` picks the class family: 'discount' in the cart body,
+    // 'offers' in the panel, so each keeps its own styling.
+    renderCouponCard(c2, kind, isLoading) {
+      var self = this;
+      var base = "cartmax-" + kind + "-card";
+      var gap = c2._shortfall;
+      var lockedMsg = null;
+      if (gap) {
+        lockedMsg = gap.by === "price" ? fillTemplate(this._t("coupon_locked_message", "Add {amount} more to apply this coupon"), { amount: formatMoney(gap.amount, this._currency) }) : fillTemplate(this._t("coupon_locked_qty_message", "Add {count} more items to apply this coupon"), { count: gap.count });
+      }
+      return /* @__PURE__ */ k("div", { class: base + (gap ? " " + base + "--locked" : ""), key: c2.code }, /* @__PURE__ */ k("div", { class: base + "-accent" }, /* @__PURE__ */ k("span", null, c2.accent)), /* @__PURE__ */ k("div", { class: base + "-info" }, /* @__PURE__ */ k("span", { class: base + "-code" }, c2.code), gap ? /* @__PURE__ */ k("span", { class: base + "-locked-msg" }, lockedMsg) : /* @__PURE__ */ k("span", { class: base + "-savings" }, c2.display_message)), gap ? null : /* @__PURE__ */ k(
+        "button",
+        {
+          class: base + "-btn",
+          onClick: function() {
+            self.handleCouponApply(c2.code);
+          },
+          disabled: isLoading
+        },
+        this._t("coupon_apply", "Apply")
+      ));
+    }
+    // Applied codes as full cards (REMOVE + "You saved ₹X"), the alternative to
+    // the compact chips. The accent and message come from the matching cartx
+    // coupon when there is one; a code typed in by hand shows just the code.
+    renderAppliedCards(appliedDiscounts, isLoading) {
+      var self = this;
+      var cart = this.state.cart;
+      var evalResult = this.state.evalResult;
+      var configured = evalResult && evalResult.available_coupons || [];
+      var savedTpl = this._t("coupon_saved_message", "You saved {amount} with this coupon");
+      var removeLabel = this._t("coupon_remove", "Remove");
+      return /* @__PURE__ */ k("div", { class: "cartmax-applied-cards" }, appliedDiscounts.map(function(d2) {
+        var up = String(d2.code || "").toUpperCase();
+        var cfg = configured.find(function(c2) {
+          return String(c2.code || "").toUpperCase() === up;
+        }) || {};
+        var saved = savingsForCode(cart, d2.code);
+        return /* @__PURE__ */ k("div", { class: "cartmax-applied-card", key: d2.code }, /* @__PURE__ */ k("div", { class: "cartmax-discount-card cartmax-discount-card--applied" }, cfg.accent ? /* @__PURE__ */ k("div", { class: "cartmax-discount-card-accent" }, /* @__PURE__ */ k("span", null, cfg.accent)) : null, /* @__PURE__ */ k("div", { class: "cartmax-discount-card-info" }, /* @__PURE__ */ k("span", { class: "cartmax-discount-card-code" }, d2.code), cfg.display_message ? /* @__PURE__ */ k("span", { class: "cartmax-discount-card-savings" }, cfg.display_message) : null), /* @__PURE__ */ k(
+          "button",
+          {
+            class: "cartmax-discount-card-btn cartmax-discount-card-btn--remove",
+            onClick: function() {
+              self.handleCouponRemove(d2.code);
+            },
+            disabled: isLoading,
+            "aria-label": "Remove " + d2.code
+          },
+          removeLabel
+        )), saved > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-applied-saved" }, /* @__PURE__ */ k(IconCheck, null), /* @__PURE__ */ k("span", null, fillTemplate(savedTpl, { amount: formatMoney(saved, self._currency) }))) : null);
+      }));
     }
     renderCoupons() {
       var self = this;
       var isLoading = this.state.couponLoading;
       var appliedDiscounts = this.getAppliedDiscounts();
-      var coupons = this._availableCoupons();
-      return /* @__PURE__ */ k("div", { class: "cartmax-coupons" }, /* @__PURE__ */ k("div", { class: "cartmax-discount-block" }, /* @__PURE__ */ k("div", { class: "cartmax-discount-input-row" }, /* @__PURE__ */ k(
+      var lists = this._couponLists();
+      var cards = lists.available.concat(lists.locked);
+      var asLink = this._layout.coupon_entry === "link";
+      var placeholderSetting = this._text.coupon_placeholder === "Discount code" ? "" : this._text.coupon_placeholder;
+      var placeholder = placeholderSetting || "Apply Coupon";
+      return /* @__PURE__ */ k("div", { class: "cartmax-coupons" }, /* @__PURE__ */ k("div", { class: "cartmax-discount-block" }, asLink ? /* @__PURE__ */ k(
+        "button",
+        {
+          class: "cartmax-coupon-link",
+          onClick: function() {
+            self.setState({ couponPanelOpen: true });
+          }
+        },
+        /* @__PURE__ */ k("span", { class: "cartmax-coupon-link-icon" }, /* @__PURE__ */ k(IconTag, null)),
+        /* @__PURE__ */ k("span", { class: "cartmax-coupon-link-label" }, placeholder),
+        /* @__PURE__ */ k("span", { class: "cartmax-coupon-link-chevron" }, /* @__PURE__ */ k(IconChevronRight, null))
+      ) : /* @__PURE__ */ k("div", { class: "cartmax-discount-input-row" }, /* @__PURE__ */ k(
         "input",
         {
           class: "cartmax-discount-input",
           type: "text",
-          placeholder: "Apply Coupon",
+          placeholder,
           value: self.state.couponInput || "",
           onInput: function(e2) {
             self.setState({ couponInput: e2.target.value, couponError: null });
@@ -5286,8 +5609,8 @@
             self.setState({ couponPanelOpen: true });
           }
         },
-        "View All"
-      )), self.state.couponError ? /* @__PURE__ */ k("div", { class: "cartmax-coupon-error" }, self.state.couponError) : null, appliedDiscounts.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-applied-chips" }, appliedDiscounts.map(function(d2) {
+        this._t("coupon_view_all", "View All")
+      )), self.state.couponError && !self.state.couponPanelOpen ? /* @__PURE__ */ k("div", { class: "cartmax-coupon-error" }, self.state.couponError) : null, appliedDiscounts.length > 0 && this._sections.coupon_applied_style === "card" ? this.renderAppliedCards(appliedDiscounts, isLoading) : null, appliedDiscounts.length > 0 && this._sections.coupon_applied_style !== "card" ? /* @__PURE__ */ k("div", { class: "cartmax-applied-chips" }, appliedDiscounts.map(function(d2) {
         return /* @__PURE__ */ k("div", { class: "cartmax-applied-chip", key: d2.code }, /* @__PURE__ */ k("span", { class: "cartmax-applied-chip-check" }, /* @__PURE__ */ k(IconCheck, null)), /* @__PURE__ */ k("span", { class: "cartmax-applied-chip-code" }, d2.code), /* @__PURE__ */ k(
           "button",
           {
@@ -5300,18 +5623,8 @@
           },
           /* @__PURE__ */ k(IconClose, null)
         ));
-      })) : null, coupons.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-discount-cards" }, coupons.map(function(c2) {
-        return /* @__PURE__ */ k("div", { class: "cartmax-discount-card", key: c2.code }, /* @__PURE__ */ k("div", { class: "cartmax-discount-card-accent" }, /* @__PURE__ */ k("span", null, c2.accent)), /* @__PURE__ */ k("div", { class: "cartmax-discount-card-info" }, /* @__PURE__ */ k("span", { class: "cartmax-discount-card-code" }, c2.code), /* @__PURE__ */ k("span", { class: "cartmax-discount-card-savings" }, c2.display_message)), /* @__PURE__ */ k(
-          "button",
-          {
-            class: "cartmax-discount-card-btn",
-            onClick: function() {
-              self.handleCouponApply(c2.code);
-            },
-            disabled: isLoading
-          },
-          "Apply"
-        ));
+      })) : null, cards.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-discount-cards" + (this._layout.coupon_cards_layout === "list" ? " cartmax-discount-cards--list" : "") }, cards.map(function(c2) {
+        return self.renderCouponCard(c2, "discount", isLoading);
       })) : null));
     }
     // The slide-in "Offers & Coupons" panel. Rendered as a direct child of the
@@ -5323,7 +5636,8 @@
       var self = this;
       var isLoading = this.state.couponLoading;
       var showPanel = this.state.couponPanelOpen;
-      var coupons = this._availableCoupons();
+      var lists = this._couponLists();
+      var cards = lists.available.concat(lists.locked);
       return /* @__PURE__ */ k("div", { class: "cartmax-offers-panel" + (showPanel ? " cartmax-offers-panel--open" : "") }, /* @__PURE__ */ k("div", { class: "cartmax-offers-panel-header" }, /* @__PURE__ */ k(
         "button",
         {
@@ -5334,18 +5648,33 @@
           "aria-label": "Back to cart"
         },
         /* @__PURE__ */ k(IconChevronLeft, null)
-      ), /* @__PURE__ */ k("span", { class: "cartmax-offers-title" }, "Offers & Coupons")), /* @__PURE__ */ k("div", { class: "cartmax-offers-body" }, /* @__PURE__ */ k("span", { class: "cartmax-offers-label" }, "Available Coupons"), coupons.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-offers-cards" }, coupons.map(function(c2) {
-        return /* @__PURE__ */ k("div", { class: "cartmax-offers-card", key: c2.code }, /* @__PURE__ */ k("div", { class: "cartmax-offers-card-accent" }, /* @__PURE__ */ k("span", null, c2.accent)), /* @__PURE__ */ k("div", { class: "cartmax-offers-card-info" }, /* @__PURE__ */ k("span", { class: "cartmax-offers-card-code" }, c2.code), /* @__PURE__ */ k("span", { class: "cartmax-offers-card-savings" }, c2.display_message)), /* @__PURE__ */ k(
-          "button",
-          {
-            class: "cartmax-offers-card-btn",
-            onClick: function() {
-              self.handleCouponApply(c2.code);
-            },
-            disabled: isLoading
+      ), /* @__PURE__ */ k("span", { class: "cartmax-offers-title" }, this._t("coupons_panel_title", "Offers & Coupons"))), /* @__PURE__ */ k("div", { class: "cartmax-offers-body" }, this._sections.coupon_panel_input ? /* @__PURE__ */ k("div", { class: "cartmax-offers-input-wrap" }, /* @__PURE__ */ k("div", { class: "cartmax-offers-input-row" }, /* @__PURE__ */ k(
+        "input",
+        {
+          class: "cartmax-offers-input",
+          type: "text",
+          placeholder: this._t("coupons_panel_placeholder", "Enter Coupon Code"),
+          value: self.state.couponInput || "",
+          onInput: function(e2) {
+            self.setState({ couponInput: e2.target.value, couponError: null });
           },
-          "Apply"
-        ));
+          onKeyDown: function(e2) {
+            if (e2.key === "Enter") self.handleCouponApply(self.state.couponInput);
+          },
+          disabled: isLoading
+        }
+      ), /* @__PURE__ */ k(
+        "button",
+        {
+          class: "cartmax-offers-input-btn",
+          onClick: function() {
+            self.handleCouponApply(self.state.couponInput);
+          },
+          disabled: isLoading || !(self.state.couponInput || "").trim()
+        },
+        this._t("coupon_apply", "Apply")
+      )), self.state.couponError && showPanel ? /* @__PURE__ */ k("div", { class: "cartmax-coupon-error" }, self.state.couponError) : null) : null, /* @__PURE__ */ k("span", { class: "cartmax-offers-label" }, this._t("coupons_panel_label", "Available Coupons")), cards.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-offers-cards" }, cards.map(function(c2) {
+        return self.renderCouponCard(c2, "offers", isLoading);
       })) : null));
     }
     // ── Render: Upsells ────────────────────────────────────────
@@ -5605,11 +5934,15 @@
       var layoutClass = "cartmax-upsells--" + (u2.card_layout || "horizontal");
       var sizeClass = "cartmax-upsell-card--" + (u2.card_size || "medium");
       var headingText = u2.heading || "YOU MAY ALSO LIKE";
+      if (items.length === 0 && this._text.upsells_empty_heading) headingText = this._text.upsells_empty_heading;
       var btnText = u2.btn_text || "ADD TO CART";
+      var soldOutText = this._t("upsell_sold_out", "Sold out");
+      var discountTpl = this._t("line_discount_format", "{pct}% off");
+      var btnOverImage = u2.btn_position === "over_image";
       var gapCfg = picked.strategies.gap_filler || {};
       var unlockTpl = gapCfg.cta_template || "Add to unlock [[reward]]";
       var imgPx = { small: 130, medium: 180, large: 230 }[u2.card_size] || 180;
-      return /* @__PURE__ */ k("div", { class: "cartmax-upsells " + layoutClass }, /* @__PURE__ */ k("div", { class: "cartmax-upsells-heading", style: { justifyContent: u2.heading_position === "center" ? "center" : "flex-start" } }, headingText), this.state.upsellError ? /* @__PURE__ */ k("div", { class: "cartmax-upsell-error" }, this.state.upsellError) : null, /* @__PURE__ */ k("div", { class: "cartmax-upsells-scroll" }, cards.map(function(p2, i2) {
+      return /* @__PURE__ */ k("div", { class: "cartmax-upsells " + layoutClass + (btnOverImage ? " cartmax-upsells--btn-over-image" : "") }, /* @__PURE__ */ k("div", { class: "cartmax-upsells-heading", style: { justifyContent: u2.heading_position === "center" ? "center" : "flex-start" } }, headingText), this.state.upsellError ? /* @__PURE__ */ k("div", { class: "cartmax-upsell-error" }, this.state.upsellError) : null, /* @__PURE__ */ k("div", { class: "cartmax-upsells-scroll" }, cards.map(function(p2, i2) {
         var avail = self._upsellAvail[p2.product_id];
         var vid = String(avail && avail.variantId || p2.variant_id).split("/").pop();
         var isAdding = self.state.updating["upsell_" + vid];
@@ -5623,6 +5956,19 @@
         var card = { product_id: p2.product_id, source: p2.source, trigger_product_id: p2.trigger_product_id, position: i2 + 1 };
         var rewardLabel = p2._unlocks_tier ? String(p2._unlocks_tier.label || "").split("\n")[0].trim() : "";
         var unlockLabel = p2._unlocks_tier ? unlockTpl.replace(/\[\[\s*reward\s*\]\]/gi, rewardLabel || "your reward") : null;
+        var pct = u2.show_discount ? discountPercent(p2.price, p2.compare_at_price) : 0;
+        var img = p2.image_url ? /* @__PURE__ */ k("img", { class: "cartmax-upsell-img", src: resizeImage(p2.image_url, imgPx), alt: p2.title, loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-upsell-img-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image"));
+        var addBtn = /* @__PURE__ */ k(
+          "button",
+          {
+            class: "cartmax-upsell-add" + (soldOut ? " cartmax-upsell-add--soldout" : ""),
+            onClick: function() {
+              if (!soldOut) self.handleUpsellAdd(vid, productMeta, card);
+            },
+            disabled: isAdding || soldOut
+          },
+          soldOut ? soldOutText : isAdding ? "Adding..." : unlockLabel || btnText
+        );
         return /* @__PURE__ */ k(
           "div",
           {
@@ -5634,18 +5980,8 @@
               self._observePromo(el);
             }
           },
-          p2.image_url ? /* @__PURE__ */ k("img", { class: "cartmax-upsell-img", src: resizeImage(p2.image_url, imgPx), alt: p2.title, loading: "lazy" }) : /* @__PURE__ */ k("div", { class: "cartmax-upsell-img-placeholder" }, /* @__PURE__ */ k("span", { class: "visually-hidden" }, "No image")),
-          /* @__PURE__ */ k("div", { class: "cartmax-upsell-info" }, /* @__PURE__ */ k("div", { class: "cartmax-upsell-title" }, p2.title), /* @__PURE__ */ k("div", { class: "cartmax-upsell-price" }, /* @__PURE__ */ k("span", { class: "cartmax-upsell-sale" }, formatMoney(Number(p2.price) * 100, curr)), u2.show_compare_price && p2.compare_at_price ? /* @__PURE__ */ k("span", { class: "cartmax-upsell-compare" }, formatMoney(Number(p2.compare_at_price) * 100, curr)) : null), /* @__PURE__ */ k(
-            "button",
-            {
-              class: "cartmax-upsell-add" + (soldOut ? " cartmax-upsell-add--soldout" : ""),
-              onClick: function() {
-                if (!soldOut) self.handleUpsellAdd(vid, productMeta, card);
-              },
-              disabled: isAdding || soldOut
-            },
-            soldOut ? "Sold out" : isAdding ? "Adding..." : unlockLabel || btnText
-          ))
+          btnOverImage ? /* @__PURE__ */ k("div", { class: "cartmax-upsell-media" }, img, addBtn) : img,
+          /* @__PURE__ */ k("div", { class: "cartmax-upsell-info" }, /* @__PURE__ */ k("div", { class: "cartmax-upsell-title" }, p2.title), /* @__PURE__ */ k("div", { class: "cartmax-upsell-price" }, /* @__PURE__ */ k("span", { class: "cartmax-upsell-sale" }, formatMoney(Number(p2.price) * 100, curr)), u2.show_compare_price && p2.compare_at_price ? /* @__PURE__ */ k("span", { class: "cartmax-upsell-compare" }, formatMoney(Number(p2.compare_at_price) * 100, curr)) : null, pct > 0 ? /* @__PURE__ */ k("span", { class: "cartmax-upsell-discount" }, fillTemplate(discountTpl, { pct })) : null), btnOverImage ? null : addBtn)
         );
       })));
     }
@@ -5665,13 +6001,13 @@
       var savings = Number(this.state.savings) || 0;
       var savingsParts = savings > 0 && this._text.savings_label ? this._text.savings_label.split("{amount}") : null;
       var trustMsg = this._text.checkout_trust_message || "";
-      return /* @__PURE__ */ k("div", { class: "cartmax-footer" }, savingsParts ? /* @__PURE__ */ k("div", { class: "cartmax-footer-savings" }, /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-icon" }, /* @__PURE__ */ k(IconSparkle, null)), /* @__PURE__ */ k("span", null, savingsParts[0]), /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-amount" }, formatMoney(savings, curr)), /* @__PURE__ */ k("span", null, savingsParts[1] || ""), /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-icon" }, /* @__PURE__ */ k(IconSparkle, null))) : null, /* @__PURE__ */ k("div", { class: "cartmax-footer-checkout" }, /* @__PURE__ */ k("div", { class: "cartmax-footer-price" }, /* @__PURE__ */ k("span", { class: "cartmax-footer-price-amount" + (this.state.cartSyncing ? " cartmax-price-updating" : "") }, formatMoney(cart.total_price, curr)), /* @__PURE__ */ k(
+      return /* @__PURE__ */ k("div", { class: "cartmax-footer" }, savingsParts ? /* @__PURE__ */ k("div", { class: "cartmax-footer-savings" }, this._layout.savings_show_icon ? /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-icon" }, /* @__PURE__ */ k(IconSparkle, null)) : null, /* @__PURE__ */ k("span", null, savingsParts[0]), /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-amount" }, formatMoney(savings, curr)), /* @__PURE__ */ k("span", null, savingsParts[1] || ""), this._layout.savings_show_icon ? /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-icon" }, /* @__PURE__ */ k(IconSparkle, null)) : null) : null, /* @__PURE__ */ k("div", { class: "cartmax-footer-checkout" }, /* @__PURE__ */ k("div", { class: "cartmax-footer-price" }, /* @__PURE__ */ k("span", { class: "cartmax-footer-price-amount" + (this.state.cartSyncing ? " cartmax-price-updating" : "") }, formatMoney(cart.total_price, curr)), /* @__PURE__ */ k(
         "button",
         {
           class: "cartmax-price-breakup-link",
           onClick: () => this.setState({ priceBreakupOpen: true })
         },
-        "VIEW PRICE BREAKUP"
+        this._t("price_breakup_link", "VIEW PRICE BREAKUP")
       )), /* @__PURE__ */ k(
         "a",
         {
@@ -5772,25 +6108,13 @@
       });
       var couponDiscount = 0;
       this.getAppliedCodes().forEach(function(code) {
-        var up = (code || "").toUpperCase();
-        var lineSum = 0;
-        (cart.items || []).forEach(function(it) {
-          (it.line_level_discount_allocations || []).forEach(function(a2) {
-            var da = a2.discount_application || {};
-            if (da.title && da.title.toUpperCase() === up) lineSum += a2.amount || 0;
-          });
-        });
-        if (lineSum > 0) {
-          couponDiscount += lineSum;
-          return;
-        }
-        (cart.cart_level_discount_applications || []).forEach(function(d2) {
-          if (d2.title && d2.title.toUpperCase() === up) couponDiscount += d2.total_allocated_amount || 0;
-        });
+        couponDiscount += savingsForCode(cart, code);
       });
+      var shippingNote = this._text.shipping_note || "";
+      var noteOpen = this.state.shippingNoteOpen !== false;
       var totalAmount = cart.total_price || 0;
       var discountOnMRP = Math.max(0, totalMRP - totalAmount - couponDiscount);
-      return /* @__PURE__ */ k("div", { class: "cartmax-pb-backdrop", onClick: () => this.setState({ priceBreakupOpen: false }) }, /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-panel", onClick: (e2) => e2.stopPropagation() }, /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-header" }, /* @__PURE__ */ k("span", null, "Price Break Up"), /* @__PURE__ */ k(
+      return /* @__PURE__ */ k("div", { class: "cartmax-pb-backdrop", onClick: () => this.setState({ priceBreakupOpen: false }) }, /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-panel", onClick: (e2) => e2.stopPropagation() }, /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-header" }, /* @__PURE__ */ k("span", null, this._t("price_breakup_title", "Price Break Up")), /* @__PURE__ */ k(
         "button",
         {
           class: "cartmax-price-breakup-close",
@@ -5798,7 +6122,16 @@
           onClick: () => this.setState({ priceBreakupOpen: false })
         },
         /* @__PURE__ */ k(IconClose, null)
-      )), /* @__PURE__ */ k("div", { class: "cartmax-pb-divider" }), /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-rows" }, /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, "Total MRP"), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount" }, formatMoney(totalMRP, curr))), discountOnMRP > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, "Discount on MRP"), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount cartmax-pb-discount" }, "-", formatMoney(discountOnMRP, curr))) : null, /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, "Coupon Discount"), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount cartmax-pb-discount" }, "-", formatMoney(couponDiscount, curr))), /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, "Shipping Fee"), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount cartmax-pb-shipping" }, "Calculated at checkout"))), /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-total" }, /* @__PURE__ */ k("span", null, "Total Amount"), /* @__PURE__ */ k("span", null, formatMoney(totalAmount, curr)))));
+      )), /* @__PURE__ */ k("div", { class: "cartmax-pb-divider" }), /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-rows" }, /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, this._t("pb_total_mrp", "Total MRP")), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount" }, formatMoney(totalMRP, curr))), discountOnMRP > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, this._t("pb_discount_mrp", "Discount on MRP")), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount cartmax-pb-discount" }, "-", formatMoney(discountOnMRP, curr))) : null, /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, this._t("pb_coupon_discount", "Coupon Discount")), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount cartmax-pb-discount" }, "-", formatMoney(couponDiscount, curr))), /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, this._t("pb_shipping", "Shipping Fee"), shippingNote ? /* @__PURE__ */ k(
+        "button",
+        {
+          class: "cartmax-pb-info",
+          "aria-label": "Shipping details",
+          "aria-expanded": noteOpen ? "true" : "false",
+          onClick: () => this.setState({ shippingNoteOpen: !noteOpen })
+        },
+        /* @__PURE__ */ k(IconInfo, null)
+      ) : null), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount cartmax-pb-shipping" }, this._t("pb_shipping_value", "Calculated at checkout"))), shippingNote && noteOpen ? /* @__PURE__ */ k("div", { class: "cartmax-pb-shipping-note" }, shippingNote) : null), /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-total" }, /* @__PURE__ */ k("span", null, this._t("pb_total", "Total Amount")), /* @__PURE__ */ k("span", null, formatMoney(totalAmount, curr)))));
     }
     // ── Main render ───────────────────────────────────────────
     render(props, { visible, open, cart, loading, styled }) {
@@ -5827,7 +6160,22 @@
       if (this._layout.qty_style === "minimal") overlayClass += " cartmax-qty-minimal";
       if (this._behavior.animation_style === "fade") overlayClass += " cartmax-anim-fade";
       else if (this._behavior.animation_style === "none") overlayClass += " cartmax-anim-none";
+      var typo = this._typography;
+      if (typo.heading_font) overlayClass += " cartmax-heading-font";
+      if (typo.heading_case === "uppercase") overlayClass += " cartmax-heading-upper";
+      if (typo.heading_letter_spacing > 0) overlayClass += " cartmax-heading-spaced";
+      if (this._layout.header_align === "center") overlayClass += " cartmax-header-center";
+      if (this._addBtnColored) overlayClass += " cartmax-add-btn-colored";
       var sec = this._sections;
+      var countStyle = this._layout.header_count_style;
+      var bodySections = {
+        progress_bar: () => hasItems && sec.show_progress_bar ? this.renderProgressBar() : null,
+        claim_gifts: () => hasItems && sec.show_claim_gifts ? this.renderClaimGifts() : null,
+        offer_cards: () => hasItems && sec.show_offer_cards ? this.renderOfferDisplays() : null,
+        line_items: () => loading ? this.renderLoading() : isEmpty ? this.renderEmpty() : hasItems ? displayItems.map((item) => this.renderLineItem(item)) : null,
+        coupons: () => hasItems && sec.show_coupons ? this.renderCoupons() : null,
+        upsells: () => hasItems && sec.show_upsells ? this.renderUpsells() : null
+      };
       return /* @__PURE__ */ k("div", { class: "cartmax-wrapper" }, liveRegion, /* @__PURE__ */ k(
         "div",
         {
@@ -5848,9 +6196,9 @@
             "aria-label": "Shopping cart"
           },
           this.renderAnnouncementBar(),
-          /* @__PURE__ */ k("div", { class: "cartmax-header" }, /* @__PURE__ */ k("span", { class: "cartmax-title" }, this._text.cart_title, count > 0 ? /* @__PURE__ */ k("span", { class: "cartmax-header-count" }, count) : null), /* @__PURE__ */ k("button", { class: "cartmax-close", onClick: this.close, "aria-label": "Close cart" }, /* @__PURE__ */ k(IconClose, null))),
+          /* @__PURE__ */ k("div", { class: "cartmax-header" }, /* @__PURE__ */ k("span", { class: "cartmax-title" }, this._text.cart_title, count > 0 && countStyle !== "hidden" ? /* @__PURE__ */ k("span", { class: "cartmax-header-count" + (countStyle === "brackets" ? " cartmax-header-count--brackets" : "") }, countStyle === "brackets" ? "(" + count + ")" : count) : null), /* @__PURE__ */ k("button", { class: "cartmax-close", onClick: this.close, "aria-label": "Close cart" }, /* @__PURE__ */ k(IconClose, null))),
           this.state.unavailableGifts.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-gift-unavailable" }, "A gift product is currently unavailable") : null,
-          /* @__PURE__ */ k("div", { class: "cartmax-body" }, hasItems && sec.show_progress_bar ? this.renderProgressBar() : null, hasItems && sec.show_claim_gifts ? this.renderClaimGifts() : null, hasItems && sec.show_offer_cards ? this.renderOfferDisplays() : null, loading ? this.renderLoading() : isEmpty ? this.renderEmpty() : hasItems ? displayItems.map((item) => this.renderLineItem(item)) : null, hasItems && sec.show_coupons ? this.renderCoupons() : null, hasItems && sec.show_upsells ? this.renderUpsells() : null),
+          /* @__PURE__ */ k("div", { class: "cartmax-body" }, sec.order.map((key) => /* @__PURE__ */ k(S, { key }, bodySections[key]()))),
           hasItems && sec.show_ribbon ? this.renderRibbon() : null,
           isEmpty && sec.show_upsells ? this.renderUpsells() : null,
           hasItems ? this.renderFooter() : null,

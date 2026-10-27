@@ -1,6 +1,6 @@
 /* eslint-disable */
-import { h, Component } from 'preact';
-import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId, hasFreebieMarker, showsQuantitySelector, giftChargedAmount } from './helpers';
+import { h, Component, Fragment } from 'preact';
+import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId, hasFreebieMarker, showsQuantitySelector, giftChargedAmount, normalizeSectionOrder, fillTemplate, formatQty, discountPercent, splitCoupons, savingsForCode } from './helpers';
 import { fireConfetti, setConfettiLottieUrl } from './confetti';
 import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLine, ensureCartxAttribute, ensureDrawerAttribute, localGiftDelta, giftIntendedQuantity, dispatchLocalBar } from './evaluate';
 import { isGraphqlCartEnabled, isStorefrontReady, fetchProductAvailability } from './storefront-cart';
@@ -147,6 +147,14 @@ function IconTag() {
   );
 }
 
+function IconInfo() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
+    </svg>
+  );
+}
+
 function IconChevronLeft() {
   return (
     <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -221,12 +229,33 @@ export default class CartDrawer extends Component {
       empty_subtitle: "Looks like you haven't added anything yet",
       empty_button: 'Continue shopping', checkout_button: 'Checkout',
       continue_shopping: 'Continue shopping', continue_shopping_url: '',
-      coupon_placeholder: 'Discount code', total_label: 'Total', subtotal_label: 'Subtotal',
+      coupon_placeholder: 'Apply Coupon', total_label: 'Total', subtotal_label: 'Subtotal',
       savings_label: 'Congrats! You saved {amount} on this order.',
       offer_cards_heading: 'Pick your free gift',
       checkout_trust_message: 'Guaranteed safe & secure checkout',
+      gift_add_button: 'Add', gift_remove_button: 'Remove', gift_adding: 'Adding...',
+      gift_unavailable: 'Unavailable', gift_claimed: 'Claimed', gift_free_label: 'Free',
+      claim_gift_button: 'Claim gift', claim_limit_reached: 'Limit reached',
+      free_badge: 'FREE', line_remove: 'Remove', line_discount_format: '{pct}% off',
+      coupon_view_all: 'View All', coupon_apply: 'Apply', coupon_remove: 'Remove',
+      coupon_invalid: 'Invalid or inapplicable code',
+      coupon_locked_message: 'Add {amount} more to apply this coupon',
+      coupon_locked_qty_message: 'Add {count} more items to apply this coupon',
+      coupon_saved_message: 'You saved {amount} with this coupon',
+      coupons_panel_title: 'Offers & Coupons', coupons_panel_label: 'Available Coupons',
+      coupons_panel_placeholder: 'Enter Coupon Code',
+      upsells_empty_heading: '', upsell_sold_out: 'Sold out',
+      price_breakup_link: 'VIEW PRICE BREAKUP', price_breakup_title: 'Price Break Up',
+      pb_total_mrp: 'Total MRP', pb_discount_mrp: 'Discount on MRP', pb_coupon_discount: 'Coupon Discount',
+      pb_shipping: 'Shipping Fee', pb_shipping_value: 'Calculated at checkout', pb_total: 'Total Amount',
+      shipping_note: '',
     };
-    this._layout = { drawer_position: 'right', image_style: 'rounded', qty_style: 'bordered', show_vendor: false, show_variant_switcher: true, show_remove_btn: true, show_payment_icons: true, show_compare_price: true };
+    this._layout = {
+      drawer_position: 'right', image_style: 'rounded', qty_style: 'bordered', show_vendor: false, show_variant_switcher: true, show_remove_btn: true, show_payment_icons: true, show_compare_price: true,
+      header_align: 'left', header_count_style: 'badge', remove_style: 'icon', qty_zero_pad: false,
+      variant_position: 'actions', variant_style: 'switcher', line_discount_show_icon: true, gift_line_style: 'plain', gift_show_price: false,
+      coupon_entry: 'input', coupon_cards_layout: 'scroll', savings_show_icon: true,
+    };
     this._variantCache = {}; // product_id -> variants[]
     this._compareAtCache = {}; // variant_id (string) -> compare_at_price (cents, per unit)
     this._prefetchedHandles = {}; // product handle -> true, so compare-at is fetched once per session
@@ -241,11 +270,12 @@ export default class CartDrawer extends Component {
     // In-flight cart mutation promises (variant switch, etc.). Checkout awaits
     // these so it never navigates with a pre-mutation cart (old variant).
     this._activeOps = new Set();
-    this._upsells = { card_layout: 'horizontal', card_size: 'medium', heading: '', btn_text: 'ADD TO CART', show_compare_price: true };
+    this._upsells = { card_layout: 'horizontal', card_size: 'medium', heading: '', btn_text: 'ADD TO CART', show_compare_price: true, show_discount: false, btn_position: 'below' };
     this._announcement = { text: '', type: 'static' };
-    this._progressBar = { track_thickness: 'normal', milestone_icon_svg: '', completed_icon_svg: '' };
+    this._progressBar = { track_thickness: 'normal', milestone_icon_svg: '', completed_icon_svg: '', card_style: 'plain', badge_image_url: '', badge_corner: 'top-left' };
+    this._typography = { heading_font: '', heading_case: 'normal', heading_letter_spacing: 0 };
     this._shape = { button_style: 'solid' };
-    this._sections = { show_progress_bar: true, show_claim_gifts: true, show_offer_cards: true, show_coupons: true, show_upsells: true, show_ribbon: true };
+    this._sections = { show_progress_bar: true, show_claim_gifts: true, show_offer_cards: true, show_coupons: true, show_upsells: true, show_ribbon: true, show_locked_coupons: false, coupon_panel_input: false, coupon_applied_style: 'chip', order: normalizeSectionOrder(null) };
     this._behavior = { auto_open_on_add: true, animation_style: 'slide', close_on_overlay_click: true, close_on_esc: true };
   }
 
@@ -794,6 +824,13 @@ export default class CartDrawer extends Component {
     } catch (_) { /* no/!valid cache — server eval-result will style it */ }
   }
 
+  // A label from the merchant's text settings. Empty falls back to the default,
+  // so clearing a button label can never render an empty button.
+  _t(key, fallback) {
+    var v = this._text[key];
+    return (v === undefined || v === null || v === '') ? fallback : v;
+  }
+
   _applyDrawerConfig(drawer) {
     if (!drawer) return;
     var t = drawer.text || {};
@@ -811,6 +848,18 @@ export default class CartDrawer extends Component {
       empty_icon_size: l.empty_icon_size || 'medium',
       empty_icon_color: l.empty_icon_color || '',
       show_payment_icons: l.show_payment_icons !== false,
+      header_align: l.header_align === 'center' ? 'center' : 'left',
+      header_count_style: l.header_count_style || 'badge',
+      remove_style: l.remove_style === 'text' ? 'text' : 'icon',
+      qty_zero_pad: l.qty_zero_pad === true,
+      variant_position: l.variant_position === 'above_title' ? 'above_title' : 'actions',
+      variant_style: l.variant_style === 'label' ? 'label' : 'switcher',
+      line_discount_show_icon: l.line_discount_show_icon !== false,
+      gift_line_style: l.gift_line_style === 'highlight' ? 'highlight' : 'plain',
+      gift_show_price: l.gift_show_price === true,
+      coupon_entry: l.coupon_entry === 'link' ? 'link' : 'input',
+      coupon_cards_layout: l.coupon_cards_layout === 'list' ? 'list' : 'scroll',
+      savings_show_icon: l.savings_show_icon !== false,
     };
     this._upsells = {
       card_layout: l.upsells_card_layout || 'horizontal',
@@ -820,6 +869,8 @@ export default class CartDrawer extends Component {
       show_on_empty: l.upsells_show_on_empty || 'filled',
       btn_text: l.upsells_btn_text || 'ADD TO CART',
       show_compare_price: l.upsells_show_compare_price !== false,
+      show_discount: l.upsells_show_discount === true,
+      btn_position: l.upsells_btn_position === 'over_image' ? 'over_image' : 'below',
     };
     var ab = drawer.announcement_bar || {};
     this._announcement = {
@@ -831,6 +882,17 @@ export default class CartDrawer extends Component {
       track_thickness: pb.track_thickness || 'normal',
       milestone_icon_svg: pb.milestone_icon_svg || '',
       completed_icon_svg: pb.completed_icon_svg || '',
+      card_style: pb.card_style === 'card' ? 'card' : 'plain',
+      badge_image_url: pb.badge_image_url || '',
+      badge_corner: pb.badge_corner === 'top-right' ? 'top-right' : 'top-left',
+      reached_color: !!pb.reached_dot_color,
+    };
+    this._addBtnColored = !!(drawer.colors && drawer.colors.add_button_bg);
+    var ty = drawer.typography || {};
+    this._typography = {
+      heading_font: ty.heading_font || '',
+      heading_case: ty.heading_case === 'uppercase' ? 'uppercase' : 'normal',
+      heading_letter_spacing: Number(ty.heading_letter_spacing) || 0,
     };
     var sh = drawer.shape || {};
     this._shape = { button_style: sh.button_style || 'solid' };
@@ -843,6 +905,10 @@ export default class CartDrawer extends Component {
       allow_multiple_coupons: sec.allow_multiple_coupons === true,
       show_upsells: sec.show_upsells !== false,
       show_ribbon: sec.show_ribbon !== false,
+      show_locked_coupons: sec.show_locked_coupons === true,
+      coupon_panel_input: sec.coupon_panel_input === true,
+      coupon_applied_style: sec.coupon_applied_style === 'card' ? 'card' : 'chip',
+      order: normalizeSectionOrder(sec.order),
     };
     var beh = drawer.behavior || {};
     this._behavior = {
@@ -1741,9 +1807,20 @@ export default class CartDrawer extends Component {
     var pb = this._progressBar;
     var milestoneIconSvg = pb.milestone_icon_svg || '';
     var completedIconSvg = pb.completed_icon_svg || milestoneIconSvg;
+    var progressCls = 'cartmax-progress'
+      + (pb.card_style === 'card' ? ' cartmax-progress--card' : '')
+      + (pb.reached_color ? ' cartmax-progress--reached-color' : '');
 
     return (
-      <div id="cartmax-progress" className="cartmax-progress">
+      <div id="cartmax-progress" className={progressCls}>
+        {pb.badge_image_url ? (
+          <img
+            class={'cartmax-progress-badge cartmax-progress-badge--' + pb.badge_corner}
+            src={pb.badge_image_url}
+            alt=""
+            aria-hidden="true"
+          />
+        ) : null}
         {bar.top_message ? (
           <div class="cartmax-progress-msg-wrap">
             <div class="cartmax-progress-msg">
@@ -2022,9 +2099,14 @@ export default class CartDrawer extends Component {
     var isVariantLoading = this.state.variantLoading[item.key];
     var cachedVariants = this._variantCache[String(item.product_id)] || [];
 
-    var showVariantSwitcher = this._layout.show_variant_switcher && item.variant_title && !isFreebie && !isClaimed;
+    var layout = this._layout;
+    var showVariantSwitcher = layout.show_variant_switcher && item.variant_title && !isFreebie && !isClaimed;
+    // Text remove ("REMOVE" link on every line) replaces the bin entirely, so it
+    // needs the remove button on — otherwise the bin in the qty row stays.
+    var textRemove = layout.remove_style === 'text' && layout.show_remove_btn && !isFreebie && !isClaimed;
     // Separate remove button: only when qty > 1 (at qty=1 trash is in the qty row)
-    var showRemoveBtn = this._layout.show_remove_btn && displayQty > 1 && !isFreebie && !isClaimed;
+    var showRemoveBtn = !textRemove && layout.show_remove_btn && displayQty > 1 && !isFreebie && !isClaimed;
+    var variantOnTop = layout.variant_position === 'above_title';
 
     // Freebie lines have no variant switcher, so the variant only shows if it's
     // part of the title. The optimistic gift line's enriched title already bakes
@@ -2055,7 +2137,62 @@ export default class CartDrawer extends Component {
 
     var cls = 'cartmax-line-item'
       + (isRemoving ? ' cartmax-line-removing' : '')
-      + (isFreebie ? ' cartmax-line-freebie' : '');
+      + (isFreebie ? ' cartmax-line-freebie' : '')
+      + ((isFreebie || isClaimed) && layout.gift_line_style === 'highlight' ? ' cartmax-line-gift--highlight' : '');
+
+    var removeText = textRemove
+      ? <button
+          class="cartmax-line-remove-text"
+          onClick={() => this.handleRemove(item.key)}
+          disabled={isRemoving}
+          aria-label={'Remove ' + item.product_title}
+        >{this._t('line_remove', 'Remove')}</button>
+      : null;
+
+    var variantNode = null;
+    if (showVariantSwitcher && layout.variant_style === 'label') {
+      variantNode = <span class="cartmax-variant-pill cartmax-variant-pill--label">{item.variant_title}</span>;
+    } else if (showVariantSwitcher) {
+      variantNode = (
+        <div class="cartmax-variant-wrap">
+          <button
+            class={'cartmax-variant-pill' + (isVariantOpen ? ' cartmax-variant-pill--open' : '')}
+            onClick={() => this.handleVariantToggle(item.key, item)}
+            disabled={isUpdating}
+            aria-haspopup="listbox"
+            aria-expanded={isVariantOpen ? 'true' : 'false'}
+          >
+            <span>{item.variant_title}</span>
+            {isVariantLoading
+              ? <span class="cartmax-variant-loading" aria-hidden="true" />
+              : <svg class="cartmax-variant-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+            }
+          </button>
+          {isVariantOpen && cachedVariants.length > 0
+            ? <div class="cartmax-variant-dropdown" role="listbox">
+                {cachedVariants.map((v) => {
+                  var isCurrent = String(v.id) === String(item.variant_id);
+                  return (
+                    <button
+                      class={'cartmax-variant-option' + (isCurrent ? ' cartmax-variant-option--current' : '') + (!v.available ? ' cartmax-variant-option--oos' : '')}
+                      key={v.id}
+                      role="option"
+                      aria-selected={isCurrent ? 'true' : 'false'}
+                      disabled={!v.available || isUpdating}
+                      onClick={() => this.handleVariantSwitch(item, v.id)}
+                    >
+                      <span>{v.title}</span>
+                      {isCurrent ? <IconCheck /> : null}
+                      {!v.available ? <span class="cartmax-variant-oos-label">Out of stock</span> : null}
+                    </button>
+                  );
+                })}
+              </div>
+            : null
+          }
+        </div>
+      );
+    }
 
     return (
       <div class={cls} key={item.key}>
@@ -2066,9 +2203,17 @@ export default class CartDrawer extends Component {
           }
         </div>
         <div class="cartmax-line-details">
+          {variantOnTop && (variantNode || removeText)
+            ? <div class="cartmax-line-top-row">
+                {variantNode || <span />}
+                {removeText}
+              </div>
+            : null
+          }
           {this._layout.show_vendor && item.vendor ? <div class="cartmax-line-vendor">{item.vendor}</div> : null}
           <div class="cartmax-line-title-row">
             <div class="cartmax-line-title">{lineTitle}</div>
+            {!variantOnTop ? removeText : null}
             {showRemoveBtn
               ? <button
                   class="cartmax-line-remove"
@@ -2100,7 +2245,7 @@ export default class CartDrawer extends Component {
                           // the shopper is being charged — show the truth.
                           <span key="giftbadge" class="cartmax-gift-badge">GIFT</span>,
                         ]
-                      : <span class="cartmax-gift-badge">FREE</span>))
+                      : <span class="cartmax-gift-badge">{this._t('free_badge', 'FREE')}</span>))
               : (() => {
                   var compareAtUnit = this._layout.show_compare_price
                     ? this._compareAtCache[String(item.variant_id)]
@@ -2119,8 +2264,8 @@ export default class CartDrawer extends Component {
                       : null,
                     !isClaimed && savingsPct > 0
                       ? <span key="savings" class="cartmax-line-savings-badge">
-                          <IconDiscountBadge />
-                          {savingsPct}% off
+                          {layout.line_discount_show_icon ? <IconDiscountBadge /> : null}
+                          {fillTemplate(this._t('line_discount_format', '{pct}% off'), { pct: savingsPct })}
                         </span>
                       : null,
                   ];
@@ -2139,56 +2284,27 @@ export default class CartDrawer extends Component {
           }
           {!isFreebie && !isClaimed
             ? <div class="cartmax-line-actions">
-                {showVariantSwitcher
-                  ? <div class="cartmax-variant-wrap">
-                      <button
-                        class={'cartmax-variant-pill' + (isVariantOpen ? ' cartmax-variant-pill--open' : '')}
-                        onClick={() => this.handleVariantToggle(item.key, item)}
-                        disabled={isUpdating}
-                        aria-haspopup="listbox"
-                        aria-expanded={isVariantOpen ? 'true' : 'false'}
-                      >
-                        <span>{item.variant_title}</span>
-                        {isVariantLoading
-                          ? <span class="cartmax-variant-loading" aria-hidden="true" />
-                          : <svg class="cartmax-variant-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
-                        }
-                      </button>
-                      {isVariantOpen && cachedVariants.length > 0
-                        ? <div class="cartmax-variant-dropdown" role="listbox">
-                            {cachedVariants.map((v) => {
-                              var isCurrent = String(v.id) === String(item.variant_id);
-                              return (
-                                <button
-                                  class={'cartmax-variant-option' + (isCurrent ? ' cartmax-variant-option--current' : '') + (!v.available ? ' cartmax-variant-option--oos' : '')}
-                                  key={v.id}
-                                  role="option"
-                                  aria-selected={isCurrent ? 'true' : 'false'}
-                                  disabled={!v.available || isUpdating}
-                                  onClick={() => this.handleVariantSwitch(item, v.id)}
-                                >
-                                  <span>{v.title}</span>
-                                  {isCurrent ? <IconCheck /> : null}
-                                  {!v.available ? <span class="cartmax-variant-oos-label">Out of stock</span> : null}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        : null
-                      }
-                    </div>
-                  : null
-                }
+                {!variantOnTop ? variantNode : null}
                 {showsQuantitySelector(item)
                   ? <div class="cartmax-qty-controls">
-                      <button
-                        class="cartmax-qty-btn"
-                        onClick={() => displayQty <= 1 ? this.handleRemove(item.key) : this.queueQuantityChange(item.key, displayQty - 1)}
-                        disabled={isRemoving}
-                        aria-label={displayQty <= 1 ? ('Remove ' + item.product_title) : 'Decrease quantity'}
-                      >{displayQty <= 1 ? <IconTrash /> : <IconMinus />}</button>
-                      <span class={'cartmax-qty-value' + (isPending ? ' cartmax-qty-pending' : '')}>
-                        {displayQty}
+                      {textRemove
+                        // With a text remove link the minus never becomes a bin:
+                        // it stops at 1 and REMOVE does the removing.
+                        ? <button
+                            class="cartmax-qty-btn"
+                            onClick={() => this.queueQuantityChange(item.key, displayQty - 1)}
+                            disabled={isRemoving || displayQty <= 1}
+                            aria-label="Decrease quantity"
+                          ><IconMinus /></button>
+                        : <button
+                            class="cartmax-qty-btn"
+                            onClick={() => displayQty <= 1 ? this.handleRemove(item.key) : this.queueQuantityChange(item.key, displayQty - 1)}
+                            disabled={isRemoving}
+                            aria-label={displayQty <= 1 ? ('Remove ' + item.product_title) : 'Decrease quantity'}
+                          >{displayQty <= 1 ? <IconTrash /> : <IconMinus />}</button>
+                      }
+                      <span class={'cartmax-qty-value' + (isPending ? ' cartmax-qty-pending' : '')} aria-label={'Quantity ' + displayQty}>
+                        {formatQty(displayQty, layout.qty_zero_pad)}
                       </span>
                       <button
                         class="cartmax-qty-btn"
@@ -2248,7 +2364,7 @@ export default class CartDrawer extends Component {
         </div>
         <div class="cartmax-empty-text-group">
           <p class="cartmax-empty-text">{this._text.empty_title}</p>
-          <p class="cartmax-empty-subtitle">{this._text.empty_subtitle}</p>
+          {this._text.empty_subtitle ? <p class="cartmax-empty-subtitle">{this._text.empty_subtitle}</p> : null}
         </div>
         {this._text.empty_button ? (
           <button class="cartmax-empty-btn" onClick={function () {
@@ -2484,6 +2600,14 @@ export default class CartDrawer extends Component {
     var self = this;
     var heading = this._text.offer_cards_heading || 'Pick your free gift';
     var cart = this.state.cart;
+    var curr = this._currency;
+    var addLabel = this._t('gift_add_button', 'Add');
+    var removeLabel = this._t('gift_remove_button', 'Remove');
+    var addingLabel = this._t('gift_adding', 'Adding...');
+    var unavailableLabel = this._t('gift_unavailable', 'Unavailable');
+    var claimedLabel = this._t('gift_claimed', 'Claimed');
+    var freeLabel = this._t('gift_free_label', 'Free');
+    var showPrice = this._layout.gift_show_price;
     function isInCart(vid) {
       if (!cart || !cart.items) return false;
       return cart.items.some(function (item) {
@@ -2516,6 +2640,11 @@ export default class CartDrawer extends Component {
                   // after an instant optimistic removal.
                   var inCart = isInCart(vid);
                   var showClaimedBtn = isClaimedOptimistic && !inCart;
+                  // "~~₹999~~ Free": the compare-at price, else the price. Offers
+                  // saved before prices were stored have neither; show the title only.
+                  var price = Number(g.price) || 0;
+                  var compareAt = Number(g.compare_at_price) || 0;
+                  var struck = compareAt > price ? compareAt : price;
                   return (
                     <div class={'cartmax-claim-card' + (inCart ? ' cartmax-claim-card--in-cart' : '')} key={group.offer_id + ':' + vid}>
                       {g.image
@@ -2524,21 +2653,28 @@ export default class CartDrawer extends Component {
                       }
                       <div class="cartmax-claim-info">
                         {g.title ? <div class="cartmax-claim-title">{g.title}</div> : null}
+                        {showPrice && struck > 0
+                          ? <div class="cartmax-claim-price">
+                              <span class="cartmax-claim-price-original">{formatMoney(Math.round(struck * 100), curr)}</span>
+                              <span class="cartmax-claim-price-free">{freeLabel}</span>
+                            </div>
+                          : null
+                        }
                         {inCart
                           ? <button
                               class="cartmax-claim-btn cartmax-claim-btn--remove"
                               onClick={function () { self.handleClaimRemove(vid); }}
-                            >Remove</button>
+                            >{removeLabel}</button>
                           : showClaimedBtn
                             ? <button
                                 class="cartmax-claim-btn cartmax-claim-btn--claimed"
                                 disabled
-                              ><IconCheck /> Claimed</button>
+                              ><IconCheck /> {claimedLabel}</button>
                             : <button
                                 class="cartmax-claim-btn cartmax-claim-btn--add"
                                 onClick={function () { self.handleOfferDisplayAdd(vid, group.offer_id, group.quantity_per_variant, { title: g.title, image: g.image }); }}
                                 disabled={isAdding || !g.available}
-                              >{isAdding ? 'Adding...' : (!g.available ? 'Unavailable' : 'Add')}</button>
+                              >{isAdding ? addingLabel : (!g.available ? unavailableLabel : addLabel)}</button>
                         }
                         {claimErr ? <div class="cartmax-claim-error">{claimErr}</div> : null}
                       </div>
@@ -2566,6 +2702,12 @@ export default class CartDrawer extends Component {
     var self = this;
     var cart = this.state.cart;
     var maxClaims = cg.max_claims || allGifts.length;
+    var claimLabel = this._t('claim_gift_button', 'Claim gift');
+    var removeLabel = this._t('gift_remove_button', 'Remove');
+    var addingLabel = this._t('gift_adding', 'Adding...');
+    var unavailableLabel = this._t('gift_unavailable', 'Unavailable');
+    var limitLabel = this._t('claim_limit_reached', 'Limit reached');
+    var claimedLabel = this._t('gift_claimed', 'Claimed');
 
     function isInCart(vid) {
       if (!cart || !cart.items) return false;
@@ -2618,17 +2760,17 @@ export default class CartDrawer extends Component {
                     ? <button
                         class="cartmax-claim-btn cartmax-claim-btn--remove"
                         onClick={function () { self.handleClaimRemove(vid); }}
-                      >Remove</button>
+                      >{removeLabel}</button>
                     : showClaimedBtn
                       ? <button
                           class="cartmax-claim-btn cartmax-claim-btn--claimed"
                           disabled
-                        ><IconCheck /> Claimed</button>
+                        ><IconCheck /> {claimedLabel}</button>
                       : <button
                           class="cartmax-claim-btn cartmax-claim-btn--add"
                           onClick={function () { self.handleClaimAdd(vid, cg._rule_id, { title: g.title, image: g.image, claim_price: cg.claim_price }); }}
                           disabled={isClaiming || !g.available || limitReached}
-                        >{isClaiming ? 'Adding...' : (!g.available ? 'Unavailable' : (limitReached ? 'Limit reached' : 'Claim gift'))}</button>
+                        >{isClaiming ? addingLabel : (!g.available ? unavailableLabel : (limitReached ? limitLabel : claimLabel))}</button>
                   }
                   {claimErr ? <div class="cartmax-claim-error">{claimErr}</div> : null}
                 </div>
@@ -2771,7 +2913,7 @@ export default class CartDrawer extends Component {
         couponPanelOpen: didApply ? false : this.state.couponPanelOpen,
       });
       if (didApply) this._clearCouponError();
-      else this._flashCouponError('Invalid or inapplicable code');
+      else this._flashCouponError(this._t('coupon_invalid', 'Invalid or inapplicable code'));
       tracker.track(
         didApply ? ANALYTICS_EVENTS.COUPON_APPLIED : ANALYTICS_EVENTS.COUPON_REJECTED,
         { promotion_type: 'coupon', code: newCode, reason: didApply ? null : 'not_applicable',
@@ -2832,66 +2974,161 @@ export default class CartDrawer extends Component {
     return codes;
   }
 
-  // Coupons eligible to SHOW (not yet applied, cart meets min qty/price). Shared
-  // by the in-body block and the slide-in panel.
-  _availableCoupons() {
-    var cart = this.state.cart;
-    var cartQty = cart ? (cart.item_count || 0) : 0;
-    var cartTotal = cart ? (cart.total_price || 0) / 100 : 0;
+  // Coupons to SHOW, split into the ones the cart meets the minimum for and
+  // (when "show locked coupons" is on) the ones it doesn't yet. Applied codes are
+  // left out of both. Shared by the in-body block and the slide-in panel.
+  _couponLists() {
     var evalResult = this.state.evalResult;
     var appliedCodes = this.getAppliedDiscounts().map(function (d) { return d.code; });
     var allCoupons = (evalResult && evalResult.available_coupons) ? evalResult.available_coupons : [];
-    return allCoupons.filter(function (c) {
-      if (appliedCodes.indexOf(c.code) !== -1) return false;
-      var minQty = Number(c.trigger_qty) || 0;
-      var minPrice = Number(c.trigger_price) || 0;
-      if (minQty > 0 && cartQty < minQty) return false;
-      if (minPrice > 0 && cartTotal < minPrice) return false;
-      return true;
-    });
+    return splitCoupons(allCoupons, this.state.cart, appliedCodes, this._sections.show_locked_coupons);
+  }
+
+  // One coupon card. `kind` picks the class family: 'discount' in the cart body,
+  // 'offers' in the panel, so each keeps its own styling.
+  renderCouponCard(c, kind, isLoading) {
+    var self = this;
+    var base = 'cartmax-' + kind + '-card';
+    var gap = c._shortfall;
+    var lockedMsg = null;
+    if (gap) {
+      lockedMsg = gap.by === 'price'
+        ? fillTemplate(this._t('coupon_locked_message', 'Add {amount} more to apply this coupon'), { amount: formatMoney(gap.amount, this._currency) })
+        : fillTemplate(this._t('coupon_locked_qty_message', 'Add {count} more items to apply this coupon'), { count: gap.count });
+    }
+    return (
+      <div class={base + (gap ? ' ' + base + '--locked' : '')} key={c.code}>
+        <div class={base + '-accent'}>
+          <span>{c.accent}</span>
+        </div>
+        <div class={base + '-info'}>
+          <span class={base + '-code'}>{c.code}</span>
+          {gap
+            ? <span class={base + '-locked-msg'}>{lockedMsg}</span>
+            : <span class={base + '-savings'}>{c.display_message}</span>
+          }
+        </div>
+        {gap
+          ? null
+          : <button
+              class={base + '-btn'}
+              onClick={function () { self.handleCouponApply(c.code); }}
+              disabled={isLoading}
+            >{this._t('coupon_apply', 'Apply')}</button>
+        }
+      </div>
+    );
+  }
+
+  // Applied codes as full cards (REMOVE + "You saved ₹X"), the alternative to
+  // the compact chips. The accent and message come from the matching cartx
+  // coupon when there is one; a code typed in by hand shows just the code.
+  renderAppliedCards(appliedDiscounts, isLoading) {
+    var self = this;
+    var cart = this.state.cart;
+    var evalResult = this.state.evalResult;
+    var configured = (evalResult && evalResult.available_coupons) || [];
+    var savedTpl = this._t('coupon_saved_message', 'You saved {amount} with this coupon');
+    var removeLabel = this._t('coupon_remove', 'Remove');
+    return (
+      <div class="cartmax-applied-cards">
+        {appliedDiscounts.map(function (d) {
+          var up = String(d.code || '').toUpperCase();
+          var cfg = configured.find(function (c) { return String(c.code || '').toUpperCase() === up; }) || {};
+          var saved = savingsForCode(cart, d.code);
+          return (
+            <div class="cartmax-applied-card" key={d.code}>
+              <div class="cartmax-discount-card cartmax-discount-card--applied">
+                {cfg.accent
+                  ? <div class="cartmax-discount-card-accent"><span>{cfg.accent}</span></div>
+                  : null
+                }
+                <div class="cartmax-discount-card-info">
+                  <span class="cartmax-discount-card-code">{d.code}</span>
+                  {cfg.display_message ? <span class="cartmax-discount-card-savings">{cfg.display_message}</span> : null}
+                </div>
+                <button
+                  class="cartmax-discount-card-btn cartmax-discount-card-btn--remove"
+                  onClick={function () { self.handleCouponRemove(d.code); }}
+                  disabled={isLoading}
+                  aria-label={'Remove ' + d.code}
+                >{removeLabel}</button>
+              </div>
+              {saved > 0
+                ? <div class="cartmax-applied-saved">
+                    <IconCheck />
+                    <span>{fillTemplate(savedTpl, { amount: formatMoney(saved, self._currency) })}</span>
+                  </div>
+                : null
+              }
+            </div>
+          );
+        })}
+      </div>
+    );
   }
 
   renderCoupons() {
     var self = this;
     var isLoading = this.state.couponLoading;
     var appliedDiscounts = this.getAppliedDiscounts();
-    var coupons = this._availableCoupons();
+    var lists = this._couponLists();
+    var cards = lists.available.concat(lists.locked);
+    var asLink = this._layout.coupon_entry === 'link';
+    // The input used to ignore this setting and always say "Apply Coupon", while
+    // configs saved the old default "Discount code". Treat that untouched old
+    // default as unset so existing stores keep the text they've always shown.
+    var placeholderSetting = this._text.coupon_placeholder === 'Discount code' ? '' : this._text.coupon_placeholder;
+    var placeholder = placeholderSetting || 'Apply Coupon';
 
     // Input row + "View All" stay visible even when a coupon is applied, so the
     // shopper can always open the coupon drawer (or apply another where allowed).
-    // Applied coupons render as compact chips with a remove (✕).
+    // Applied coupons render as compact chips with a remove (✕), or as full cards.
     return (
       <div class="cartmax-coupons">
         <div class="cartmax-discount-block">
-          <div class="cartmax-discount-input-row">
-            <input
-              class="cartmax-discount-input"
-              type="text"
-              placeholder="Apply Coupon"
-              value={self.state.couponInput || ''}
-              onInput={function (e) { self.setState({ couponInput: e.target.value, couponError: null }); }}
-              onKeyDown={function (e) { if (e.key === 'Enter') self.handleCouponApply(self.state.couponInput); }}
-              disabled={isLoading}
-            />
-            <button
-              class="cartmax-discount-submit"
-              onClick={function () { self.handleCouponApply(self.state.couponInput); }}
-              disabled={isLoading || !(self.state.couponInput || '').trim()}
-              aria-label="Apply coupon"
-            ><IconChevronRight /></button>
-            <span class="cartmax-discount-divider" />
-            <button
-              class="cartmax-discount-viewall"
-              onClick={function () { self.setState({ couponPanelOpen: true }); }}
-            >View All</button>
-          </div>
-          {self.state.couponError
+          {asLink
+            ? <button
+                class="cartmax-coupon-link"
+                onClick={function () { self.setState({ couponPanelOpen: true }); }}
+              >
+                <span class="cartmax-coupon-link-icon"><IconTag /></span>
+                <span class="cartmax-coupon-link-label">{placeholder}</span>
+                <span class="cartmax-coupon-link-chevron"><IconChevronRight /></span>
+              </button>
+            : <div class="cartmax-discount-input-row">
+                <input
+                  class="cartmax-discount-input"
+                  type="text"
+                  placeholder={placeholder}
+                  value={self.state.couponInput || ''}
+                  onInput={function (e) { self.setState({ couponInput: e.target.value, couponError: null }); }}
+                  onKeyDown={function (e) { if (e.key === 'Enter') self.handleCouponApply(self.state.couponInput); }}
+                  disabled={isLoading}
+                />
+                <button
+                  class="cartmax-discount-submit"
+                  onClick={function () { self.handleCouponApply(self.state.couponInput); }}
+                  disabled={isLoading || !(self.state.couponInput || '').trim()}
+                  aria-label="Apply coupon"
+                ><IconChevronRight /></button>
+                <span class="cartmax-discount-divider" />
+                <button
+                  class="cartmax-discount-viewall"
+                  onClick={function () { self.setState({ couponPanelOpen: true }); }}
+                >{this._t('coupon_view_all', 'View All')}</button>
+              </div>
+          }
+          {self.state.couponError && !self.state.couponPanelOpen
             ? <div class="cartmax-coupon-error">{self.state.couponError}</div>
             : null
           }
 
-          {/* Applied coupons — compact chips with a remove (✕) */}
-          {appliedDiscounts.length > 0 ? (
+          {appliedDiscounts.length > 0 && this._sections.coupon_applied_style === 'card'
+            ? this.renderAppliedCards(appliedDiscounts, isLoading)
+            : null
+          }
+          {appliedDiscounts.length > 0 && this._sections.coupon_applied_style !== 'card' ? (
             <div class="cartmax-applied-chips">
               {appliedDiscounts.map(function (d) {
                 return (
@@ -2910,26 +3147,9 @@ export default class CartDrawer extends Component {
             </div>
           ) : null}
 
-          {coupons.length > 0 ? (
-            <div class="cartmax-discount-cards">
-              {coupons.map(function (c) {
-                return (
-                  <div class="cartmax-discount-card" key={c.code}>
-                    <div class="cartmax-discount-card-accent">
-                      <span>{c.accent}</span>
-                    </div>
-                    <div class="cartmax-discount-card-info">
-                      <span class="cartmax-discount-card-code">{c.code}</span>
-                      <span class="cartmax-discount-card-savings">{c.display_message}</span>
-                    </div>
-                    <button
-                      class="cartmax-discount-card-btn"
-                      onClick={function () { self.handleCouponApply(c.code); }}
-                      disabled={isLoading}
-                    >Apply</button>
-                  </div>
-                );
-              })}
+          {cards.length > 0 ? (
+            <div class={'cartmax-discount-cards' + (this._layout.coupon_cards_layout === 'list' ? ' cartmax-discount-cards--list' : '')}>
+              {cards.map(function (c) { return self.renderCouponCard(c, 'discount', isLoading); })}
             </div>
           ) : null}
         </div>
@@ -2946,7 +3166,8 @@ export default class CartDrawer extends Component {
     var self = this;
     var isLoading = this.state.couponLoading;
     var showPanel = this.state.couponPanelOpen;
-    var coupons = this._availableCoupons();
+    var lists = this._couponLists();
+    var cards = lists.available.concat(lists.locked);
     return (
       <div class={'cartmax-offers-panel' + (showPanel ? ' cartmax-offers-panel--open' : '')}>
         <div class="cartmax-offers-panel-header">
@@ -2955,30 +3176,37 @@ export default class CartDrawer extends Component {
             onClick={function () { self.setState({ couponPanelOpen: false }); }}
             aria-label="Back to cart"
           ><IconChevronLeft /></button>
-          <span class="cartmax-offers-title">Offers & Coupons</span>
+          <span class="cartmax-offers-title">{this._t('coupons_panel_title', 'Offers & Coupons')}</span>
         </div>
         <div class="cartmax-offers-body">
-          <span class="cartmax-offers-label">Available Coupons</span>
-          {coupons.length > 0 ? (
+          {this._sections.coupon_panel_input ? (
+            <div class="cartmax-offers-input-wrap">
+              <div class="cartmax-offers-input-row">
+                <input
+                  class="cartmax-offers-input"
+                  type="text"
+                  placeholder={this._t('coupons_panel_placeholder', 'Enter Coupon Code')}
+                  value={self.state.couponInput || ''}
+                  onInput={function (e) { self.setState({ couponInput: e.target.value, couponError: null }); }}
+                  onKeyDown={function (e) { if (e.key === 'Enter') self.handleCouponApply(self.state.couponInput); }}
+                  disabled={isLoading}
+                />
+                <button
+                  class="cartmax-offers-input-btn"
+                  onClick={function () { self.handleCouponApply(self.state.couponInput); }}
+                  disabled={isLoading || !(self.state.couponInput || '').trim()}
+                >{this._t('coupon_apply', 'Apply')}</button>
+              </div>
+              {self.state.couponError && showPanel
+                ? <div class="cartmax-coupon-error">{self.state.couponError}</div>
+                : null
+              }
+            </div>
+          ) : null}
+          <span class="cartmax-offers-label">{this._t('coupons_panel_label', 'Available Coupons')}</span>
+          {cards.length > 0 ? (
             <div class="cartmax-offers-cards">
-              {coupons.map(function (c) {
-                return (
-                  <div class="cartmax-offers-card" key={c.code}>
-                    <div class="cartmax-offers-card-accent">
-                      <span>{c.accent}</span>
-                    </div>
-                    <div class="cartmax-offers-card-info">
-                      <span class="cartmax-offers-card-code">{c.code}</span>
-                      <span class="cartmax-offers-card-savings">{c.display_message}</span>
-                    </div>
-                    <button
-                      class="cartmax-offers-card-btn"
-                      onClick={function () { self.handleCouponApply(c.code); }}
-                      disabled={isLoading}
-                    >Apply</button>
-                  </div>
-                );
-              })}
+              {cards.map(function (c) { return self.renderCouponCard(c, 'offers', isLoading); })}
             </div>
           ) : null}
         </div>
@@ -3248,7 +3476,12 @@ export default class CartDrawer extends Component {
     var layoutClass = 'cartmax-upsells--' + (u.card_layout || 'horizontal');
     var sizeClass = 'cartmax-upsell-card--' + (u.card_size || 'medium');
     var headingText = u.heading || 'YOU MAY ALSO LIKE';
+    // The empty cart can use its own heading (e.g. "Recommended for you").
+    if (items.length === 0 && this._text.upsells_empty_heading) headingText = this._text.upsells_empty_heading;
     var btnText = u.btn_text || 'ADD TO CART';
+    var soldOutText = this._t('upsell_sold_out', 'Sold out');
+    var discountTpl = this._t('line_discount_format', '{pct}% off');
+    var btnOverImage = u.btn_position === 'over_image';
     // Shown instead of the generic label on a product that actually closes the
     // gap to the next milestone — the whole point of the gap-filler strategy.
     var gapCfg = picked.strategies.gap_filler || {};
@@ -3256,7 +3489,7 @@ export default class CartDrawer extends Component {
     var imgPx = { small: 130, medium: 180, large: 230 }[u.card_size] || 180;
 
     return (
-      <div class={'cartmax-upsells ' + layoutClass}>
+      <div class={'cartmax-upsells ' + layoutClass + (btnOverImage ? ' cartmax-upsells--btn-over-image' : '')}>
         <div class="cartmax-upsells-heading" style={{ justifyContent: u.heading_position === 'center' ? 'center' : 'flex-start' }}>{headingText}</div>
         {this.state.upsellError
           ? <div class="cartmax-upsell-error">{this.state.upsellError}</div>
@@ -3286,6 +3519,17 @@ export default class CartDrawer extends Component {
             var unlockLabel = p._unlocks_tier
               ? unlockTpl.replace(/\[\[\s*reward\s*\]\]/gi, rewardLabel || 'your reward')
               : null;
+            var pct = u.show_discount ? discountPercent(p.price, p.compare_at_price) : 0;
+            var img = p.image_url
+              ? <img class="cartmax-upsell-img" src={resizeImage(p.image_url, imgPx)} alt={p.title} loading="lazy" />
+              : <div class="cartmax-upsell-img-placeholder"><span class="visually-hidden">No image</span></div>;
+            var addBtn = (
+              <button
+                class={'cartmax-upsell-add' + (soldOut ? ' cartmax-upsell-add--soldout' : '')}
+                onClick={function () { if (!soldOut) self.handleUpsellAdd(vid, productMeta, card); }}
+                disabled={isAdding || soldOut}
+              >{soldOut ? soldOutText : (isAdding ? 'Adding...' : (unlockLabel || btnText))}</button>
+            );
             return (
               <div
                 class={'cartmax-upsell-card ' + sizeClass + (unlockLabel ? ' cartmax-upsell-card--unlocks' : '')}
@@ -3294,9 +3538,9 @@ export default class CartDrawer extends Component {
                 data-cartmax-promo-type="upsell"
                 ref={function (el) { self._observePromo(el); }}
               >
-                {p.image_url
-                  ? <img class="cartmax-upsell-img" src={resizeImage(p.image_url, imgPx)} alt={p.title} loading="lazy" />
-                  : <div class="cartmax-upsell-img-placeholder"><span class="visually-hidden">No image</span></div>
+                {btnOverImage
+                  ? <div class="cartmax-upsell-media">{img}{addBtn}</div>
+                  : img
                 }
                 <div class="cartmax-upsell-info">
                   <div class="cartmax-upsell-title">{p.title}</div>
@@ -3306,12 +3550,12 @@ export default class CartDrawer extends Component {
                       ? <span class="cartmax-upsell-compare">{formatMoney(Number(p.compare_at_price) * 100, curr)}</span>
                       : null
                     }
+                    {pct > 0
+                      ? <span class="cartmax-upsell-discount">{fillTemplate(discountTpl, { pct: pct })}</span>
+                      : null
+                    }
                   </div>
-                  <button
-                    class={'cartmax-upsell-add' + (soldOut ? ' cartmax-upsell-add--soldout' : '')}
-                    onClick={function () { if (!soldOut) self.handleUpsellAdd(vid, productMeta, card); }}
-                    disabled={isAdding || soldOut}
-                  >{soldOut ? 'Sold out' : (isAdding ? 'Adding...' : (unlockLabel || btnText))}</button>
+                  {btnOverImage ? null : addBtn}
                 </div>
               </div>
             );
@@ -3347,11 +3591,11 @@ export default class CartDrawer extends Component {
       <div class="cartmax-footer">
         {savingsParts ? (
           <div class="cartmax-footer-savings">
-            <span class="cartmax-footer-savings-icon"><IconSparkle /></span>
+            {this._layout.savings_show_icon ? <span class="cartmax-footer-savings-icon"><IconSparkle /></span> : null}
             <span>{savingsParts[0]}</span>
             <span class="cartmax-footer-savings-amount">{formatMoney(savings, curr)}</span>
             <span>{savingsParts[1] || ''}</span>
-            <span class="cartmax-footer-savings-icon"><IconSparkle /></span>
+            {this._layout.savings_show_icon ? <span class="cartmax-footer-savings-icon"><IconSparkle /></span> : null}
           </div>
         ) : null}
         <div class="cartmax-footer-checkout">
@@ -3360,7 +3604,7 @@ export default class CartDrawer extends Component {
             <button
               class="cartmax-price-breakup-link"
               onClick={() => this.setState({ priceBreakupOpen: true })}
-            >VIEW PRICE BREAKUP</button>
+            >{this._t('price_breakup_link', 'VIEW PRICE BREAKUP')}</button>
           </div>
           <a
             class={'cartmax-checkout-btn' + (this.state.checkoutWaiting ? ' cartmax-checkout-waiting' : '')}
@@ -3478,19 +3722,10 @@ export default class CartDrawer extends Component {
     // allocation — never both, so it can't double-count.
     var couponDiscount = 0;
     this.getAppliedCodes().forEach(function (code) {
-      var up = (code || '').toUpperCase();
-      var lineSum = 0;
-      (cart.items || []).forEach(function (it) {
-        (it.line_level_discount_allocations || []).forEach(function (a) {
-          var da = a.discount_application || {};
-          if (da.title && da.title.toUpperCase() === up) lineSum += (a.amount || 0);
-        });
-      });
-      if (lineSum > 0) { couponDiscount += lineSum; return; }
-      (cart.cart_level_discount_applications || []).forEach(function (d) {
-        if (d.title && d.title.toUpperCase() === up) couponDiscount += (d.total_allocated_amount || 0);
-      });
+      couponDiscount += savingsForCode(cart, code);
     });
+    var shippingNote = this._text.shipping_note || '';
+    var noteOpen = this.state.shippingNoteOpen !== false;
 
     var totalAmount = cart.total_price || 0;
     // Everything between retail and what's paid, minus the coupon portion, is
@@ -3501,7 +3736,7 @@ export default class CartDrawer extends Component {
       <div class="cartmax-pb-backdrop" onClick={() => this.setState({ priceBreakupOpen: false })}>
         <div class="cartmax-price-breakup-panel" onClick={(e) => e.stopPropagation()}>
           <div class="cartmax-price-breakup-header">
-            <span>Price Break Up</span>
+            <span>{this._t('price_breakup_title', 'Price Break Up')}</span>
             <button
               class="cartmax-price-breakup-close"
               aria-label="Close"
@@ -3513,26 +3748,41 @@ export default class CartDrawer extends Component {
           <div class="cartmax-pb-divider" />
           <div class="cartmax-price-breakup-rows">
             <div class="cartmax-pb-row">
-              <span class="cartmax-pb-label">Total MRP</span>
+              <span class="cartmax-pb-label">{this._t('pb_total_mrp', 'Total MRP')}</span>
               <span class="cartmax-pb-amount">{formatMoney(totalMRP, curr)}</span>
             </div>
             {discountOnMRP > 0 ? (
               <div class="cartmax-pb-row">
-                <span class="cartmax-pb-label">Discount on MRP</span>
+                <span class="cartmax-pb-label">{this._t('pb_discount_mrp', 'Discount on MRP')}</span>
                 <span class="cartmax-pb-amount cartmax-pb-discount">{'-'}{formatMoney(discountOnMRP, curr)}</span>
               </div>
             ) : null}
             <div class="cartmax-pb-row">
-              <span class="cartmax-pb-label">Coupon Discount</span>
+              <span class="cartmax-pb-label">{this._t('pb_coupon_discount', 'Coupon Discount')}</span>
               <span class="cartmax-pb-amount cartmax-pb-discount">{'-'}{formatMoney(couponDiscount, curr)}</span>
             </div>
             <div class="cartmax-pb-row">
-              <span class="cartmax-pb-label">Shipping Fee</span>
-              <span class="cartmax-pb-amount cartmax-pb-shipping">Calculated at checkout</span>
+              <span class="cartmax-pb-label">
+                {this._t('pb_shipping', 'Shipping Fee')}
+                {shippingNote
+                  ? <button
+                      class="cartmax-pb-info"
+                      aria-label="Shipping details"
+                      aria-expanded={noteOpen ? 'true' : 'false'}
+                      onClick={() => this.setState({ shippingNoteOpen: !noteOpen })}
+                    ><IconInfo /></button>
+                  : null
+                }
+              </span>
+              <span class="cartmax-pb-amount cartmax-pb-shipping">{this._t('pb_shipping_value', 'Calculated at checkout')}</span>
             </div>
+            {shippingNote && noteOpen
+              ? <div class="cartmax-pb-shipping-note">{shippingNote}</div>
+              : null
+            }
           </div>
           <div class="cartmax-price-breakup-total">
-            <span>Total Amount</span>
+            <span>{this._t('pb_total', 'Total Amount')}</span>
             <span>{formatMoney(totalAmount, curr)}</span>
           </div>
         </div>
@@ -3574,8 +3824,33 @@ export default class CartDrawer extends Component {
     if (this._layout.qty_style === 'minimal') overlayClass += ' cartmax-qty-minimal';
     if (this._behavior.animation_style === 'fade') overlayClass += ' cartmax-anim-fade';
     else if (this._behavior.animation_style === 'none') overlayClass += ' cartmax-anim-none';
+    // Heading style (titles, buttons, coupon codes): each class only when set,
+    // so the default per-element styles stay untouched.
+    var typo = this._typography;
+    if (typo.heading_font) overlayClass += ' cartmax-heading-font';
+    if (typo.heading_case === 'uppercase') overlayClass += ' cartmax-heading-upper';
+    if (typo.heading_letter_spacing > 0) overlayClass += ' cartmax-heading-spaced';
+    if (this._layout.header_align === 'center') overlayClass += ' cartmax-header-center';
+    if (this._addBtnColored) overlayClass += ' cartmax-add-btn-colored';
 
     var sec = this._sections;
+    var countStyle = this._layout.header_count_style;
+
+    // Body sections in the merchant's order (Customize Cart → Sections).
+    var bodySections = {
+      progress_bar: () => (hasItems && sec.show_progress_bar ? this.renderProgressBar() : null),
+      claim_gifts: () => (hasItems && sec.show_claim_gifts ? this.renderClaimGifts() : null),
+      offer_cards: () => (hasItems && sec.show_offer_cards ? this.renderOfferDisplays() : null),
+      line_items: () => (loading
+        ? this.renderLoading()
+        : isEmpty
+          ? this.renderEmpty()
+          : hasItems
+            ? displayItems.map((item) => this.renderLineItem(item))
+            : null),
+      coupons: () => (hasItems && sec.show_coupons ? this.renderCoupons() : null),
+      upsells: () => (hasItems && sec.show_upsells ? this.renderUpsells() : null),
+    };
 
     return (
       <div class="cartmax-wrapper">
@@ -3600,7 +3875,12 @@ export default class CartDrawer extends Component {
             <div class="cartmax-header">
               <span class="cartmax-title">
                 {this._text.cart_title}
-                {count > 0 ? <span class="cartmax-header-count">{count}</span> : null}
+                {count > 0 && countStyle !== 'hidden'
+                  ? <span class={'cartmax-header-count' + (countStyle === 'brackets' ? ' cartmax-header-count--brackets' : '')}>
+                      {countStyle === 'brackets' ? '(' + count + ')' : count}
+                    </span>
+                  : null
+                }
               </span>
               <button class="cartmax-close" onClick={this.close} aria-label="Close cart">
                 <IconClose />
@@ -3615,25 +3895,7 @@ export default class CartDrawer extends Component {
 
             {/* Body */}
             <div class="cartmax-body">
-              {/* Progress bar */}
-              {hasItems && sec.show_progress_bar ? this.renderProgressBar() : null}
-
-              {/* Claim gifts */}
-              {hasItems && sec.show_claim_gifts ? this.renderClaimGifts() : null}
-
-              {/* Display-mode offer cards */}
-              {hasItems && sec.show_offer_cards ? this.renderOfferDisplays() : null}
-
-              {loading
-                ? this.renderLoading()
-                : isEmpty
-                  ? this.renderEmpty()
-                  : hasItems
-                    ? displayItems.map((item) => this.renderLineItem(item))
-                    : null
-              }
-              {hasItems && sec.show_coupons ? this.renderCoupons() : null}
-              {hasItems && sec.show_upsells ? this.renderUpsells() : null}
+              {sec.order.map((key) => <Fragment key={key}>{bodySections[key]()}</Fragment>)}
             </div>
 
             {/* Ribbon */}

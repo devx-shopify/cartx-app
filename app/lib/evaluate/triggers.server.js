@@ -148,6 +148,10 @@ export function evaluateOffers(
             variant_id: vid,
             title: data?.title || '',
             image: data?.image || '',
+            // Absent on offers saved before prices were stored; the card then
+            // shows the title only.
+            price: data?.price || '',
+            compare_at_price: data?.compare_at_price || '',
             in_cart: alreadyInCart(cart, vid, offer.id),
             available: true,
           }

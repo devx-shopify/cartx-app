@@ -280,6 +280,99 @@ function SectionToggles({ sections, onToggle }) {
   );
 }
 
+// ── Section order ───────────────────────────────────────────
+
+const SECTION_LABELS = {
+  progress_bar: "Progress bar",
+  claim_gifts: "Claim gifts",
+  offer_cards: "Free gift offer cards",
+  line_items: "Cart items",
+  coupons: "Discount codes",
+  upsells: "Upsell products",
+};
+const BODY_SECTIONS = Object.keys(SECTION_LABELS);
+
+// The stored order, limited to body sections, with any missing ones appended.
+// Mirrors normalizeSectionOrder in the drawer.
+function bodyOrder(order) {
+  const out = (order || []).filter((k, i, arr) => SECTION_LABELS[k] && arr.indexOf(k) === i);
+  BODY_SECTIONS.forEach((k) => { if (!out.includes(k)) out.push(k); });
+  return out;
+}
+
+function SectionOrder({ order, onChange }) {
+  const list = bodyOrder(order);
+  const move = (i, dir) => {
+    const next = list.slice();
+    const j = i + dir;
+    [next[i], next[j]] = [next[j], next[i]];
+    // Keep 'ribbon' in the stored list; it renders outside the body.
+    onChange((order || []).includes("ribbon") ? next.concat("ribbon") : next);
+  };
+  const arrowStyle = (disabled) => ({
+    width: 28, height: 28, border: "1px solid #d4d6d8", borderRadius: 6, background: "#fff",
+    cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.35 : 1, fontSize: 14, lineHeight: 1,
+  });
+  return (
+    <div style={{ display: "flex", flexDirection: "column" }}>
+      {list.map((key, i) => (
+        <div
+          key={key}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0",
+            borderBottom: i < list.length - 1 ? "1px solid #f1f1f1" : "none",
+          }}
+        >
+          <s-text>{SECTION_LABELS[key]}</s-text>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button type="button" aria-label={`Move ${SECTION_LABELS[key]} up`} disabled={i === 0} onClick={() => move(i, -1)} style={arrowStyle(i === 0)}>↑</button>
+            <button type="button" aria-label={`Move ${SECTION_LABELS[key]} down`} disabled={i === list.length - 1} onClick={() => move(i, 1)} style={arrowStyle(i === list.length - 1)}>↓</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// A colour that can be left empty ("Default" = the drawer's built-in colour).
+function OptionalColorField({ label, value, fallback, onChange }) {
+  return (
+    <div>
+      <ColorField label={label} value={value || fallback} onChange={onChange} />
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#8c9196", marginTop: 4 }}>
+        <span>{value ? "Custom" : "Default"}</span>
+        {value ? (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            style={{ border: "none", background: "none", padding: 0, color: "#005bd3", cursor: "pointer", fontSize: 11 }}
+          >
+            Use default
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// A grid of text settings, each with its default shown as the placeholder.
+function TextFields({ s, update, fields }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      {fields.map(([key, label, def, details]) => (
+        <s-text-field
+          key={key}
+          label={label}
+          details={details}
+          placeholder={def}
+          value={s.text[key] ?? ""}
+          onInput={(e) => update("text." + key, e.target.value)}
+        />
+      ))}
+    </div>
+  );
+}
+
 // ── Main Component ──────────────────────────────────────────
 
 export default function CartCustomizer() {
@@ -641,6 +734,8 @@ function DesignTab({ s, update }) {
             <ColorField label="Border" value={s.colors.border} onChange={(v) => update("colors.border", v)} />
             <ColorField label="Accent (gifts, discounts)" value={s.colors.accent} onChange={(v) => update("colors.accent", v)} />
             <ColorField label="Secondary Accent (announcement, buttons)" value={s.colors.secondary_accent} onChange={(v) => update("colors.secondary_accent", v)} />
+            <OptionalColorField label="Add buttons (gift cards, upsells)" value={s.colors.add_button_bg} fallback={s.colors.secondary_accent} onChange={(v) => update("colors.add_button_bg", v)} />
+            <OptionalColorField label="Add button text" value={s.colors.add_button_text} fallback={s.colors.text} onChange={(v) => update("colors.add_button_text", v)} />
           </div>
 
 
@@ -657,8 +752,51 @@ function DesignTab({ s, update }) {
         </div>
       </CollapsibleSection>
 
-      <CollapsibleSection heading="Typography" description="Font sizes for headings and body text.">
+      <CollapsibleSection heading="Typography" description="Fonts, sizes and heading style.">
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <SegmentedControl
+            label="Font"
+            options={[
+              { value: "theme", label: "Theme font" },
+              { value: "custom", label: "Google Fonts" },
+            ]}
+            value={s.typography.font_source || "theme"}
+            onChange={(v) => update("typography.font_source", v)}
+          />
+          {s.typography.font_source === "custom" && (
+            <s-text-field
+              label="Google Fonts URL"
+              value={s.typography.custom_font_url || ""}
+              onInput={(e) => update("typography.custom_font_url", e.target.value)}
+              placeholder="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&family=Anton&display=swap"
+              details="The first family in the URL becomes the drawer's font. Add more families for the heading font or Custom CSS."
+            />
+          )}
+          <s-text-field
+            label="Heading font"
+            value={s.typography.heading_font || ""}
+            onInput={(e) => update("typography.heading_font", e.target.value)}
+            placeholder="Same as body"
+            details="A font family name, e.g. Anton. Used for titles, buttons and coupon codes. Load it in the Google Fonts URL above."
+          />
+          <SegmentedControl
+            label="Heading case"
+            options={[
+              { value: "normal", label: "As typed" },
+              { value: "uppercase", label: "UPPERCASE" },
+            ]}
+            value={s.typography.heading_case || "normal"}
+            onChange={(v) => update("typography.heading_case", v)}
+          />
+          <SliderField
+            label="Heading letter spacing"
+            value={s.typography.heading_letter_spacing || 0}
+            min={0}
+            max={6}
+            step={0.5}
+            onChange={(v) => update("typography.heading_letter_spacing", v)}
+            suffix="px"
+          />
           <SegmentedControl
             label="Heading size"
             options={[
@@ -714,10 +852,29 @@ function DesignTab({ s, update }) {
             label="Drawer width"
             value={s.layout.drawer_width}
             min={320}
-            max={560}
+            max={600}
             step={20}
             onChange={(v) => update("layout.drawer_width", v)}
             suffix="px"
+          />
+          <SegmentedControl
+            label="Header title"
+            options={[
+              { value: "left", label: "Left" },
+              { value: "center", label: "Center" },
+            ]}
+            value={s.layout.header_align || "left"}
+            onChange={(v) => update("layout.header_align", v)}
+          />
+          <SegmentedControl
+            label="Item count"
+            options={[
+              { value: "badge", label: "Badge" },
+              { value: "brackets", label: "(2)" },
+              { value: "hidden", label: "Hidden" },
+            ]}
+            value={s.layout.header_count_style || "badge"}
+            onChange={(v) => update("layout.header_count_style", v)}
           />
           <SegmentedControl
             label="Position"
@@ -772,6 +929,42 @@ function DesignTab({ s, update }) {
             value={s.layout.qty_style}
             onChange={(v) => update("layout.qty_style", v)}
           />
+          <SegmentedControl
+            label="Remove button"
+            options={[
+              { value: "icon", label: "Bin icon" },
+              { value: "text", label: "\"Remove\" text" },
+            ]}
+            value={s.layout.remove_style || "icon"}
+            onChange={(v) => update("layout.remove_style", v)}
+          />
+          <SegmentedControl
+            label="Variant"
+            options={[
+              { value: "actions", label: "Next to quantity" },
+              { value: "above_title", label: "Above the name" },
+            ]}
+            value={s.layout.variant_position || "actions"}
+            onChange={(v) => update("layout.variant_position", v)}
+          />
+          <SegmentedControl
+            label="Variant style"
+            options={[
+              { value: "switcher", label: "Switcher" },
+              { value: "label", label: "Plain label" },
+            ]}
+            value={s.layout.variant_style || "switcher"}
+            onChange={(v) => update("layout.variant_style", v)}
+          />
+          <SegmentedControl
+            label="Free gift line"
+            options={[
+              { value: "plain", label: "Plain" },
+              { value: "highlight", label: "Highlighted" },
+            ]}
+            value={s.layout.gift_line_style || "plain"}
+            onChange={(v) => update("layout.gift_line_style", v)}
+          />
           <s-divider />
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <s-checkbox
@@ -793,6 +986,22 @@ function DesignTab({ s, update }) {
               label="Show remove button"
               checked={s.layout.show_remove_btn || undefined}
               onChange={(e) => update("layout.show_remove_btn", e.target.checked)}
+            />
+            <s-checkbox
+              label="Show quantities as 01, 02…"
+              checked={s.layout.qty_zero_pad || undefined}
+              onChange={(e) => update("layout.qty_zero_pad", e.target.checked)}
+            />
+            <s-checkbox
+              label="Show the price on free gift cards"
+              details='e.g. "~~₹999~~ Free" on the "Pick your free gift" cards.'
+              checked={s.layout.gift_show_price || undefined}
+              onChange={(e) => update("layout.gift_show_price", e.target.checked)}
+            />
+            <s-checkbox
+              label="Show icon on the discount badge"
+              checked={s.layout.line_discount_show_icon !== false || undefined}
+              onChange={(e) => update("layout.line_discount_show_icon", e.target.checked)}
             />
           </div>
         </div>
@@ -832,6 +1041,72 @@ function ContentTab({ s, update }) {
             details='Shown above gift cards for offers with reward mode "Show offer card only".'
             value={s.text.offer_cards_heading}
             onInput={(e) => update("text.offer_cards_heading", e.target.value)}
+          />
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection heading="Buttons & labels" description="Every other piece of text in the drawer. Leave a field empty to use the default shown.">
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <FieldLabel>Gift cards</FieldLabel>
+          <TextFields s={s} update={update} fields={[
+            ["gift_add_button", "Add button", "Add"],
+            ["gift_remove_button", "Remove button", "Remove"],
+            ["claim_gift_button", "Claim gift button", "Claim gift"],
+            ["gift_free_label", "Price label", "Free", "Shown after the struck price, e.g. ₹999 Free."],
+            ["gift_adding", "While adding", "Adding..."],
+            ["gift_claimed", "After claiming", "Claimed"],
+            ["gift_unavailable", "Unavailable", "Unavailable"],
+            ["claim_limit_reached", "Claim limit reached", "Limit reached"],
+          ]} />
+          <s-divider />
+          <FieldLabel>Cart items</FieldLabel>
+          <TextFields s={s} update={update} fields={[
+            ["free_badge", "Free gift badge", "FREE"],
+            ["line_remove", "Remove text", "Remove", 'Used when the remove button is set to "Remove" text.'],
+            ["line_discount_format", "Discount badge", "{pct}% off", "{pct} is the percentage. Also used on upsell cards."],
+          ]} />
+          <s-divider />
+          <FieldLabel>Coupons</FieldLabel>
+          <TextFields s={s} update={update} fields={[
+            ["coupon_view_all", "View all", "View All"],
+            ["coupon_apply", "Apply button", "Apply"],
+            ["coupon_remove", "Remove (applied card)", "Remove"],
+            ["coupon_invalid", "Invalid code message", "Invalid or inapplicable code"],
+            ["coupon_locked_message", "Not yet reachable (amount)", "Add {amount} more to apply this coupon"],
+            ["coupon_locked_qty_message", "Not yet reachable (items)", "Add {count} more items to apply this coupon"],
+            ["coupon_saved_message", "Saved message (applied card)", "You saved {amount} with this coupon"],
+            ["coupons_panel_title", "Offers panel title", "Offers & Coupons"],
+            ["coupons_panel_label", "Offers panel list heading", "Available Coupons"],
+            ["coupons_panel_placeholder", "Offers panel code field", "Enter Coupon Code"],
+          ]} />
+          <s-divider />
+          <FieldLabel>Upsells</FieldLabel>
+          <TextFields s={s} update={update} fields={[
+            ["upsells_empty_heading", "Heading on an empty cart", "Same as the upsell heading"],
+            ["upsell_sold_out", "Sold out", "Sold out"],
+          ]} />
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection heading="Price breakup" description="The sheet opened from the checkout bar.">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <TextFields s={s} update={update} fields={[
+            ["price_breakup_link", "Link in the checkout bar", "VIEW PRICE BREAKUP"],
+            ["price_breakup_title", "Sheet title", "Price Break Up"],
+            ["pb_total_mrp", "Total MRP", "Total MRP"],
+            ["pb_discount_mrp", "Discount on MRP", "Discount on MRP"],
+            ["pb_coupon_discount", "Coupon discount", "Coupon Discount"],
+            ["pb_shipping", "Shipping", "Shipping Fee"],
+            ["pb_shipping_value", "Shipping value", "Calculated at checkout"],
+            ["pb_total", "Total", "Total Amount"],
+          ]} />
+          <s-text-area
+            label="Shipping rules"
+            rows={4}
+            value={s.text.shipping_note || ""}
+            onInput={(e) => update("text.shipping_note", e.target.value)}
+            placeholder={"Prepaid: free shipping above ₹399\nCOD: ₹49 fee"}
+            details="Shown in a box under Shipping, with an info icon to hide it. Line breaks are kept. Leave empty to hide."
           />
         </div>
       </CollapsibleSection>
@@ -945,6 +1220,11 @@ function ContentTab({ s, update }) {
             onInput={(e) => update("text.checkout_trust_message", e.target.value)}
           />
           <s-checkbox
+            label="Show sparkle icons on the savings ribbon"
+            checked={s.layout.savings_show_icon !== false || undefined}
+            onChange={(e) => update("layout.savings_show_icon", e.target.checked)}
+          />
+          <s-checkbox
             label="Show payment icons"
             details="Displays Google Pay, PhonePe and Paytm icons inside the checkout button."
             checked={s.layout.show_payment_icons !== false || undefined}
@@ -979,8 +1259,93 @@ function FeaturesTab({ s, update, onTestConfetti }) {
         />
       </CollapsibleSection>
 
+      <CollapsibleSection heading="Section order" description="The order of the blocks inside the cart. The checkout bar always stays at the bottom.">
+        <SectionOrder order={s.sections.order} onChange={(v) => update("sections.order", v)} />
+      </CollapsibleSection>
+
+      <CollapsibleSection heading="Coupons" description="How discount codes are entered, listed and shown once applied.">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <SegmentedControl
+            label="Code entry in the cart"
+            options={[
+              { value: "input", label: "Input + View All" },
+              { value: "link", label: "One \"Apply Coupon ›\" row" },
+            ]}
+            value={s.layout.coupon_entry || "input"}
+            onChange={(v) => update("layout.coupon_entry", v)}
+          />
+          <SegmentedControl
+            label="Coupon cards in the cart"
+            options={[
+              { value: "scroll", label: "Horizontal scroll" },
+              { value: "list", label: "List" },
+            ]}
+            value={s.layout.coupon_cards_layout || "scroll"}
+            onChange={(v) => update("layout.coupon_cards_layout", v)}
+          />
+          <SegmentedControl
+            label="Applied coupon"
+            options={[
+              { value: "chip", label: "Chip" },
+              { value: "card", label: "Card with amount saved" },
+            ]}
+            value={s.sections.coupon_applied_style || "chip"}
+            onChange={(v) => update("sections.coupon_applied_style", v)}
+          />
+          <s-checkbox
+            label="Show coupons the cart doesn't qualify for yet"
+            details='Greyed out, with "Add ₹X more to apply this coupon".'
+            checked={s.sections.show_locked_coupons || undefined}
+            onChange={(e) => update("sections.show_locked_coupons", e.target.checked)}
+          />
+          <s-checkbox
+            label="Code field in the Offers & Coupons panel"
+            checked={s.sections.coupon_panel_input || undefined}
+            onChange={(e) => update("sections.coupon_panel_input", e.target.checked)}
+          />
+        </div>
+      </CollapsibleSection>
+
       <CollapsibleSection heading="Progress bar" description="Customize the milestone progress bar appearance.">
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <SegmentedControl
+            label="Style"
+            options={[
+              { value: "plain", label: "Plain" },
+              { value: "card", label: "Card" },
+            ]}
+            value={pb.card_style || "plain"}
+            onChange={(v) => update("progress_bar.card_style", v)}
+          />
+          {pb.card_style === "card" && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16 }}>
+              <OptionalColorField label="Card background" value={pb.card_bg} fallback={s.colors.background} onChange={(v) => update("progress_bar.card_bg", v)} />
+              <OptionalColorField label="Gradient to" value={pb.card_bg_end} fallback={pb.card_bg || s.colors.background} onChange={(v) => update("progress_bar.card_bg_end", v)} />
+              <OptionalColorField label="Card border" value={pb.card_border} fallback={s.colors.border} onChange={(v) => update("progress_bar.card_border", v)} />
+            </div>
+          )}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <OptionalColorField label="Progress fill" value={pb.fill_color} fallback={s.colors.accent} onChange={(v) => update("progress_bar.fill_color", v)} />
+            <OptionalColorField label="Reached milestone" value={pb.reached_dot_color} fallback={s.colors.primary} onChange={(v) => update("progress_bar.reached_dot_color", v)} />
+          </div>
+          <s-text-field
+            label="Corner badge image URL"
+            value={pb.badge_image_url || ""}
+            onInput={(e) => update("progress_bar.badge_image_url", e.target.value)}
+            placeholder="https://cdn.shopify.com/s/files/…/special-offer.png"
+            details="A sticker such as SPECIAL OFFER. Upload it to Shopify Files (Content → Files) and paste its link. Leave empty to hide."
+          />
+          {pb.badge_image_url ? (
+            <SegmentedControl
+              label="Badge corner"
+              options={[
+                { value: "top-left", label: "Top left" },
+                { value: "top-right", label: "Top right" },
+              ]}
+              value={pb.badge_corner || "top-left"}
+              onChange={(v) => update("progress_bar.badge_corner", v)}
+            />
+          ) : null}
           <SegmentedControl
             label="Track thickness"
             options={[
@@ -1136,6 +1501,10 @@ function FeaturesTab({ s, update, onTestConfetti }) {
             value={ab.type || "static"}
             onChange={(v) => update("announcement_bar.type", v)}
           />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <OptionalColorField label="Background" value={ab.bg_color} fallback={s.colors.secondary_accent} onChange={(v) => update("announcement_bar.bg_color", v)} />
+            <OptionalColorField label="Text" value={ab.text_color} fallback={s.colors.text} onChange={(v) => update("announcement_bar.text_color", v)} />
+          </div>
         </div>
       </CollapsibleSection>
 
@@ -1192,10 +1561,25 @@ function FeaturesTab({ s, update, onTestConfetti }) {
             value={s.layout.upsells_show_on_empty || "filled"}
             onChange={(v) => update("layout.upsells_show_on_empty", v)}
           />
+          <SegmentedControl
+            label="Add button"
+            options={[
+              { value: "below", label: "Below the details" },
+              { value: "over_image", label: "Over the image" },
+            ]}
+            value={s.layout.upsells_btn_position || "below"}
+            onChange={(v) => update("layout.upsells_btn_position", v)}
+          />
           <s-checkbox
             label="Show compare-at (strikethrough) price"
             checked={s.layout.upsells_show_compare_price !== false}
             onChange={(e) => update("layout.upsells_show_compare_price", e.target.checked)}
+          />
+          <s-checkbox
+            label="Show discount %"
+            details="Uses the discount badge text from Content → Buttons & labels."
+            checked={s.layout.upsells_show_discount || undefined}
+            onChange={(e) => update("layout.upsells_show_discount", e.target.checked)}
           />
         </div>
       </CollapsibleSection>

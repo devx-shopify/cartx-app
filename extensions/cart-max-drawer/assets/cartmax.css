@@ -72,8 +72,8 @@ cart-notification-component [role="dialog"] {
 /* --- Announcement Bar --- */
 
 .cartmax-overlay .cartmax-announcement {
-  background: var(--cartmax-secondary-accent, #ff4b7e);
-  color: var(--cartmax-text, #1a1a1a);
+  background: var(--cartmax-announce-bg, var(--cartmax-secondary-accent, #ff4b7e));
+  color: var(--cartmax-announce-text, var(--cartmax-text, #1a1a1a));
   padding: 7px 16px;
   font-size: 12px;
   font-weight: 500;
@@ -1146,6 +1146,7 @@ cart-notification-component [role="dialog"] {
 /* --- Progress Bar --- */
 
 .cartmax-progress {
+  position: relative;
   padding: 16px 32px 0 0;
   border-bottom: 1px solid var(--cartmax-border, #f0f0f0);
   background: var(--cartmax-bg, #ffffff);
@@ -1198,7 +1199,7 @@ cart-notification-component [role="dialog"] {
   left: 0;
   top: 0;
   height: 100%;
-  background: var(--cartmax-accent, #16a34a);
+  background: var(--cartmax-pb-fill, var(--cartmax-accent, #16a34a));
   border-radius: 0 999px 999px 0;
   transition: width 0.5s cubic-bezier(0.32, 0.72, 0, 1);
 }
@@ -2339,6 +2340,351 @@ cart-notification-component [role="dialog"] {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* === Design options (Customize Cart) ===================================
+   Each block below is switched on by a setting; with the setting at its
+   default none of it applies, so the drawer looks as it did before. */
+
+/* Heading style: titles, buttons and coupon codes */
+.cartmax-overlay.cartmax-heading-font :is(.cartmax-title, .cartmax-claims-heading, .cartmax-upsells-heading, .cartmax-offers-title, .cartmax-price-breakup-header, .cartmax-checkout-label, .cartmax-claim-btn, .cartmax-upsell-add, .cartmax-discount-viewall, .cartmax-discount-card-btn, .cartmax-offers-card-btn, .cartmax-offers-input-btn, .cartmax-discount-card-code, .cartmax-offers-card-code, .cartmax-applied-chip-code, .cartmax-empty-btn, .cartmax-line-remove-text) {
+  font-family: var(--cartmax-heading-font, inherit);
+}
+
+.cartmax-overlay.cartmax-heading-upper :is(.cartmax-title, .cartmax-claims-heading, .cartmax-upsells-heading, .cartmax-offers-title, .cartmax-price-breakup-header, .cartmax-checkout-label, .cartmax-claim-btn, .cartmax-upsell-add, .cartmax-discount-viewall, .cartmax-discount-card-btn, .cartmax-offers-card-btn, .cartmax-offers-input-btn, .cartmax-discount-card-code, .cartmax-offers-card-code, .cartmax-applied-chip-code, .cartmax-empty-btn, .cartmax-line-remove-text) {
+  text-transform: uppercase;
+}
+
+.cartmax-overlay.cartmax-heading-spaced :is(.cartmax-title, .cartmax-claims-heading, .cartmax-upsells-heading, .cartmax-offers-title, .cartmax-price-breakup-header, .cartmax-checkout-label, .cartmax-claim-btn, .cartmax-upsell-add, .cartmax-discount-viewall, .cartmax-discount-card-btn, .cartmax-offers-card-btn, .cartmax-offers-input-btn, .cartmax-discount-card-code, .cartmax-offers-card-code, .cartmax-applied-chip-code, .cartmax-empty-btn, .cartmax-line-remove-text) {
+  letter-spacing: var(--cartmax-heading-spacing, normal);
+}
+
+/* Header: centred title, close stays on the right */
+.cartmax-header-center .cartmax-header {
+  position: relative;
+  justify-content: center;
+}
+
+.cartmax-header-center .cartmax-close {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.cartmax-header-count--brackets {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+
+/* Milestone card + corner badge */
+.cartmax-progress--card {
+  margin: 20px 16px 8px;
+  padding: 16px 32px 0 16px;
+  border: 1px solid var(--cartmax-pb-card-border, var(--cartmax-border, #f0f0f0));
+  border-radius: var(--cartmax-radius, 10px);
+  background: linear-gradient(
+    170deg,
+    var(--cartmax-pb-card-bg, var(--cartmax-bg, #ffffff)) 0%,
+    var(--cartmax-pb-card-bg-end, var(--cartmax-pb-card-bg, var(--cartmax-bg, #ffffff))) 100%
+  );
+}
+
+.cartmax-progress--card .cartmax-progress-msg-wrap {
+  margin-left: -16px;
+}
+
+.cartmax-progress-badge {
+  position: absolute;
+  top: 0;
+  width: 72px;
+  height: auto;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.cartmax-progress--card .cartmax-progress-badge {
+  top: -24px;
+}
+
+.cartmax-progress-badge--top-left {
+  left: -12px;
+}
+
+.cartmax-progress-badge--top-right {
+  right: -12px;
+}
+
+.cartmax-progress--reached-color .cartmax-milestone--active .cartmax-milestone-dot {
+  background: var(--cartmax-pb-reached);
+  border-color: var(--cartmax-pb-reached);
+}
+
+/* ADD buttons on gift cards and recommendations */
+.cartmax-add-btn-colored :is(.cartmax-claim-btn--add, .cartmax-upsell-add, .cartmax-offers-input-btn):not(:disabled) {
+  background: var(--cartmax-add-btn-bg);
+  color: var(--cartmax-add-btn-text, var(--cartmax-text, #1a1a1a));
+  border-color: var(--cartmax-add-btn-bg);
+}
+
+/* Gift card price: "~~₹999~~ Free" */
+.cartmax-claim-price {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.cartmax-claim-price-original {
+  text-decoration: line-through;
+  color: var(--cartmax-text-secondary, #6b7280);
+}
+
+.cartmax-claim-price-free {
+  font-weight: 700;
+  color: var(--cartmax-accent, #16a34a);
+}
+
+/* Line items: variant row above the name, text REMOVE, plain variant label */
+.cartmax-line-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.cartmax-line-remove-text {
+  flex-shrink: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: calc(var(--cartmax-body-size, 13px) - 2px);
+  color: var(--cartmax-text-secondary, #6b7280);
+  text-decoration: underline;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cartmax-line-remove-text:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.cartmax-variant-pill--label,
+.cartmax-variant-pill--label:hover {
+  cursor: default;
+  border-color: var(--cartmax-border, #e5e7eb);
+}
+
+/* Free-gift line highlight */
+.cartmax-line-item.cartmax-line-gift--highlight {
+  margin: 8px 16px;
+  border: 1px solid var(--cartmax-accent, #16a34a);
+  border-radius: var(--cartmax-radius, 10px);
+  background: color-mix(in srgb, var(--cartmax-accent, #16a34a) 8%, var(--cartmax-bg, #ffffff));
+}
+
+/* Coupons: single "Apply Coupon ›" row */
+.cartmax-coupon-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px;
+  background: var(--cartmax-bg, #ffffff);
+  border: 1px solid var(--cartmax-border, #e5e7eb);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--cartmax-text, #1a1a1a);
+  text-align: left;
+}
+
+.cartmax-coupon-link-icon,
+.cartmax-coupon-link-chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--cartmax-text-secondary, #6b7280);
+}
+
+.cartmax-coupon-link-label {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+}
+
+/* Coupons as a vertical list */
+.cartmax-discount-cards--list {
+  flex-direction: column;
+  overflow: visible;
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.cartmax-discount-cards--list .cartmax-discount-card {
+  width: 100%;
+}
+
+/* Coupons the cart doesn't qualify for yet */
+.cartmax-discount-card--locked .cartmax-discount-card-accent,
+.cartmax-offers-card--locked .cartmax-offers-card-accent {
+  background: #e4e4e7;
+}
+
+.cartmax-discount-card--locked .cartmax-discount-card-accent span,
+.cartmax-offers-card--locked .cartmax-offers-card-accent span {
+  color: #8e8e8e;
+}
+
+.cartmax-discount-card-locked-msg,
+.cartmax-offers-card-locked-msg {
+  font-size: 12px;
+  line-height: 16px;
+  color: #dc2626;
+}
+
+/* Applied coupon as a full card */
+.cartmax-applied-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.cartmax-discount-card.cartmax-discount-card--applied {
+  width: 100%;
+  border: 1px solid var(--cartmax-accent, #16a34a);
+  background: color-mix(in srgb, var(--cartmax-accent, #16a34a) 8%, var(--cartmax-bg, #ffffff));
+}
+
+.cartmax-discount-card-btn.cartmax-discount-card-btn--remove {
+  width: auto;
+  padding: 0 4px;
+  background: none;
+  color: var(--cartmax-text, #1a1a1a);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.cartmax-applied-saved {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cartmax-accent, #16a34a);
+}
+
+/* Code input inside Offers & Coupons */
+.cartmax-offers-input-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cartmax-offers-input-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 6px 6px 16px;
+  background: var(--cartmax-bg, #ffffff);
+  border: 1px solid var(--cartmax-border, #e5e7eb);
+  border-radius: 8px;
+}
+
+.cartmax-offers-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: inherit;
+  /* 16px minimum: iOS Safari zooms the viewport when a focused input is < 16px. */
+  font-size: 16px;
+  color: var(--cartmax-text, #1a1a1a);
+}
+
+.cartmax-offers-input-btn {
+  flex-shrink: 0;
+  padding: 8px 18px;
+  background: var(--cartmax-primary, #1a1a1a);
+  color: var(--cartmax-primary-text, #ffffff);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.cartmax-offers-input-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Recommendations: discount %, ADD over the image */
+.cartmax-upsell-discount {
+  font-weight: 600;
+  color: var(--cartmax-accent, #16a34a);
+}
+
+.cartmax-upsell-media {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+}
+
+.cartmax-upsells--vertical .cartmax-upsell-media {
+  width: 100%;
+}
+
+.cartmax-upsells--btn-over-image .cartmax-upsell-media .cartmax-upsell-add {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  margin: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+/* Price breakup: shipping info */
+.cartmax-pb-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cartmax-pb-info {
+  display: inline-flex;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.cartmax-pb-shipping-note {
+  padding: 12px;
+  background: #f4f4f5;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--cartmax-text-secondary, #6b7280);
+  white-space: pre-line;
 }
 
 /* --- Mobile --- */
