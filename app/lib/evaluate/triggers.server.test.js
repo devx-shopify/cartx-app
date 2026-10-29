@@ -63,3 +63,21 @@ describe('triggers.server evaluateOffers — variant-aware removal (parity)', ()
     expect(r.to_remove).toHaveLength(0)
   })
 })
+
+describe('triggers.server evaluateOffers — gift card prices', () => {
+  function displayOffer(data) {
+    return mysteryOffer({ reward: { ...mysteryOffer().reward, add_mode: 'display', gift_variant_data: [data] } })
+  }
+
+  test('display cards carry the stored price and compare-at', () => {
+    const offer = displayOffer({ variant_id: MB_GID, title: 'Box', image: '', price: '999.00', compare_at_price: '1299.00' })
+    const r = evaluateOffers([offer], { items: [paidLine('p1', 555)] }, 1500, 1, '/', null)
+    expect(r.to_display[0].gifts[0]).toMatchObject({ title: 'Box', price: '999.00', compare_at_price: '1299.00' })
+  })
+
+  test('offers saved before prices were stored send empty prices', () => {
+    const offer = displayOffer({ variant_id: MB_GID, title: 'Box', image: '' })
+    const r = evaluateOffers([offer], { items: [paidLine('p1', 555)] }, 1500, 1, '/', null)
+    expect(r.to_display[0].gifts[0]).toMatchObject({ price: '', compare_at_price: '' })
+  })
+})

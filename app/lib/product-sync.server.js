@@ -110,11 +110,19 @@ export function reconcileConfig(config, productId, product) {
 
   // Refresh a variant-data entry in place; returns true if it should be REMOVED
   // (variant no longer on the product). Only called when the product is ACTIVE.
-  const refreshEntry = (entry) => {
+  const refreshEntry = (entry, withPrice) => {
     const v = product.byVariant[numeric(entry.variant_id)]
     if (!v) return true
     if (entry.title !== v.title) { entry.title = v.title; changed = true }
     if (entry.image !== v.image) { entry.image = v.image; changed = true }
+    // Gift-card prices (offer gifts only; claim gifts never show a price). Also
+    // backfills offers saved before prices were stored.
+    if (withPrice) {
+      const price = v.price ? String(v.price) : ''
+      const compareAt = v.compareAtPrice ? String(v.compareAtPrice) : ''
+      if (entry.price !== price) { entry.price = price; changed = true }
+      if ((entry.compare_at_price || '') !== compareAt) { entry.compare_at_price = compareAt; changed = true }
+    }
     if (numeric(entry.product_id) !== pid) { entry.product_id = pid; changed = true }
     return false
   }
@@ -123,7 +131,7 @@ export function reconcileConfig(config, productId, product) {
   //   promo   = object carrying `enabled` (offer OR claim gift)
   //   holder  = object holding the arrays (offer.reward for offers; cg itself)
   //   dataKey / idsKey = the variant-data + variant-id array field names
-  const reconcilePromo = (promo, holder, dataKey, idsKey, deletedMsg, draftMsg) => {
+  const reconcilePromo = (promo, holder, dataKey, idsKey, deletedMsg, draftMsg, withPrice) => {
     const data = holder[dataKey] || []
     if (!data.some(belongs)) return
     if (deleted) {
@@ -149,7 +157,7 @@ export function reconcileConfig(config, productId, product) {
     } else {
       // ACTIVE: refresh + drop refs to variants no longer on the product.
       const drop = new Set()
-      for (const d of data.filter(belongs)) { if (refreshEntry(d)) drop.add(numeric(d.variant_id)) }
+      for (const d of data.filter(belongs)) { if (refreshEntry(d, withPrice)) drop.add(numeric(d.variant_id)) }
       if (drop.size) {
         holder[dataKey] = data.filter((d) => !drop.has(numeric(d.variant_id)))
         holder[idsKey] = (holder[idsKey] || []).filter((v) => !drop.has(numeric(v)))
@@ -172,7 +180,8 @@ export function reconcileConfig(config, productId, product) {
     if (!r || r.type !== 'auto_add_gift') continue
     reconcilePromo(offer, r, 'gift_variant_data', 'gift_variants',
       'A gift product in this offer was deleted. Pick a new gift and re-enable it.',
-      'A gift product in this offer was set to draft/hidden. Re-publish it (or pick another gift) and it will turn back on.')
+      'A gift product in this offer was set to draft/hidden. Re-publish it (or pick another gift) and it will turn back on.',
+      true)
   }
 
   // ── Claim gifts: enabled + arrays both on the claim gift object ──

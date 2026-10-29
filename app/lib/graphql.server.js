@@ -31,6 +31,8 @@ export async function fetchVariantData(admin, variantIds) {
             id
             title
             displayName
+            price
+            compareAtPrice
             image { url }
             product { id, title, featuredMedia { preview { image { url } } } }
           }
@@ -49,7 +51,8 @@ export async function fetchVariantData(admin, variantIds) {
       // snapshot (products/delete only gives a product id, but offers store
       // variant ids).
       const product_id = node.product?.id ? node.product.id.split('/').pop() : '';
-      const entry = { title, image, product_id };
+      // Prices (major units, e.g. "999.00") show as "~~₹999~~ Free" on gift cards.
+      const entry = { title, image, product_id, price: node.price || '', compare_at_price: node.compareAtPrice || '' };
       map[node.id] = entry;
       map[numericId] = entry;
     }
@@ -63,6 +66,9 @@ export async function fetchVariantData(admin, variantIds) {
 export function enrichVariantData(variantIds, variantDataMap) {
   return variantIds.map((vid) => {
     const d = variantDataMap[vid] || {};
-    return { variant_id: vid, product_id: d.product_id || '', title: d.title || '', image: d.image || '' };
+    const entry = { variant_id: vid, product_id: d.product_id || '', title: d.title || '', image: d.image || '' };
+    if (d.price) entry.price = String(d.price);
+    if (d.compare_at_price) entry.compare_at_price = String(d.compare_at_price);
+    return entry;
   });
 }

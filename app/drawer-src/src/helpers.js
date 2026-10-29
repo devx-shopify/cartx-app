@@ -315,8 +315,182 @@ export function applyDrawerSettings(settings) {
     }
     if (pb.badge_bg_color) s.setProperty('--cartmax-badge-bg', pb.badge_bg_color);
     if (pb.badge_text_color) s.setProperty('--cartmax-badge-text', pb.badge_text_color);
+    setOrClear(s, '--cartmax-pb-card-bg', pb.card_bg);
+    setOrClear(s, '--cartmax-pb-card-bg-end', pb.card_bg_end || pb.card_bg);
+    setOrClear(s, '--cartmax-pb-card-border', pb.card_border);
+    setOrClear(s, '--cartmax-pb-fill', pb.fill_color);
+    setOrClear(s, '--cartmax-pb-reached', pb.reached_dot_color);
+    setOrClear(s, '--cartmax-pb-track', pb.track_color);
+    setOrClear(s, '--cartmax-pb-locked', pb.locked_dot_color);
+    setOrClear(s, '--cartmax-pb-label', pb.label_color);
   }
 
+  // The newer optional colours are cleared when emptied, so a merchant can go
+  // back to the default look without a page reload.
+  if (c) {
+    setOrClear(s, '--cartmax-add-btn-bg', c.add_button_bg);
+    setOrClear(s, '--cartmax-add-btn-text', c.add_button_text);
+    setOrClear(s, '--cartmax-success', c.success);
+    setOrClear(s, '--cartmax-danger', c.danger);
+    setOrClear(s, '--cartmax-muted', c.muted);
+    setOrClear(s, '--cartmax-footer-bg', c.footer_bg);
+    setOrClear(s, '--cartmax-upsells-bg', c.upsells_bg);
+    setOrClear(s, '--cartmax-coupons-bg', c.coupons_bg);
+    setOrClear(s, '--cartmax-gifts-bg', c.gifts_bg);
+    // Elements that used fixed greys/black follow the brand colours once the
+    // merchant changes them from the built-in defaults (unchanged stores keep
+    // the exact look they always had).
+    setOrClear(s, '--cartmax-primary-hover', brandColor(c.primary, '#1a1a1a') ? 'color-mix(in srgb, ' + c.primary + ' 85%, #000000)' : '');
+    setOrClear(s, '--cartmax-ink', brandColor(c.text, '#1a1a1a') ? c.text : '');
+    setOrClear(s, '--cartmax-line', brandColor(c.border, '#f0f0f0') ? c.border : '');
+  }
+  if (l) {
+    setOrClear(s, '--cartmax-pad-x-desktop', Number(l.content_padding) > 0 ? Number(l.content_padding) + 'px' : '');
+    setOrClear(s, '--cartmax-pad-x-mobile', Number(l.content_padding_mobile) > 0 ? Number(l.content_padding_mobile) + 'px' : '');
+  }
+  var ab = settings.announcement_bar;
+  if (ab) {
+    setOrClear(s, '--cartmax-announce-bg', ab.bg_color);
+    setOrClear(s, '--cartmax-announce-text', ab.text_color);
+  }
+  if (t) {
+    setOrClear(s, '--cartmax-heading-font', t.heading_font ? '"' + String(t.heading_font).replace(/["\\]/g, '') + '", sans-serif' : '');
+    setOrClear(s, '--cartmax-heading-spacing', Number(t.heading_letter_spacing) > 0 ? Number(t.heading_letter_spacing) + 'px' : '');
+    setOrClear(s, '--cartmax-item-font', t.item_font ? '"' + String(t.item_font).replace(/["\\]/g, '') + '", sans-serif' : '');
+  }
+}
+
+// True when a colour setting holds something other than its built-in default.
+function brandColor(value, builtIn) {
+  return !!value && String(value).trim().toLowerCase() !== builtIn;
+}
+
+function setOrClear(style, name, value) {
+  if (value) style.setProperty(name, value);
+  else style.removeProperty(name);
+}
+
+// ── Drawer layout helpers (pure, unit-tested) ───────────────
+
+// Body sections the merchant can reorder. Today's order is the fallback.
+export var BODY_SECTIONS = ['progress_bar', 'claim_gifts', 'offer_cards', 'line_items', 'coupons', 'upsells'];
+
+// The merchant's order, keeping only known body sections (each once), with any
+// missing ones appended in the default order. 'ribbon' is stored in the same
+// list but renders outside the body, so it is ignored here.
+export function normalizeSectionOrder(order) {
+  var out = [];
+  (Array.isArray(order) ? order : []).forEach(function (key) {
+    if (BODY_SECTIONS.indexOf(key) !== -1 && out.indexOf(key) === -1) out.push(key);
+  });
+  BODY_SECTIONS.forEach(function (key) {
+    if (out.indexOf(key) === -1) out.push(key);
+  });
+  return out;
+}
+
+// Milestone positions (percent of the track) and the fill to match.
+// The bar's progress_pct is computed for 'even' spacing: milestone i sits at
+// (i + 1) / n and each segment is 100 / n wide. 'edges' puts the first
+// milestone at 0 and the last at 100, so the fill is remapped segment by
+// segment; progress before the first milestone has no room and shows as 0.
+export function milestonePositions(n, spacing) {
+  var out = [];
+  for (var i = 0; i < n; i++) {
+    out.push(spacing === 'edges' && n > 1 ? (i / (n - 1)) * 100 : ((i + 1) / n) * 100);
+  }
+  return out;
+}
+
+export function mapProgress(pct, n, spacing) {
+  var p = Math.max(0, Math.min(Number(pct) || 0, 100));
+  if (spacing !== 'edges' || n < 2) return p;
+  var seg = 100 / n;
+  if (p <= seg) return 0;
+  var k = Math.min(Math.floor((p - seg) / seg), n - 2); // segment between milestone k and k + 1
+  var within = (p - seg - k * seg) / seg;
+  return Math.round(((k + within) / (n - 1)) * 10000) / 100;
+}
+
+// Fill {name} placeholders. Unknown placeholders are left as they are.
+export function fillTemplate(template, values) {
+  return String(template || '').replace(/\{(\w+)\}/g, function (match, key) {
+    return Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : match;
+  });
+}
+
+// Quantities under 10 as "01" when zero-padding is on. Display only.
+export function formatQty(qty, zeroPad) {
+  var n = Number(qty) || 0;
+  return zeroPad && n >= 0 && n < 10 ? '0' + n : String(n);
+}
+
+// Whole-percent discount from a compare-at price, or 0 when there is none.
+export function discountPercent(price, compareAt) {
+  var p = Number(price) || 0;
+  var c = Number(compareAt) || 0;
+  if (c <= 0 || p >= c) return 0;
+  return Math.round((c - p) / c * 100);
+}
+
+// How far the cart is from a coupon's minimum. trigger_price is in major units
+// (as the server sends it); the cart total is in minor units.
+//   { locked: false } when the cart already qualifies
+//   { locked: true, by: 'price', amount: <minor units short> }
+//   { locked: true, by: 'qty', count: <items short> }
+// A price shortfall wins when both minimums are unmet: it's the one shoppers act on.
+export function couponShortfall(coupon, cartTotal, itemCount) {
+  var minPrice = Math.round((Number(coupon && coupon.trigger_price) || 0) * 100);
+  var minQty = Number(coupon && coupon.trigger_qty) || 0;
+  var total = Number(cartTotal) || 0;
+  var count = Number(itemCount) || 0;
+  if (minPrice > 0 && total < minPrice) {
+    return { locked: true, by: 'price', amount: minPrice - total, progress: total / minPrice };
+  }
+  if (minQty > 0 && count < minQty) {
+    return { locked: true, by: 'qty', count: minQty - count, progress: count / minQty };
+  }
+  return { locked: false };
+}
+
+// Split the coupons to show into the ones the cart qualifies for and the ones
+// it doesn't yet. Applied codes are left out of both. Locked coupons come back
+// only when `showLocked` is on, closest-to-unlocking first.
+export function splitCoupons(coupons, cart, appliedCodes, showLocked) {
+  var applied = (appliedCodes || []).map(function (c) { return String(c).toUpperCase(); });
+  var total = cart ? (cart.total_price || 0) : 0;
+  var count = cart ? (cart.item_count || 0) : 0;
+  var available = [];
+  var locked = [];
+  (coupons || []).forEach(function (c) {
+    if (applied.indexOf(String(c.code || '').toUpperCase()) !== -1) return;
+    var gap = couponShortfall(c, total, count);
+    if (!gap.locked) available.push(c);
+    else if (showLocked) locked.push(Object.assign({}, c, { _shortfall: gap }));
+  });
+  locked.sort(function (a, b) { return b._shortfall.progress - a._shortfall.progress; });
+  return { available: available, locked: locked };
+}
+
+// What one applied code saved, in minor units. Line-level allocations first
+// (order-level codes are spread across lines on /cart.js); the cart-level
+// application only when there are none, so the amount is never counted twice.
+export function savingsForCode(cart, code) {
+  if (!cart || !code) return 0;
+  var up = String(code).toUpperCase();
+  var lineSum = 0;
+  (cart.items || []).forEach(function (it) {
+    (it.line_level_discount_allocations || []).forEach(function (a) {
+      var da = a.discount_application || {};
+      if (da.title && da.title.toUpperCase() === up) lineSum += (a.amount || 0);
+    });
+  });
+  if (lineSum > 0) return lineSum;
+  var cartSum = 0;
+  (cart.cart_level_discount_applications || []).forEach(function (d) {
+    if (d.title && d.title.toUpperCase() === up) cartSum += (d.total_allocated_amount || 0);
+  });
+  return cartSum;
 }
 
 // ── Shared utilities ────────────────────────────────────────

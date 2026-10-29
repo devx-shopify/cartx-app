@@ -128,6 +128,15 @@ var CART_FRAGMENT = `
       totalTaxAmount { amount currencyCode }
     }
     discountCodes { applicable code }
+    # Order-level discounts (for "You saved ₹X" on an applied coupon). Deprecated
+    # in 2026-01; its replacement, lines.discountAllocations(lineLevelOnly: false),
+    # only exists from 2026-10. Switch when apiVersion is bumped past 2026-01.
+    discountAllocations {
+      discountedAmount { amount currencyCode }
+      ... on CartCodeDiscountAllocation { code }
+      ... on CartAutomaticDiscountAllocation { title }
+      ... on CartCustomDiscountAllocation { title }
+    }
     lines(first: 250) {
       edges {
         node {
@@ -437,7 +446,15 @@ export function mapCart(gqlCart) {
     total_discount: Math.max(0, originalTotal - total),
     items_subtotal_price: subtotal,
     currency: currency,
-    cart_level_discount_applications: [],
+    // Order-level discounts, in /cart.js's shape. A code allocation is titled
+    // with its code, which is how the drawer matches applied coupons.
+    cart_level_discount_applications: (gqlCart.discountAllocations || []).map(function (d) {
+      return {
+        type: d.code ? 'discount_code' : 'automatic',
+        title: d.code || d.title || 'Discount',
+        total_allocated_amount: toCents(d.discountedAmount && d.discountedAmount.amount),
+      };
+    }),
     discount_codes: (gqlCart.discountCodes || []).map(function (d) {
       return { code: d.code, applicable: d.applicable };
     }),

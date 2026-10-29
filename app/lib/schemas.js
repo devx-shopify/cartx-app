@@ -67,6 +67,9 @@ export const OfferSchema = z.object({
         product_id: z.string().optional(),
         title: z.string(),
         image: z.string(),
+        // Major units as Shopify returns them ("999.00"); shown on gift cards.
+        price: z.string().optional(),
+        compare_at_price: z.string().optional(),
       })).optional(),
       quantity_per_variant: z.number().int().min(1),
       add_mode: z.enum(['auto', 'display']),
@@ -262,6 +265,17 @@ export const DrawerConfigSchema = z.object({
     savings_bg: z.string().default('#1a1a1a'),
     savings_text: z.string().default('#ffffff'),
     savings_amount: z.string().default('#22c55e'),
+    // ADD buttons on gift cards and recommendations. Empty keeps today's colours.
+    add_button_bg: z.string().default(''),
+    add_button_text: z.string().default(''),
+    // Empty = the colours each element uses today.
+    success: z.string().default(''), // discounts, "Free", amount saved
+    danger: z.string().default(''), // "Add ₹X more", coupon errors, shipping value
+    muted: z.string().default(''), // struck-through prices, price breakup labels
+    footer_bg: z.string().default(''), // checkout bar
+    upsells_bg: z.string().default(''), // recommendations block
+    coupons_bg: z.string().default(''), // coupon block (today: accent tint)
+    gifts_bg: z.string().default(''), // claim gift / offer card block (today: secondary accent tint)
   }).default({}),
   shape: z.object({
     border_radius: z.enum(['none', 'small', 'medium', 'large', 'pill']).default('medium'),
@@ -272,6 +286,13 @@ export const DrawerConfigSchema = z.object({
     body_size: z.enum(['small', 'medium', 'large']).default('medium'),
     font_source: z.enum(['theme', 'custom']).default('theme'),
     custom_font_url: z.string().default(''),
+    // Headings, buttons and coupon codes. heading_font is a family name loaded
+    // by custom_font_url; empty = same font as the body.
+    heading_font: z.string().default(''),
+    heading_case: z.enum(['normal', 'uppercase']).default('normal'),
+    heading_letter_spacing: z.number().min(0).max(10).default(0),
+    // Product names and prices; empty = the body font.
+    item_font: z.string().default(''),
   }).default({}),
   text: z.object({
     cart_title: z.string().default('Your Cart'),
@@ -280,15 +301,57 @@ export const DrawerConfigSchema = z.object({
     empty_button: z.string().default('Continue shopping'),
     checkout_button: z.string().default('Checkout'),
     continue_shopping_url: z.string().default(''),
-    coupon_placeholder: z.string().default('Discount code'),
+    coupon_placeholder: z.string().default('Apply Coupon'),
     total_label: z.string().default('Total'),
     subtotal_label: z.string().default('Subtotal'),
     savings_label: z.string().default('Congrats! You saved {amount} on this order.'),
     offer_cards_heading: z.string().default('Pick your free gift'),
     checkout_trust_message: z.string().default('Guaranteed safe & secure checkout'),
+    // Strings that used to be hard-coded in the drawer. Defaults are the old text.
+    gift_add_button: z.string().default('Add'),
+    gift_remove_button: z.string().default('Remove'),
+    gift_adding: z.string().default('Adding...'),
+    gift_unavailable: z.string().default('Unavailable'),
+    gift_claimed: z.string().default('Claimed'),
+    gift_free_label: z.string().default('Free'),
+    claim_gift_button: z.string().default('Claim gift'),
+    claim_limit_reached: z.string().default('Limit reached'),
+    free_badge: z.string().default('FREE'),
+    line_remove: z.string().default('Remove'),
+    line_discount_format: z.string().default('{pct}% off'),
+    coupon_view_all: z.string().default('View All'),
+    coupon_apply: z.string().default('Apply'),
+    coupon_remove: z.string().default('Remove'),
+    coupon_invalid: z.string().default('Invalid or inapplicable code'),
+    coupon_failed: z.string().default('Failed to apply coupon'),
+    out_of_stock: z.string().default('Out of stock'),
+    gift_paid_badge: z.string().default('GIFT'),
+    gift_unavailable_notice: z.string().default('A gift product is currently unavailable'),
+    upsell_adding: z.string().default('Adding...'),
+    checkout_preparing: z.string().default('Preparing...'),
+    coupon_locked_message: z.string().default('Add {amount} more to apply this coupon'),
+    coupon_locked_qty_message: z.string().default('Add {count} more items to apply this coupon'),
+    coupon_saved_message: z.string().default('You saved {amount} with this coupon'),
+    coupons_panel_title: z.string().default('Offers & Coupons'),
+    coupons_panel_label: z.string().default('Available Coupons'),
+    coupons_panel_placeholder: z.string().default('Enter Coupon Code'),
+    upsells_empty_heading: z.string().default(''),
+    upsell_sold_out: z.string().default('Sold out'),
+    price_breakup_link: z.string().default('VIEW PRICE BREAKUP'),
+    price_breakup_title: z.string().default('Price Break Up'),
+    pb_total_mrp: z.string().default('Total MRP'),
+    pb_discount_mrp: z.string().default('Discount on MRP'),
+    pb_coupon_discount: z.string().default('Coupon Discount'),
+    pb_shipping: z.string().default('Shipping Fee'),
+    pb_shipping_value: z.string().default('Calculated at checkout'),
+    pb_total: z.string().default('Total Amount'),
+    shipping_note: z.string().default(''),
+    coupon_link_subtitle: z.string().default(''), // second line on the "Apply Coupon ›" row
+    upsells_subheading: z.string().default(''), // line under the upsell heading
+    checkout_subtext: z.string().default(''), // small line inside the checkout button
   }).default({}),
   layout: z.object({
-    drawer_width: z.number().min(320).max(560).default(420),
+    drawer_width: z.number().min(320).max(600).default(420),
     drawer_position: z.enum(['right', 'left']).default('right'),
     image_style: z.enum(['square', 'rounded', 'circle']).default('rounded'),
     image_size: z.enum(['small', 'medium', 'large']).default('medium'),
@@ -309,6 +372,26 @@ export const DrawerConfigSchema = z.object({
     upsells_btn_text: z.string().default('ADD TO CART'),
     upsells_show_compare_price: z.boolean().default(true),
     show_payment_icons: z.boolean().default(true),
+    header_align: z.enum(['left', 'center']).default('left'),
+    header_count_style: z.enum(['badge', 'brackets', 'hidden']).default('badge'),
+    remove_style: z.enum(['icon', 'text']).default('icon'),
+    qty_zero_pad: z.boolean().default(false),
+    variant_position: z.enum(['actions', 'above_title']).default('actions'),
+    variant_style: z.enum(['switcher', 'label']).default('switcher'),
+    line_discount_show_icon: z.boolean().default(true),
+    gift_line_style: z.enum(['plain', 'highlight']).default('plain'),
+    gift_show_price: z.boolean().default(false),
+    coupon_entry: z.enum(['input', 'link']).default('input'),
+    coupon_cards_layout: z.enum(['scroll', 'list']).default('scroll'),
+    upsells_show_discount: z.boolean().default(false),
+    upsells_btn_position: z.enum(['below', 'over_image']).default('below'),
+    savings_show_icon: z.boolean().default(true),
+    // Left/right padding of the drawer's blocks, in px. 0 = each block's own.
+    content_padding: z.number().min(0).max(48).default(0),
+    content_padding_mobile: z.number().min(0).max(48).default(0),
+    checkout_full_width: z.boolean().default(false),
+    image_ratio: z.enum(['square', 'portrait']).default('square'),
+    line_item_style: z.enum(['divided', 'card']).default('divided'),
   }).default({}),
   sections: z.object({
     show_coupons: z.boolean().default(true),
@@ -318,6 +401,9 @@ export const DrawerConfigSchema = z.object({
     show_ribbon: z.boolean().default(true),
     show_claim_gifts: z.boolean().default(true),
     show_offer_cards: z.boolean().default(true),
+    show_locked_coupons: z.boolean().default(false),
+    coupon_panel_input: z.boolean().default(false),
+    coupon_applied_style: z.enum(['chip', 'card']).default('chip'),
     order: z.array(z.string()).default([
       'progress_bar', 'claim_gifts', 'offer_cards', 'line_items', 'coupons', 'upsells', 'ribbon',
     ]),
@@ -337,6 +423,9 @@ export const DrawerConfigSchema = z.object({
   announcement_bar: z.object({
     text: z.string().default(''),
     type: z.enum(['static', 'marquee']).default('static'),
+    // Empty = today's colours (secondary accent / text).
+    bg_color: z.string().default(''),
+    text_color: z.string().default(''),
   }).default({}),
   progress_bar: z.object({
     track_thickness: z.enum(['thin', 'normal', 'thick']).default('normal'),
@@ -344,6 +433,22 @@ export const DrawerConfigSchema = z.object({
     completed_icon_svg: z.string().default(''),
     badge_bg_color: z.string().default(''),
     badge_text_color: z.string().default(''),
+    // 'card' wraps the bar in a bordered card; card_bg_end makes it a gradient.
+    card_style: z.enum(['plain', 'card']).default('plain'),
+    card_bg: z.string().default(''),
+    card_bg_end: z.string().default(''),
+    card_border: z.string().default(''),
+    fill_color: z.string().default(''),
+    reached_dot_color: z.string().default(''),
+    // Corner sticker (e.g. "SPECIAL OFFER"). A URL, not a data URL: the drawer
+    // config is inlined on every storefront page.
+    badge_image_url: z.string().default(''),
+    badge_corner: z.enum(['top-left', 'top-right']).default('top-left'),
+    track_color: z.string().default(''),
+    locked_dot_color: z.string().default(''),
+    label_color: z.string().default(''),
+    // 'even': milestones at 1/n, 2/n … 100% (today). 'edges': first at the start, last at the end.
+    milestone_spacing: z.enum(['even', 'edges']).default('even'),
   }).default({}),
 }).default({})
 

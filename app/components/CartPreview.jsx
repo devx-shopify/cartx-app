@@ -1,3 +1,5 @@
+import { Fragment } from "react";
+
 const RADIUS_MAP = {
   none: "0",
   small: "6px",
@@ -25,13 +27,32 @@ const DUMMY_UPSELLS = [
   { title: "Silk Scarf", price: "$35.00", compare: "$48.00" },
 ];
 
-function UpsellsPreviewBlock({ bg, border, text, upsellLayout, upsellHDim, upsellVDim, upsellHeading, upsellHeadingAlign, upsellBtnText, upsellShowCompare, upsellTitleSize }) {
+function UpsellsPreviewBlock({ subheading, bg, border, text, upsellLayout, upsellHDim, upsellVDim, upsellHeading, upsellHeadingAlign, upsellBtnText, upsellShowCompare, upsellTitleSize, headingStyle, addBtnStyle, btnOverImage, discountText }) {
   const isVertical = upsellLayout === 'vertical';
+  const btn = (h, over) => (
+    <span style={{
+      display: "inline-block", height: h, lineHeight: `${h}px`, padding: "0 14px", background: "transparent", color: text,
+      border: "1px solid rgba(92,103,112,0.20)", borderRadius: 999, fontSize: 10, fontWeight: 500, cursor: "default",
+      textTransform: "uppercase", width: "fit-content", whiteSpace: "nowrap",
+      ...(over ? { position: "absolute", left: "50%", bottom: 6, transform: "translateX(-50%)" } : {}),
+      ...headingStyle, ...addBtnStyle,
+    }}>{upsellBtnText}</span>
+  );
+  const priceRow = (p) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+      <span style={{ fontWeight: 500, color: text }}>{p.price}</span>
+      {upsellShowCompare && <span style={{ textDecoration: "line-through", color: "#80828d", fontWeight: 400 }}>{p.compare}</span>}
+      {discountText && <span style={{ fontWeight: 600, color: "#16a34a" }}>{discountText}</span>}
+    </div>
+  );
   return (
     <div style={{ padding: "24px 20px", borderTop: `1px solid ${border}`, background: bg }}>
-      <div style={{ fontSize: 14, fontWeight: 400, color: "#5c6770", marginBottom: 16, textAlign: upsellHeadingAlign === 'center' ? 'center' : 'left' }}>
+      <div style={{ fontSize: 14, fontWeight: 400, color: "#5c6770", marginBottom: 16, textAlign: upsellHeadingAlign === 'center' ? 'center' : 'left', ...headingStyle }}>
         {upsellHeading}
       </div>
+      {subheading && (
+        <div style={{ margin: "-8px 0 12px", fontSize: 11, color: "#6b7280", textAlign: upsellHeadingAlign === "center" ? "center" : "left" }}>{subheading}</div>
+      )}
       <div style={{ display: "flex", gap: 20, overflowX: "auto", overflowY: "hidden", scrollbarWidth: "none", msOverflowStyle: "none" }} className="cartmax-preview-upsells-scroll">
         {DUMMY_UPSELLS.map((p, i) => (
           isVertical ? (
@@ -40,14 +61,13 @@ function UpsellsPreviewBlock({ bg, border, text, upsellLayout, upsellHDim, upsel
               display: "flex", flexDirection: "column",
               border: `1px solid rgba(92,103,112,0.10)`, borderRadius: 8, overflow: "hidden", background: bg,
             }}>
-              <div style={{ width: "100%", height: upsellVDim.imgH, background: "#f3f4f6" }} />
+              <div style={{ position: "relative", width: "100%", height: upsellVDim.imgH, background: "#f3f4f6" }}>
+                {btnOverImage && btn(28, true)}
+              </div>
               <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 6 }}>
                 <div style={{ fontSize: upsellTitleSize, fontWeight: 400, color: text, lineHeight: 1.35 }}>{p.title}</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
-                  <span style={{ fontWeight: 500, color: text }}>{p.price}</span>
-                  {upsellShowCompare && <span style={{ textDecoration: "line-through", color: "#80828d", fontWeight: 400 }}>{p.compare}</span>}
-                </div>
-                <span style={{ display: "inline-block", height: 28, lineHeight: "28px", padding: "0 14px", background: "transparent", color: text, border: "1px solid rgba(92,103,112,0.20)", borderRadius: 999, fontSize: 10, fontWeight: 500, cursor: "default", textTransform: "uppercase", width: "fit-content" }}>{upsellBtnText}</span>
+                {priceRow(p)}
+                {!btnOverImage && btn(28)}
               </div>
             </div>
           ) : (
@@ -56,14 +76,13 @@ function UpsellsPreviewBlock({ bg, border, text, upsellLayout, upsellHDim, upsel
               display: "flex", flexDirection: "row", alignItems: "center", gap: 10,
               padding: "9px 8px", border: `1px solid rgba(92,103,112,0.10)`, borderRadius: 8, background: bg,
             }}>
-              <div style={{ width: upsellHDim.img, height: upsellHDim.img, minWidth: upsellHDim.img, background: "#f3f4f6", borderRadius: 6 }} />
+              <div style={{ position: "relative", width: upsellHDim.img, height: upsellHDim.img, minWidth: upsellHDim.img, background: "#f3f4f6", borderRadius: 6 }}>
+                {btnOverImage && btn(26, true)}
+              </div>
               <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
                 <div style={{ fontSize: upsellTitleSize, fontWeight: 400, color: text, lineHeight: 1.35 }}>{p.title}</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
-                  <span style={{ fontWeight: 500, color: text }}>{p.price}</span>
-                  {upsellShowCompare && <span style={{ textDecoration: "line-through", color: "#80828d", fontWeight: 400 }}>{p.compare}</span>}
-                </div>
-                <span style={{ display: "inline-block", height: 30, lineHeight: "30px", padding: "0 14px", background: "transparent", color: text, border: "1px solid rgba(92,103,112,0.20)", borderRadius: 999, fontSize: 10, fontWeight: 500, cursor: "default", textTransform: "uppercase", width: "fit-content" }}>{upsellBtnText}</span>
+                {priceRow(p)}
+                {!btnOverImage && btn(30)}
               </div>
             </div>
           )
@@ -73,7 +92,7 @@ function UpsellsPreviewBlock({ bg, border, text, upsellLayout, upsellHDim, upsel
   );
 }
 
-export default function CartPreview({ settings, promotionCoupons, showEmpty, minHeight }) {
+export default function CartPreview({ settings, promotionCoupons, showEmpty, view = "filled", minHeight }) {
   const c = settings.colors || {};
   const sh = settings.shape || {};
   const t = settings.typography || {};
@@ -166,167 +185,146 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
 
   const TRACK_H_MAP = { thin: 4, normal: 6, thick: 8 };
   const trackH = TRACK_H_MAP[pb.track_thickness] || 6;
+
+  // Newer design options (mirrors the storefront drawer).
+  const label = (key, fallback) => (tx[key] ? tx[key] : fallback);
+  const fill = (tpl, values) => String(tpl || "").replace(/\{(\w+)\}/g, (m, k) => (k in values ? values[k] : m));
+  const headingStyle = {
+    ...(t.heading_font ? { fontFamily: `"${String(t.heading_font).replace(/["\\]/g, "")}", sans-serif` } : {}),
+    ...(t.heading_case === "uppercase" ? { textTransform: "uppercase" } : {}),
+    ...(Number(t.heading_letter_spacing) > 0 ? { letterSpacing: `${Number(t.heading_letter_spacing)}px` } : {}),
+  };
+  const addBtnStyle = c.add_button_bg
+    ? { background: c.add_button_bg, color: c.add_button_text || text, borderColor: c.add_button_bg }
+    : {};
+  const centerHeader = l.header_align === "center";
+  const countStyle = l.header_count_style || "badge";
+  const textRemove = l.remove_style === "text" && l.show_remove_btn !== false;
+  const variantOnTop = l.variant_position === "above_title";
+  const variantIsLabel = l.variant_style === "label";
+  const zeroPad = (n) => (l.qty_zero_pad && n < 10 ? `0${n}` : String(n));
+  const discountTpl = label("line_discount_format", "{pct}% off");
+  const giftHighlight = l.gift_line_style === "highlight";
+  const couponAsLink = l.coupon_entry === "link";
+  const couponList = l.coupon_cards_layout === "list";
+  const pbCard = pb.card_style === "card";
+  const pbFill = pb.fill_color || accent;
+  const pbReached = pb.reached_dot_color || primary;
+  const BODY_SECTIONS = ["progress_bar", "claim_gifts", "offer_cards", "line_items", "coupons", "upsells"];
+  const order = (sec.order || []).filter((k, i, a) => BODY_SECTIONS.includes(k) && a.indexOf(k) === i);
+  BODY_SECTIONS.forEach((k) => { if (!order.includes(k)) order.push(k); });
+  const itemFontStyle = t.item_font ? { fontFamily: `"${String(t.item_font).replace(/["\\]/g, "")}", sans-serif` } : {};
+  const padX = Number(l.content_padding) > 0 ? Number(l.content_padding) : null;
+  const imgH = l.image_ratio === "portrait" ? Math.round(imgSize * 1.1) : imgSize;
+  const fontUrl = t.font_source === "custom" && /^https:\/\/fonts\.googleapis\.com\//.test(t.custom_font_url || "") ? t.custom_font_url : "";
   const badgeBg = pb.badge_bg_color || `${accent}1a`;
   const badgeText = pb.badge_text_color || accent;
 
-  return (
-    <div
-      style={{
-        background: bg,
-        color: text,
-        width: "100%",
-        minHeight: minHeight ? `${minHeight}px` : undefined,
-        display: "flex",
-        flexDirection: "column",
-        borderRadius: 12,
-        boxShadow: "0 4px 24px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06)",
-        fontFamily:
-          "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-        fontSize: bodySize,
-        overflow: "hidden",
-        border: "1px solid #e0e0e0",
-      }}
-    >
-      {/* ── Announcement bar ── */}
-      {ab.text ? (
-        ab.type === 'marquee' ? (
-          <>
-            <style>{`@keyframes cp-marquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}`}</style>
-            <div style={{
-              background: secondaryAccent,
-              color: text,
-              padding: "7px 16px",
-              fontSize: 12,
-              fontWeight: 500,
-              flexShrink: 0,
-              overflow: "hidden",
-              display: "flex",
-            }}>
-              <div style={{ display: "flex", whiteSpace: "nowrap", animation: "cp-marquee 18s linear infinite" }}>
-                <span style={{ flexShrink: 0, paddingRight: 24 }}>{ab.text}</span>
-                <span style={{ flexShrink: 0, paddingRight: 24 }}>{ab.text}</span>
-              </div>
-            </div>
-          </>
-        ) : (
-          <div style={{
-            background: secondaryAccent,
-            color: text,
-            padding: "7px 16px",
-            fontSize: 12,
-            fontWeight: 500,
-            flexShrink: 0,
-            textAlign: "center",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}>
-            {ab.text}
-          </div>
-        )
-      ) : null}
 
-      {/* ── Header ── */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "14px 16px",
-          borderBottom: `1px solid ${border}`,
-          background: bg,
-        }}
-      >
-        <span
-          style={{
-            fontWeight: 600,
-            fontSize: headingSize,
-            color: text,
-            display: "flex",
-            alignItems: "center",
-            gap: 7,
-          }}
-        >
-          {tx.cart_title || "Your Cart"}
-          {!showEmpty && (
-            <span
-              style={{
-                background: primary,
-                color: primaryText,
-                fontSize: 10,
-                fontWeight: 600,
-                padding: "2px 7px",
-                borderRadius: 10,
-                lineHeight: "1.4",
-              }}
-            >
-              4
-            </span>
-          )}
-        </span>
-        <span
-          style={{
-            color: textSec,
-            fontSize: 18,
-            lineHeight: 1,
-            cursor: "default",
-          }}
-        >
-          ✕
+  // A coupon the cart can't use yet (grey badge, "Add ₹X more").
+  const lockedCouponCard = (width) => (
+    <div key="locked" style={{ display: "flex", alignItems: "center", flexShrink: 0, width, height: 67, background: bg, border: `1px dashed ${text}`, borderRadius: 6, overflow: "hidden" }}>
+      <div style={{ width: 34, height: "100%", background: "#e4e4e7", flexShrink: 0 }} />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 3, padding: "0 16px", minWidth: 0 }}>
+        <span style={{ fontSize: 14, fontWeight: 500, color: text, ...headingStyle }}>BIG500</span>
+        <span style={{ fontSize: 12, color: c.danger || "#dc2626" }}>
+          {fill(label("coupon_locked_message", "Add {amount} more to apply this coupon"), { amount: "$20.00" })}
         </span>
       </div>
+    </div>
+  );
 
-      {/* ── Empty state ── */}
-      {showEmpty && (<>
-        <div style={{
-          flex: 1, display: "flex", flexDirection: "column",
-          alignItems: "center", justifyContent: "center",
-          padding: "40px 28px", gap: 24, background: bg,
-        }}>
-          <div style={{ color: emptyIconColor, width: emptyIconPx, height: emptyIconPx, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {emptyIconUrl
-              ? <img src={emptyIconUrl} alt="" aria-hidden style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
-              : <svg width={emptyIconPx} height={emptyIconPx} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" /><path d="M3 6h18" /><path d="M16 10a4 4 0 0 1-8 0" />
-                </svg>
-            }
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-            <div style={{ fontSize: headingSize, fontWeight: 500, color: text, textAlign: "center" }}>
-              {tx.empty_title || "Your cart is empty"}
-            </div>
-            <div style={{ fontSize: bodySize, color: textSec, textAlign: "center", lineHeight: 1.5 }}>
-              {tx.empty_subtitle || "Looks like you haven't added anything yet"}
-            </div>
-          </div>
-          {(tx.empty_button !== "" && tx.empty_button !== undefined && tx.empty_button !== null) && (
-            <div style={{ ...btnStyle, flex: "0 0 auto", padding: "12px 28px", minWidth: 180 }}>
-              {tx.empty_button}
-            </div>
-          )}
+  // "Offers & Coupons" panel, as the Coupons preview view.
+  const couponsView = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: `20px ${padX ?? 24}px`, background: bg }}>
+      {sec.coupon_panel_input && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 6px 6px 16px", border: `1px solid ${border}`, borderRadius: 8 }}>
+          <span style={{ flex: 1, fontSize: 14, color: textSec }}>{label("coupons_panel_placeholder", "Enter Coupon Code")}</span>
+          <span style={{ padding: "8px 18px", borderRadius: 6, fontSize: 12, fontWeight: 600, textTransform: "uppercase", background: primary, color: primaryText, ...headingStyle, ...addBtnStyle }}>
+            {label("coupon_apply", "Apply")}
+          </span>
         </div>
+      )}
+      <span style={{ fontSize: 13, letterSpacing: 0.7, textTransform: "uppercase", color: textSec }}>{label("coupons_panel_label", "Available Coupons")}</span>
+      {(promotionCoupons || []).map((cp, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", height: 67, border: `1px dashed ${text}`, borderRadius: 6, overflow: "hidden" }}>
+          <div style={{ width: 34, height: "100%", background: accent, flexShrink: 0 }} />
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 3, padding: "0 16px", minWidth: 0 }}>
+            <span style={{ fontSize: 14, fontWeight: 500, color: text, ...headingStyle }}>{cp.code}</span>
+            <span style={{ fontSize: 12, color: textSec }}>{cp.display_message}</span>
+          </div>
+          <span style={{ marginRight: 12, padding: "5px 12px", borderRadius: 6, fontSize: 12, background: accent, color: bg, ...headingStyle }}>{label("coupon_apply", "Apply")}</span>
+        </div>
+      ))}
+      {sec.show_locked_coupons && lockedCouponCard("100%")}
+      {(promotionCoupons || []).length === 0 && !sec.show_locked_coupons && (
+        <span style={{ fontSize: 12, color: textSec }}>No coupons yet. Add them under Promotions.</span>
+      )}
+    </div>
+  );
 
-        {/* Upsells in empty state */}
-        {sec.show_upsells && upsellShowOnEmpty === 'always' && (
-          <UpsellsPreviewBlock
-            bg={bg} border={border} text={text}
-            upsellLayout={upsellLayout} upsellHDim={upsellHDim} upsellVDim={upsellVDim}
-            upsellHeading={upsellHeading} upsellHeadingAlign={upsellHeadingAlign} upsellBtnText={upsellBtnText}
-            upsellShowCompare={upsellShowCompare} upsellTitleSize={upsellTitleSize}
-          />
+  // Price breakup sheet, as the Breakup preview view.
+  const pbRow = (name, value, color) => (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13 }}>
+      <span style={{ color: c.muted || "#5c6770", display: "inline-flex", alignItems: "center", gap: 4 }}>{name}</span>
+      <span style={{ fontWeight: 500, color: color || "#000000" }}>{value}</span>
+    </div>
+  );
+  const breakupView = (
+    <div style={{ background: bg }}>
+      <div style={{ padding: `12px ${padX ?? 24}px`, fontSize: 17, fontWeight: 500, color: text, borderBottom: "1px solid #d9d9d9", ...headingStyle }}>
+        {label("price_breakup_title", "Price Break Up")}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: `24px ${padX ?? 24}px` }}>
+        {pbRow(label("pb_total_mrp", "Total MRP"), "$128.00")}
+        {pbRow(label("pb_discount_mrp", "Discount on MRP"), "-$15.00", c.success || "#2fc01a")}
+        {pbRow(label("pb_coupon_discount", "Coupon Discount"), "-$10.00", c.success || "#2fc01a")}
+        {pbRow(<>{label("pb_shipping", "Shipping Fee")}{tx.shipping_note ? " ⓘ" : ""}</>, label("pb_shipping_value", "Calculated at checkout"), c.danger || "#000000")}
+        {tx.shipping_note && (
+          <div style={{ padding: 12, background: "#f4f4f5", borderRadius: 6, fontSize: 12, lineHeight: 1.5, color: textSec, whiteSpace: "pre-line" }}>
+            {tx.shipping_note}
+          </div>
         )}
-      </>)}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", padding: `20px ${padX ?? 24}px`, borderTop: "1px solid #d9d9d9", fontSize: 15, fontWeight: 500 }}>
+        <span>{label("pb_total", "Total Amount")}</span>
+        <span>$103.00</span>
+      </div>
+    </div>
+  );
+  const panelView = view === "coupons" || view === "breakup";
 
-      {!showEmpty && (<>
+  // Body blocks, rendered in the merchant's section order.
+  const previewBlocks = {
+    progress_bar: (
+      <>
       {/* ── Progress bar ── */}
       {sec.show_progress_bar !== false && (
       <div
-        style={{
+        style={pbCard ? {
+          position: "relative",
+          margin: "20px 16px 8px",
+          padding: "16px 32px 0 16px",
+          border: `1px solid ${pb.card_border || border}`,
+          borderRadius: radius,
+          background: `linear-gradient(170deg, ${pb.card_bg || bg} 0%, ${pb.card_bg_end || pb.card_bg || bg} 100%)`,
+        } : {
+          position: "relative",
           padding: "16px 32px 0 0",
           borderBottom: `1px solid ${border}`,
           background: bg,
         }}
       >
+        {pb.badge_image_url && (
+          <img
+            src={pb.badge_image_url}
+            alt=""
+            style={{
+              position: "absolute", top: pbCard ? -24 : 0, width: 72, zIndex: 2, pointerEvents: "none",
+              ...(pb.badge_corner === "top-right" ? { right: -12 } : { left: -12 }),
+            }}
+          />
+        )}
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
           <div
             style={{
@@ -348,7 +346,7 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
             <span>Add $5 more for free shipping!</span>
           </div>
         </div>
-        <div style={{ position: "relative", height: trackH, background: "#f1f3f5", margin: "8px 30px 58px 0" }}>
+        <div style={{ position: "relative", height: trackH, background: pb.track_color || "#f1f3f5", margin: `8px 30px 58px ${pb.milestone_spacing === "edges" ? 62 : 0}px` }}>
           <div
             style={{
               position: "absolute",
@@ -356,7 +354,7 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
               top: 0,
               width: "65%",
               height: "100%",
-              background: accent,
+              background: pbFill,
               borderRadius: "0 999px 999px 0",
             }}
           />
@@ -364,13 +362,15 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
             { pos: 33, state: "active", label: "Free Gift", sub: "Above $20" },
             { pos: 67, state: "active", label: "Free Shipping", sub: "At $25" },
             { pos: 100, state: "next", label: "10% Off", sub: "At $30" },
-          ].map((m, i) => {
+          ].map((m, i, all) => {
+            if (pb.milestone_spacing === "edges") m = { ...m, pos: (i / (all.length - 1)) * 100 };
             const isActive = m.state === "active";
             const hasCustomSvg = isActive ? !!(pb.completed_icon_svg || pb.milestone_icon_svg) : !!pb.milestone_icon_svg;
-            const dotBg = hasCustomSvg ? "transparent" : isActive ? primary : "#fff";
-            const dotBorder = hasCustomSvg ? "transparent" : primary;
+            const reachedColor = isActive && pb.reached_dot_color;
+            const dotBg = reachedColor ? pbReached : hasCustomSvg ? "transparent" : isActive ? primary : "#fff";
+            const dotBorder = reachedColor ? pbReached : hasCustomSvg ? "transparent" : (m.state === "next" ? primary : (pb.locked_dot_color || primary));
             const dotShadow = hasCustomSvg ? "none" : `0 0 0 3px ${primary}1f`;
-            const labelColor = isActive ? text : m.state === "next" ? primary : "#9ca3af";
+            const labelColor = pb.label_color || (isActive ? text : m.state === "next" ? primary : "#9ca3af");
             const customSvg = isActive ? (pb.completed_icon_svg || pb.milestone_icon_svg) : pb.milestone_icon_svg;
 
             return (
@@ -425,12 +425,16 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
       </div>
       )}
 
+      </>
+    ),
+    claim_gifts: (
+      <>
       {/* ── Claim Gifts ── */}
       {sec.show_claim_gifts !== false && (
       <div
         style={{
           padding: "16px 20px",
-          background: `color-mix(in srgb, ${secondaryAccent} 6%, #ffffff)`,
+          background: c.gifts_bg || `color-mix(in srgb, ${secondaryAccent} 6%, #ffffff)`,
           border: `1px solid color-mix(in srgb, ${secondaryAccent} 30%, #ffffff)`,
         }}
       >
@@ -442,6 +446,7 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
             textTransform: "uppercase",
             textAlign: "center",
             marginBottom: 8,
+            ...headingStyle,
           }}
         >
           🎁 Claim your free gift 🎁
@@ -499,6 +504,12 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
                   >
                     {gift.title}
                   </div>
+                  {l.gift_show_price && (
+                    <div style={{ display: "flex", gap: 4, fontSize: 12 }}>
+                      <span style={{ textDecoration: "line-through", color: c.muted || textSec }}>$25.00</span>
+                      <span style={{ fontWeight: 700, color: c.success || accent }}>{label("gift_free_label", "Free")}</span>
+                    </div>
+                  )}
                   {isInCart ? (
                     <span
                       style={{
@@ -526,9 +537,11 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
                         width: "fit-content",
                         textTransform: "uppercase",
                         letterSpacing: 0.5,
+                        ...headingStyle,
+                        ...addBtnStyle,
                       }}
                     >
-                      Claim gift
+                      {label("claim_gift_button", "Claim gift")}
                     </span>
                   )}
                 </div>
@@ -540,17 +553,55 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
 
       )}
 
+      </>
+    ),
+    line_items: (
+      <>
       {/* ── Regular line items ── */}
       {DUMMY_ITEMS.map((item, i) => {
         const showVariantSwitcher = l.show_variant_switcher !== false;
-        const showRemoveBtn = l.show_remove_btn !== false && item.qty > 1;
+        const showRemoveBtn = !textRemove && l.show_remove_btn !== false && item.qty > 1;
+        const variantPill = showVariantSwitcher ? (
+          <div style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            fontSize: `calc(${bodySize} - 1px)`,
+            color: text,
+            border: `1px ${variantIsLabel ? "dashed" : "solid"} ${border}`,
+            borderRadius: 999,
+            padding: "3px 8px 3px 10px",
+            maxWidth: "55%",
+            overflow: "hidden",
+          }}>
+            <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.variant}</span>
+            {!variantIsLabel && (
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}>
+                <path d="m6 9 6 6 6-6"/>
+              </svg>
+            )}
+          </div>
+        ) : null;
+        const removeLink = textRemove ? (
+          <span style={{ flexShrink: 0, fontSize: 11, color: textSec, textDecoration: "underline", textTransform: "uppercase", letterSpacing: 0.5, ...headingStyle }}>
+            {label("line_remove", "Remove")}
+          </span>
+        ) : null;
         return (
           <div
             key={i}
-            style={{
+            style={l.line_item_style === "card" ? {
               display: "flex",
               gap: 10,
-              padding: `${density}px 16px`,
+              margin: `12px ${padX ?? 16}px 0`,
+              padding: 12,
+              border: `1px solid ${border}`,
+              borderRadius: radius,
+              background: bg,
+            } : {
+              display: "flex",
+              gap: 10,
+              padding: `${density}px ${padX ?? 16}px`,
               borderBottom: `1px solid ${border}`,
               background: bg,
             }}
@@ -558,7 +609,7 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
             <div
               style={{
                 width: imgSize,
-                height: imgSize,
+                height: imgH,
                 minWidth: imgSize,
                 borderRadius: imgRadius,
                 background: "#f3f4f6",
@@ -574,6 +625,12 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
                 gap: 1,
               }}
             >
+              {variantOnTop && (variantPill || removeLink) && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 2 }}>
+                  {variantPill || <span />}
+                  {removeLink}
+                </div>
+              )}
               {l.show_vendor && (
                 <div style={{ fontSize: 10, color: textSec, textTransform: "uppercase", letterSpacing: 0.3, fontWeight: 600 }}>
                   Brand Name
@@ -591,10 +648,12 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
                     textOverflow: "ellipsis",
                     flex: 1,
                     minWidth: 0,
+                    ...itemFontStyle,
                   }}
                 >
                   {item.title}
                 </div>
+                {!variantOnTop && removeLink}
                 {showRemoveBtn && (
                   <span style={{ flexShrink: 0, lineHeight: 1, paddingTop: 1 }}>
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -616,16 +675,18 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
               >
                 {item.price}
                 {i === 0 && (
-                  <span style={{ textDecoration: "line-through", color: "#80828D", fontWeight: 400 }}>
+                  <span style={{ textDecoration: "line-through", color: c.muted || "#80828D", fontWeight: 400 }}>
                     $39.00
                   </span>
                 )}
                 {i === 0 && (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 400, color: "#2FC01A" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 400, color: c.success || "#2FC01A" }}>
+                    {l.line_discount_show_icon !== false && (
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <path d="M7.99996 14.3334C7.75896 14.3334 7.52935 14.2883 7.31113 14.1982C7.09279 14.1081 6.89935 13.9779 6.73079 13.8077C6.39568 13.4769 6.10829 13.2605 5.86863 13.1584C5.62885 13.0562 5.26924 13.0052 4.78979 13.0052C4.29113 13.0052 3.86729 12.8307 3.51829 12.4817C3.16929 12.1327 2.99479 11.7089 2.99479 11.2102C2.99479 10.7351 2.94357 10.3764 2.84113 10.1342C2.73868 9.89196 2.5224 9.60363 2.19229 9.26919C2.02051 9.09741 1.88996 8.90258 1.80063 8.68469C1.71129 8.4668 1.66663 8.23902 1.66663 8.00135C1.66663 7.76369 1.71129 7.53547 1.80063 7.31669C1.88996 7.09791 2.02051 6.90263 2.19229 6.73085C2.5224 6.39874 2.73868 6.11246 2.84113 5.87202C2.94357 5.63147 2.99479 5.27074 2.99479 4.78985C2.99479 4.29119 3.16929 3.86735 3.51829 3.51835C3.86729 3.16935 4.29113 2.99485 4.78979 2.99485C5.2649 2.99485 5.62357 2.94363 5.86579 2.84119C6.10802 2.73874 6.39635 2.52246 6.73079 2.19235C6.89968 2.02213 7.0934 1.89196 7.31196 1.80185C7.53052 1.71174 7.75902 1.66669 7.99746 1.66669C8.2359 1.66669 8.46452 1.71135 8.68329 1.80069C8.90207 1.89002 9.09735 2.02058 9.26913 2.19235C9.60124 2.52246 9.88752 2.73874 10.128 2.84119C10.3685 2.94363 10.7292 2.99485 11.2101 2.99485C11.7088 2.99485 12.1326 3.16935 12.4816 3.51835C12.8306 3.86735 13.0051 4.29119 13.0051 4.78985C13.0051 5.26497 13.0563 5.62363 13.1588 5.86585C13.2612 6.10808 13.4775 6.39641 13.8076 6.73085C13.9794 6.90263 14.11 7.09746 14.1993 7.31535C14.2886 7.53324 14.3333 7.76102 14.3333 7.99869C14.3333 8.23635 14.2886 8.46458 14.1993 8.68335C14.11 8.90213 13.9794 9.09741 13.8076 9.26919C13.4768 9.6043 13.2604 9.89169 13.1583 10.1314C13.0562 10.3711 13.0051 10.7307 13.0051 11.2102C13.0051 11.7089 12.8306 12.1327 12.4816 12.4817C12.1326 12.8307 11.7088 13.0052 11.2101 13.0052C10.735 13.0052 10.3763 13.0564 10.1341 13.1589C9.8919 13.2613 9.60357 13.4776 9.26913 13.8077C9.10057 13.9779 8.90713 14.1081 8.68879 14.1982C8.47057 14.2883 8.24096 14.3334 7.99996 14.3334ZM8.00079 13.3334C8.10624 13.3334 8.20918 13.3118 8.30963 13.2687C8.41007 13.2255 8.49446 13.1697 8.56279 13.1014C8.98413 12.6757 9.38229 12.3866 9.75729 12.234C10.1322 12.0815 10.6165 12.0052 11.2101 12.0052C11.4353 12.0052 11.6242 11.929 11.7766 11.7767C11.929 11.6242 12.0051 11.4354 12.0051 11.2102C12.0051 10.6129 12.0814 10.1287 12.234 9.75769C12.3865 9.3868 12.6735 8.98852 13.0948 8.56285C13.2538 8.40385 13.3333 8.21624 13.3333 8.00002C13.3333 7.7838 13.256 7.5983 13.1013 7.44352C12.6756 7.01796 12.3865 6.61769 12.234 6.24269C12.0814 5.8678 12.0051 5.38352 12.0051 4.78985C12.0051 4.56463 11.929 4.3758 11.7766 4.22335C11.6242 4.07102 11.4353 3.99485 11.2101 3.99485C10.6066 3.99485 10.1201 3.91963 9.75063 3.76919C9.38118 3.61863 8.98313 3.33063 8.55646 2.90519C8.48802 2.83674 8.40357 2.77991 8.30313 2.73469C8.20268 2.68935 8.10163 2.66669 7.99996 2.66669C7.89829 2.66669 7.79618 2.68985 7.69363 2.73619C7.59096 2.78263 7.50546 2.83896 7.43713 2.90519C7.01579 3.32652 6.61763 3.61347 6.24263 3.76602C5.86774 3.91858 5.38346 3.99485 4.78979 3.99485C4.56457 3.99485 4.37574 4.07102 4.22329 4.22335C4.07096 4.3758 3.99479 4.56463 3.99479 4.78985C3.99479 5.39152 3.91852 5.8778 3.76596 6.24869C3.6134 6.61969 3.32429 7.01796 2.89863 7.44352C2.74396 7.5983 2.66663 7.7838 2.66663 8.00002C2.66663 8.21624 2.74396 8.40385 2.89863 8.56285C3.32429 8.98852 3.6134 9.38747 3.76596 9.75969C3.91852 10.1319 3.99479 10.6154 3.99479 11.2102C3.99479 11.4354 4.07096 11.6242 4.22329 11.7767C4.37574 11.929 4.56457 12.0052 4.78979 12.0052C5.3919 12.0052 5.87724 12.0815 6.24579 12.234C6.61435 12.3866 7.01357 12.6757 7.44346 13.1014C7.5119 13.1697 7.59552 13.2255 7.69429 13.2687C7.79318 13.3118 7.89535 13.3334 8.00079 13.3334ZM9.62296 10.4424C9.85296 10.4424 10.047 10.3633 10.2051 10.2052C10.3632 10.0471 10.4423 9.85302 10.4423 9.62302C10.4423 9.39291 10.3632 9.19735 10.2051 9.03635C10.047 8.87535 9.85296 8.79485 9.62296 8.79485C9.39285 8.79485 9.19729 8.87535 9.03629 9.03635C8.87529 9.19735 8.79479 9.39291 8.79479 9.62302C8.79479 9.85302 8.87529 10.0471 9.03629 10.2052C9.19729 10.3633 9.39285 10.4424 9.62296 10.4424ZM6.34479 10.3514L10.3513 6.35135L9.64863 5.64869L5.64863 9.65519L6.34479 10.3514ZM6.37696 7.20519C6.60707 7.20519 6.80263 7.12469 6.96363 6.96369C7.12463 6.80269 7.20513 6.60713 7.20513 6.37702C7.20513 6.14702 7.12463 5.95297 6.96363 5.79485C6.80263 5.63674 6.60707 5.55769 6.37696 5.55769C6.14696 5.55769 5.9529 5.63674 5.79479 5.79485C5.63668 5.95297 5.55763 6.14702 5.55763 6.37702C5.55763 6.60713 5.63668 6.80269 5.79479 6.96369C5.9529 7.12469 6.14696 7.20519 6.37696 7.20519Z" fill="#2FC01A"/>
                     </svg>
-                    26% off
+                    )}
+                    {fill(discountTpl, { pct: 26 })}
                   </span>
                 )}
               </div>
@@ -651,25 +712,7 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
               )}
               {/* Actions row: variant left, qty right */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
-                {showVariantSwitcher ? (
-                  <div style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 5,
-                    fontSize: `calc(${bodySize} - 1px)`,
-                    color: text,
-                    border: `1px solid ${border}`,
-                    borderRadius: 999,
-                    padding: "3px 8px 3px 10px",
-                    maxWidth: "55%",
-                    overflow: "hidden",
-                  }}>
-                    <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.variant}</span>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}>
-                      <path d="m6 9 6 6 6-6"/>
-                    </svg>
-                  </div>
-                ) : <div />}
+                {!variantOnTop && variantPill ? variantPill : <div />}
                 <QtyMock
                   border={border}
                   text={text}
@@ -677,6 +720,8 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
                   bg={bg}
                   radius={radius}
                   qty={item.qty}
+                  qtyLabel={zeroPad(item.qty)}
+                  noBin={textRemove}
                   minimal={l.qty_style === "minimal"}
                 />
               </div>
@@ -687,10 +732,18 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
 
       {/* ── Free gift line item ── */}
       <div
-        style={{
+        style={giftHighlight ? {
           display: "flex",
           gap: 10,
-          padding: `${density}px 16px`,
+          padding: `${density}px ${padX ?? 16}px`,
+          margin: "8px 16px",
+          border: `1px solid ${accent}`,
+          borderRadius: radius,
+          background: `color-mix(in srgb, ${accent} 8%, ${bg})`,
+        } : {
+          display: "flex",
+          gap: 10,
+          padding: `${density}px ${padX ?? 16}px`,
           borderBottom: `1px solid ${border}`,
           background: bg,
         }}
@@ -698,7 +751,7 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
         <div
           style={{
             width: imgSize,
-            height: imgSize,
+            height: imgH,
             minWidth: imgSize,
             borderRadius: imgRadius,
             background: "#f3f4f6",
@@ -732,15 +785,19 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
               letterSpacing: 0.4,
             }}
           >
-            FREE
+            {label("free_badge", "FREE")}
           </span>
         </div>
       </div>
 
+      </>
+    ),
+    coupons: (
+      <>
       {/* ── Discount block (coupon) ── */}
       {sec.show_coupons !== false && (
         <div style={{
-          background: `color-mix(in srgb, ${accent} 6%, transparent)`,
+          background: c.coupons_bg || `color-mix(in srgb, ${accent} 6%, transparent)`,
           border: `1px solid color-mix(in srgb, ${accent} 30%, transparent)`,
           padding: "16px 20px",
           display: "flex",
@@ -763,23 +820,42 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
                 <path d="M12 21C11.677 21 11.3714 20.9398 11.0833 20.8195C10.7952 20.6992 10.5399 20.5253 10.3173 20.298C9.79542 19.789 9.34992 19.4563 8.98075 19.3C8.61158 19.1437 8.05775 19.0655 7.31925 19.0655C6.65692 19.0655 6.09383 18.8337 5.63 18.37C5.16633 17.9062 4.9345 17.3431 4.9345 16.6807C4.9345 15.9551 4.85583 15.404 4.6985 15.0275C4.54117 14.651 4.209 14.2028 3.702 13.6827C3.46983 13.4506 3.29483 13.1911 3.177 12.9043C3.059 12.6173 3 12.3173 3 12.0043C3 11.6911 3.059 11.3897 3.177 11.1C3.29483 10.8103 3.46983 10.5494 3.702 10.3173C4.209 9.80442 4.54117 9.36225 4.6985 8.99075C4.85583 8.61925 4.9345 8.06208 4.9345 7.31925C4.9345 6.65692 5.16633 6.09383 5.63 5.63C6.09383 5.16633 6.65692 4.9345 7.31925 4.9345C8.04492 4.9345 8.596 4.85583 8.9725 4.6985C9.349 4.54117 9.79725 4.209 10.3173 3.702C10.5406 3.47467 10.7968 3.30083 11.086 3.1805C11.375 3.06017 11.6772 3 11.9925 3C12.3078 3 12.6103 3.059 12.9 3.177C13.1897 3.29483 13.4506 3.46983 13.6827 3.702C14.1956 4.209 14.6377 4.54117 15.0092 4.6985C15.3807 4.85583 15.9379 4.9345 16.6807 4.9345C17.3431 4.9345 17.9062 5.16633 18.37 5.63C18.8337 6.09383 19.0655 6.65692 19.0655 7.31925C19.0655 8.04492 19.1442 8.596 19.3015 8.9725C19.4588 9.349 19.791 9.79725 20.298 10.3173C20.5302 10.5494 20.7052 10.8089 20.823 11.0958C20.941 11.3828 21 11.6827 21 11.9957C21 12.3089 20.941 12.6103 20.823 12.9C20.7052 13.1897 20.5302 13.4506 20.298 13.6827C19.789 14.2046 19.4563 14.6501 19.3 15.0192C19.1437 15.3884 19.0655 15.9422 19.0655 16.6807C19.0655 17.3431 18.8337 17.9062 18.37 18.37C17.9062 18.8337 17.3431 19.0655 16.6807 19.0655C15.9551 19.0655 15.404 19.1442 15.0275 19.3015C14.651 19.4588 14.2028 19.791 13.6827 20.298C13.4601 20.5253 13.2048 20.6992 12.9167 20.8195C12.6286 20.9398 12.323 21 12 21ZM14.3688 15.327C14.6421 15.327 14.8702 15.2357 15.053 15.053C15.2357 14.8702 15.327 14.6421 15.327 14.3688C15.327 14.0954 15.2357 13.8631 15.053 13.6718C14.8702 13.4803 14.6421 13.3845 14.3688 13.3845C14.0954 13.3845 13.8631 13.4803 13.6718 13.6718C13.4803 13.8631 13.3845 14.0954 13.3845 14.3688C13.3845 14.6421 13.4803 14.8702 13.6718 15.053C13.8631 15.2357 14.0954 15.327 14.3688 15.327ZM9.5845 15.1038L15.1038 9.60375L14.3962 8.89625L8.89625 14.4155L9.5845 15.1038ZM9.63125 10.6155C9.90458 10.6155 10.1369 10.5198 10.3283 10.3283C10.5198 10.1369 10.6155 9.90458 10.6155 9.63125C10.6155 9.35792 10.5198 9.12983 10.3283 8.947C10.1369 8.76433 9.90458 8.673 9.63125 8.673C9.35792 8.673 9.12983 8.76433 8.947 8.947C8.76433 9.12983 8.673 9.35792 8.673 9.63125C8.673 9.90458 8.76433 10.1369 8.947 10.3283C9.12983 10.5198 9.35792 10.6155 9.63125 10.6155Z" fill="currentColor"/>
               </svg>
             </span>
-            <span style={{ flex: 1, fontSize: 14, fontWeight: 500, lineHeight: "20px", letterSpacing: "0.7px", color: text }}>
-              Apply Coupon
+            <span style={{ flex: 1, fontSize: 14, fontWeight: 500, lineHeight: "20px", letterSpacing: "0.7px", color: couponAsLink ? text : textSec }}>
+              {tx.coupon_placeholder && tx.coupon_placeholder !== "Discount code" ? tx.coupon_placeholder : "Apply Coupon"}
+              {couponAsLink && tx.coupon_link_subtitle && (
+                <span style={{ display: "block", fontSize: 11, fontWeight: 400, letterSpacing: 0, color: text }}>{tx.coupon_link_subtitle}</span>
+              )}
             </span>
-            <span style={{ fontSize: 12, fontWeight: 400, lineHeight: "20px", letterSpacing: "0.6px", color: text, flexShrink: 0 }}>
-              View All
-            </span>
+            {couponAsLink ? (
+              <span style={{ color: textSec, flexShrink: 0, fontSize: 16, lineHeight: 1 }}>›</span>
+            ) : (
+              <span style={{ fontSize: 12, fontWeight: 400, lineHeight: "20px", letterSpacing: "0.6px", color: text, flexShrink: 0, ...headingStyle }}>
+                {label("coupon_view_all", "View All")}
+              </span>
+            )}
           </div>
 
+          {sec.coupon_applied_style === "card" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", border: `1px solid ${accent}`, borderRadius: 6, background: `color-mix(in srgb, ${accent} 8%, ${bg})` }}>
+                <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: text, ...headingStyle }}>{(promotionCoupons || [])[0]?.code || "SAVE10"}</span>
+                <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: text, ...headingStyle }}>{label("coupon_remove", "Remove")}</span>
+              </div>
+              <div style={{ textAlign: "center", fontSize: 11, fontWeight: 500, color: c.success || accent }}>
+                ✓ {fill(label("coupon_saved_message", "You saved {amount} with this coupon"), { amount: "$10.00" })}
+              </div>
+            </div>
+          )}
+
           {/* Horizontal scrollable coupon cards */}
-          <div style={{ display: "flex", flexDirection: "row", gap: 8, overflowX: "auto", overflowY: "hidden", scrollbarWidth: "none", msOverflowStyle: "none" }}>
+          <div style={{ display: "flex", flexDirection: couponList ? "column" : "row", gap: 8, overflowX: couponList ? "visible" : "auto", overflowY: "hidden", scrollbarWidth: "none", msOverflowStyle: "none" }}>
             {(promotionCoupons || []).map((c, i) => (
               <div key={i} style={{
                 display: "flex",
                 flexDirection: "row",
                 alignItems: "center",
                 flexShrink: 0,
-                width: 280,
+                width: couponList ? "100%" : 280,
                 height: 67,
                 background: bg,
                 border: `1px dashed ${text}`,
@@ -810,7 +886,7 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
                   </span>
                 </div>
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 3, padding: "0 16px", minWidth: 0 }}>
-                  <span style={{ fontSize: 14, fontWeight: 500, lineHeight: "20px", color: text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <span style={{ fontSize: 14, fontWeight: 500, lineHeight: "20px", color: text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", ...headingStyle }}>
                     {c.code}
                   </span>
                   <span style={{ fontSize: 12, fontWeight: 400, lineHeight: "16px", color: textSec, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -831,24 +907,203 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
                   alignItems: "center",
                   justifyContent: "center",
                   cursor: "default",
+                  ...headingStyle,
                 }}>
-                  Apply
+                  {label("coupon_apply", "Apply")}
                 </div>
               </div>
             ))}
+            {sec.show_locked_coupons && lockedCouponCard(couponList ? "100%" : 280)}
           </div>
         </div>
       )}
 
+      </>
+    ),
+    upsells: (
+      <>
       {/* ── Upsells ── */}
       {sec.show_upsells !== false && (
         <UpsellsPreviewBlock
-          bg={bg} border={border} text={text}
+          subheading={tx.upsells_subheading} bg={c.upsells_bg || bg} border={border} text={text}
           upsellLayout={upsellLayout} upsellHDim={upsellHDim} upsellVDim={upsellVDim}
           upsellHeading={upsellHeading} upsellHeadingAlign={upsellHeadingAlign} upsellBtnText={upsellBtnText}
           upsellShowCompare={upsellShowCompare} upsellTitleSize={upsellTitleSize}
+          headingStyle={headingStyle} addBtnStyle={addBtnStyle} btnOverImage={l.upsells_btn_position === "over_image"}
+          discountText={l.upsells_show_discount ? fill(discountTpl, { pct: 25 }) : ""}
         />
       )}
+
+      </>
+    ),
+    offer_cards: null,
+  };
+
+  return (
+    <div
+      style={{
+        background: bg,
+        color: text,
+        width: "100%",
+        minHeight: minHeight ? `${minHeight}px` : undefined,
+        display: "flex",
+        flexDirection: "column",
+        borderRadius: 12,
+        boxShadow: "0 4px 24px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06)",
+        fontFamily: (() => {
+          const m = fontUrl.match(/family=([^:&]+)/);
+          const base = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+          return m ? `"${decodeURIComponent(m[1]).replace(/\+/g, " ")}", ${base}` : base;
+        })(),
+        fontSize: bodySize,
+        overflow: "hidden",
+        border: "1px solid #e0e0e0",
+      }}
+    >
+      {fontUrl && <link rel="stylesheet" href={fontUrl} />}
+      {/* ── Announcement bar ── */}
+      {ab.text ? (
+        ab.type === 'marquee' ? (
+          <>
+            <style>{`@keyframes cp-marquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}`}</style>
+            <div style={{
+              background: ab.bg_color || secondaryAccent,
+              color: ab.text_color || text,
+              padding: "7px 16px",
+              fontSize: 12,
+              fontWeight: 500,
+              flexShrink: 0,
+              overflow: "hidden",
+              display: "flex",
+            }}>
+              <div style={{ display: "flex", whiteSpace: "nowrap", animation: "cp-marquee 18s linear infinite" }}>
+                <span style={{ flexShrink: 0, paddingRight: 24 }}>{ab.text}</span>
+                <span style={{ flexShrink: 0, paddingRight: 24 }}>{ab.text}</span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div style={{
+            background: ab.bg_color || secondaryAccent,
+            color: ab.text_color || text,
+            padding: "7px 16px",
+            fontSize: 12,
+            fontWeight: 500,
+            flexShrink: 0,
+            textAlign: "center",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}>
+            {ab.text}
+          </div>
+        )
+      ) : null}
+
+      {/* ── Header ── */}
+      <div
+        style={{
+          position: "relative",
+          display: "flex",
+          justifyContent: centerHeader ? "center" : "space-between",
+          alignItems: "center",
+          padding: "14px 16px",
+          borderBottom: `1px solid ${border}`,
+          background: bg,
+        }}
+      >
+        <span
+          style={{
+            fontWeight: 600,
+            fontSize: headingSize,
+            color: text,
+            display: "flex",
+            alignItems: "center",
+            gap: 7,
+            ...headingStyle,
+          }}
+        >
+          {view === "coupons" ? label("coupons_panel_title", "Offers & Coupons") : (tx.cart_title || "Your Cart")}
+          {!showEmpty && view !== "coupons" && countStyle === "brackets" && <span>(4)</span>}
+          {!showEmpty && view !== "coupons" && countStyle === "badge" && (
+            <span
+              style={{
+                background: primary,
+                color: primaryText,
+                fontSize: 10,
+                fontWeight: 600,
+                padding: "2px 7px",
+                borderRadius: 10,
+                lineHeight: "1.4",
+              }}
+            >
+              4
+            </span>
+          )}
+        </span>
+        <span
+          style={{
+            color: textSec,
+            fontSize: 18,
+            lineHeight: 1,
+            cursor: "default",
+            ...(centerHeader ? { position: "absolute", right: 16 } : {}),
+          }}
+        >
+          ✕
+        </span>
+      </div>
+
+      {/* ── Empty state ── */}
+      {view === "coupons" && couponsView}
+      {view === "breakup" && breakupView}
+
+      {showEmpty && !panelView && (<>
+        <div style={{
+          flex: 1, display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          padding: "40px 28px", gap: 24, background: bg,
+        }}>
+          <div style={{ color: emptyIconColor, width: emptyIconPx, height: emptyIconPx, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {emptyIconUrl
+              ? <img src={emptyIconUrl} alt="" aria-hidden style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+              : <svg width={emptyIconPx} height={emptyIconPx} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" /><path d="M3 6h18" /><path d="M16 10a4 4 0 0 1-8 0" />
+                </svg>
+            }
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: headingSize, fontWeight: 500, color: text, textAlign: "center" }}>
+              {tx.empty_title || "Your cart is empty"}
+            </div>
+            {tx.empty_subtitle !== "" && (
+              <div style={{ fontSize: bodySize, color: textSec, textAlign: "center", lineHeight: 1.5 }}>
+                {tx.empty_subtitle || "Looks like you haven't added anything yet"}
+              </div>
+            )}
+          </div>
+          {(tx.empty_button !== "" && tx.empty_button !== undefined && tx.empty_button !== null) && (
+            <div style={{ ...btnStyle, flex: "0 0 auto", padding: "12px 28px", minWidth: 180 }}>
+              {tx.empty_button}
+            </div>
+          )}
+        </div>
+
+        {/* Upsells in empty state */}
+        {sec.show_upsells && upsellShowOnEmpty === 'always' && (
+          <UpsellsPreviewBlock
+            subheading={tx.upsells_subheading} bg={c.upsells_bg || bg} border={border} text={text}
+            upsellLayout={upsellLayout} upsellHDim={upsellHDim} upsellVDim={upsellVDim}
+            upsellHeading={tx.upsells_empty_heading || upsellHeading} upsellHeadingAlign={upsellHeadingAlign} upsellBtnText={upsellBtnText}
+            upsellShowCompare={upsellShowCompare} upsellTitleSize={upsellTitleSize}
+            headingStyle={headingStyle} addBtnStyle={addBtnStyle} btnOverImage={l.upsells_btn_position === "over_image"}
+            discountText={l.upsells_show_discount ? fill(discountTpl, { pct: 25 }) : ""}
+          />
+        )}
+      </>)}
+
+      {!showEmpty && !panelView && (<>
+      {order.map((key) => <Fragment key={key}>{previewBlocks[key]}</Fragment>)}
 
       {/* ── Footer ── */}
       <div
@@ -877,30 +1132,34 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
                 lineHeight: 1.3,
               }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill={savingsAmount} aria-hidden="true">
-                <path d="M12 2 13.5 8.5 20 10 13.5 11.5 12 18 10.5 11.5 4 10 10.5 8.5z" />
-                <path d="M18 14 18.75 16.75 21.5 17.5 18.75 18.25 18 21 17.25 18.25 14.5 17.5 17.25 16.75z" opacity="0.6" />
-              </svg>
+              {l.savings_show_icon !== false && (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill={savingsAmount} aria-hidden="true">
+                  <path d="M12 2 13.5 8.5 20 10 13.5 11.5 12 18 10.5 11.5 4 10 10.5 8.5z" />
+                  <path d="M18 14 18.75 16.75 21.5 17.5 18.75 18.25 18 21 17.25 18.25 14.5 17.5 17.25 16.75z" opacity="0.6" />
+                </svg>
+              )}
               <span>{parts[0]}</span>
               <span style={{ color: savingsAmount, fontWeight: 700 }}>$15.00</span>
               <span>{parts[1] || ""}</span>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill={savingsAmount} aria-hidden="true">
-                <path d="M12 2 13.5 8.5 20 10 13.5 11.5 12 18 10.5 11.5 4 10 10.5 8.5z" />
-                <path d="M18 14 18.75 16.75 21.5 17.5 18.75 18.25 18 21 17.25 18.25 14.5 17.5 17.25 16.75z" opacity="0.6" />
-              </svg>
+              {l.savings_show_icon !== false && (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill={savingsAmount} aria-hidden="true">
+                  <path d="M12 2 13.5 8.5 20 10 13.5 11.5 12 18 10.5 11.5 4 10 10.5 8.5z" />
+                  <path d="M18 14 18.75 16.75 21.5 17.5 18.75 18.25 18 21 17.25 18.25 14.5 17.5 17.25 16.75z" opacity="0.6" />
+                </svg>
+              )}
             </div>
           );
         })() : null}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: `16px ${padX ?? 20}px`, background: c.footer_bg || "transparent" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <span style={{ fontSize: 20, fontWeight: 700, color: text, lineHeight: 1.2 }}>$103.00</span>
-            <span style={{ fontSize: 11, color: "#2fc01a", textDecoration: "underline", textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 600, cursor: "default" }}>
-              VIEW PRICE BREAKUP
+            <span style={{ fontSize: 11, color: c.success || "#2fc01a", textDecoration: "underline", textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 600, cursor: "default" }}>
+              {label("price_breakup_link", "VIEW PRICE BREAKUP")}
             </span>
           </div>
           <div style={{
             ...btnStyle,
-            flex: "0 0 auto",
+            flex: l.checkout_full_width ? 1 : "0 0 auto",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -912,7 +1171,12 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
             fontSize: 13,
             padding: "0 20px",
           }}>
-            <span>{tx.checkout_button || "Checkout"}</span>
+            <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+              <span style={headingStyle}>{tx.checkout_button || "Checkout"}</span>
+              {tx.checkout_subtext && (
+                <span style={{ fontSize: 9, fontWeight: 400, letterSpacing: 0, textTransform: "none" }}>{tx.checkout_subtext}</span>
+              )}
+            </span>
             {l.show_payment_icons !== false && (
               <span style={{ display: "inline-flex", alignItems: "center" }}>
                 <svg width="62" height="24" viewBox="0 0 62 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -961,8 +1225,8 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, min
   );
 }
 
-function QtyMock({ border, text, textSec, bg, radius, qty, minimal }) {
-  const isOne = qty <= 1;
+function QtyMock({ border, text, textSec, bg, radius, qty, qtyLabel, noBin, minimal }) {
+  const isOne = qty <= 1 && !noBin;
   const minStyle = minimal
     ? { background: "#f3f4f6", borderRadius: radius, width: 24, height: 24, lineHeight: "24px", fontSize: 12 }
     : {};
@@ -1010,7 +1274,7 @@ function QtyMock({ border, text, textSec, bg, radius, qty, minimal }) {
           borderRight: minimal ? "none" : `1px solid ${border}`,
         }}
       >
-        {qty}
+        {qtyLabel ?? qty}
       </span>
       <span
         style={{
