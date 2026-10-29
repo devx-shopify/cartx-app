@@ -12,6 +12,8 @@ Prisma/Postgres; deployed on Fly.io; Sentry monitoring; two Shopify Functions
   high-level phase map (P0–P6), §1–10 detailed reference, §11 per-phase deep-dives
   with a P0 result log and the P1 build-task breakdown.
 - `docs/cartx-overview-and-roadmap.md` — product/leadership overview + go-live roadmap.
+- `docs/drawer-settings.md` — every Customize Cart design setting: key, where it
+  lives, default, and the rule that defaults keep today's drawer.
 
 ## GraphQL migration — current status (as of 2026-06-16)
 - **Priority:** secondary. The P0 *go-live* (soul flower launch, then existing
