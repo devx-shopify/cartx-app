@@ -1,0 +1,586 @@
+/* Just Herbs cart drawer — cartx Custom CSS
+   Source design: Figma "Just Herbs" (section "Cart", node 19:19924), mobile.
+   Written for the live cartx drawer (no new app settings needed).
+   Embedded in justherbs-cart-settings.json (advanced.custom_css). Edit here,
+   then rebuild the JSON, or paste into Customize Cart → Custom CSS. */
+
+#cartmax-root .cartmax-drawer {
+  --jh-ink: #1A1A1A;
+  --jh-muted: #666666;
+  --jh-green: #358C58;
+  --jh-green-dark: #084121;
+  --jh-mint: #EBF3EE;
+  --jh-pink: #F9105E;
+  --jh-red: #CC3434;
+  --jh-line: rgba(0, 19, 37, 0.08);
+  color: var(--jh-ink);
+}
+
+/* Header: "Cart" + red count badge */
+#cartmax-root .cartmax-header {
+  min-height: 60px;
+  padding: 8px 24px;
+  border-bottom: 0;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.059);
+  position: relative;
+  z-index: 1;
+}
+#cartmax-root .cartmax-title {
+  gap: 4px;
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 24px;
+}
+#cartmax-root .cartmax-header-count {
+  width: 20px;
+  height: 20px;
+  background: #D92727;
+  color: #F1F1F1;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 14px;
+}
+#cartmax-root .cartmax-close {
+  background: none;
+  color: var(--jh-ink);
+}
+
+/* Milestones: mint band, rounded track, gift-box icons */
+#cartmax-root .cartmax-progress {
+  padding: 6px 32px 4px;
+  border-bottom: 0;
+  background: var(--jh-mint);
+}
+#cartmax-root .cartmax-progress-msg-wrap { margin: 0 0 4px; }
+#cartmax-root .cartmax-progress-msg {
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #1C1B17;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 19px;
+  letter-spacing: 0;
+}
+#cartmax-root .cartmax-progress-track {
+  height: 10px;
+  margin-top: 30px;
+  margin-bottom: 52px;
+  border: 0.5px solid #8F8F8F;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.8);
+}
+#cartmax-root .cartmax-progress-fill {
+  border-radius: 10px;
+  background: var(--jh-green);
+}
+#cartmax-root .cartmax-milestone .cartmax-milestone-dot {
+  width: 34px;
+  height: 40px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+#cartmax-root .cartmax-milestone .cartmax-milestone-dot { margin-top: -18px; }
+#cartmax-root .cartmax-milestone-label {
+  top: 22px;
+  max-width: 90px;
+  color: #1C1B17;
+  letter-spacing: 0;
+}
+#cartmax-root .cartmax-milestone .cartmax-milestone-label-main {
+  color: #1C1B17;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 10px;
+}
+#cartmax-root .cartmax-milestone .cartmax-milestone-sub-label {
+  margin-top: 2px;
+  color: #1C1B17;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 13px;
+  letter-spacing: 0;
+}
+
+/* Cart items: bordered cards */
+#cartmax-root .cartmax-line-item {
+  gap: 12px;
+  margin: 12px 16px 0;
+  padding: 10px;
+  border: 1px solid var(--jh-line);
+  border-radius: 8px;
+}
+#cartmax-root .cartmax-line-image {
+  width: 60px;
+  height: 60px;
+  border: 1px solid #909090;
+  border-radius: 4px;
+}
+#cartmax-root .cartmax-line-details { gap: 4px; }
+#cartmax-root .cartmax-line-title {
+  color: var(--jh-ink);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 21px;
+}
+#cartmax-root .cartmax-line-price {
+  gap: 6px;
+  color: var(--jh-ink);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 16px;
+}
+#cartmax-root .cartmax-line-price-original {
+  color: #999999;
+  font-size: 12px;
+  font-weight: 400;
+}
+#cartmax-root .cartmax-line-savings-badge {
+  color: var(--jh-red);
+  font-size: 11px;
+  text-transform: capitalize;
+}
+#cartmax-root .cartmax-line-savings-badge svg { display: none !important; }
+#cartmax-root .cartmax-variant-pill {
+  padding: 4px 8px;
+  border: 1px solid var(--jh-line);
+  border-radius: 8px;
+  color: var(--jh-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+#cartmax-root .cartmax-qty-controls {
+  height: 32px;
+  border: 0;
+}
+#cartmax-root .cartmax-qty-btn {
+  width: 32px;
+  height: 32px;
+  color: var(--jh-ink);
+}
+#cartmax-root .cartmax-qty-value {
+  border: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 32px;
+}
+#cartmax-root .cartmax-line-discount-tag {
+  border-color: rgba(40, 110, 68, 0.2);
+  background: var(--jh-mint);
+  color: var(--jh-green-dark);
+}
+
+/* Free gift line: mint card, gift sticker, "Free Gift" */
+#cartmax-root .cartmax-line-item.cartmax-line-freebie {
+  overflow: visible;
+  content-visibility: visible;
+  border-color: rgba(40, 110, 68, 0.12);
+  background: var(--jh-mint);
+}
+#cartmax-root .cartmax-line-item.cartmax-line-freebie::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: -10px;
+  width: 33px;
+  height: 33px;
+  background: url("GIFT_BADGE") center / contain no-repeat;
+  pointer-events: none;
+}
+#cartmax-root .cartmax-line-freebie .cartmax-line-image {
+  width: 46px;
+  height: 46px;
+}
+#cartmax-root .cartmax-line-freebie .cartmax-gift-badge {
+  padding: 0;
+  background: none;
+  font-size: 0;
+}
+#cartmax-root .cartmax-line-freebie .cartmax-gift-badge::after {
+  content: "Free Gift";
+  color: #2D784B;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 16px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Coupons: code input row + View all; suggested cards live in the panel */
+#cartmax-root .cartmax-coupons { padding: 12px 16px 0; }
+#cartmax-root .cartmax-discount-block {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+#cartmax-root .cartmax-discount-input-row {
+  min-height: 57px;
+  padding-left: 40px;
+  border: 1px solid var(--jh-line);
+  border-radius: 8px;
+  background: #FFFFFF url("COUPON_TICKET") 10px center / 24px no-repeat;
+}
+#cartmax-root .cartmax-discount-input {
+  padding-left: 4px;
+  color: var(--jh-ink);
+}
+#cartmax-root .cartmax-discount-input::placeholder {
+  color: var(--jh-green);
+  font-weight: 700;
+}
+#cartmax-root .cartmax-discount-divider { background: var(--jh-line); }
+#cartmax-root .cartmax-discount-viewall {
+  color: var(--jh-green);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+#cartmax-root .cartmax-coupons .cartmax-discount-cards { display: none; }
+
+/* Applied coupon: ticket card with Remove */
+#cartmax-root .cartmax-applied-chips { margin-top: 8px; }
+#cartmax-root .cartmax-applied-chip {
+  position: relative;
+  width: 100%;
+  min-height: 52px;
+  justify-content: space-between;
+  padding: 8px 16px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #F8F8EE 0%, #AAD9B2 100%);
+}
+#cartmax-root .cartmax-applied-chip::before,
+#cartmax-root .cartmax-applied-chip::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  margin-top: -10px;
+  border-radius: 50%;
+  background: #FFFFFF;
+}
+#cartmax-root .cartmax-applied-chip::before { left: -10px; }
+#cartmax-root .cartmax-applied-chip::after { right: -10px; }
+#cartmax-root .cartmax-applied-chip-check { display: none; }
+#cartmax-root .cartmax-applied-chip-code {
+  flex: 1;
+  color: var(--jh-ink);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+#cartmax-root .cartmax-applied-chip-remove {
+  width: auto;
+  height: auto;
+  padding: 0 4px;
+  border-radius: 0;
+  font-size: 0;
+}
+#cartmax-root .cartmax-applied-chip-remove svg { display: none; }
+#cartmax-root .cartmax-applied-chip-remove::after {
+  content: "Remove";
+  color: var(--jh-green-dark);
+  font-size: 14px;
+  font-weight: 600;
+}
+#cartmax-root .cartmax-applied-chip-remove:hover { background: none; }
+
+/* Recommendations: "Special price" pink block */
+#cartmax-root .cartmax-upsells {
+  margin: 12px 16px;
+  padding: 8px 12px 12px;
+  border: 1px solid rgba(40, 110, 68, 0.08);
+  border-radius: 12px;
+  background: #FECBDC;
+}
+#cartmax-root .cartmax-upsells-heading {
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 12px;
+  color: var(--jh-ink);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 21px;
+}
+#cartmax-root .cartmax-upsells-heading::after {
+  content: "Order now and get it delivered by tomorrow";
+  padding-left: 22px;
+  background: url("DELIVERY_TRUCK") left center / 16px no-repeat;
+  color: #555555;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+#cartmax-root .cartmax-upsells-scroll {
+  gap: 8px;
+  margin-left: -12px;
+  margin-right: -12px;
+  padding-left: 12px;
+  padding-right: 12px;
+  scroll-padding-left: 12px;
+}
+#cartmax-root .cartmax-upsell-card {
+  position: relative;
+  width: 282px;
+  gap: 10px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: #FFFFFF;
+}
+#cartmax-root .cartmax-upsell-img,
+#cartmax-root .cartmax-upsell-img-placeholder {
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+}
+#cartmax-root .cartmax-upsell-info {
+  gap: 3px;
+  padding-right: 62px;
+}
+#cartmax-root .cartmax-upsell-title {
+  color: #1B1B1B;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 15px;
+}
+#cartmax-root .cartmax-upsell-price { gap: 4px; }
+#cartmax-root .cartmax-upsell-sale {
+  padding: 2px 6px;
+  border: 1px solid #FFFFFF;
+  border-radius: 50px;
+  background: var(--jh-pink);
+  box-shadow: 1px 1px 0 var(--jh-pink);
+  color: #F1F1F1;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 14px;
+}
+#cartmax-root .cartmax-upsell-compare {
+  color: #999999;
+  font-size: 11px;
+}
+#cartmax-root .cartmax-upsell-add,
+#cartmax-root .cartmax-upsell-add:hover:not(:disabled) {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  width: 54px;
+  height: 34px;
+  margin: -17px 0 0;
+  padding: 0;
+  border: 1px solid var(--jh-green-dark);
+  border-radius: 8px 3px 8px 3px;
+  background: var(--jh-green);
+  box-shadow: 1px 1px 0 var(--jh-green-dark);
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: none;
+}
+
+/* Savings strip */
+#cartmax-root .cartmax-footer { box-shadow: none; }
+#cartmax-root .cartmax-footer-savings {
+  gap: 4px;
+  padding: 2px 16px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 20px;
+  box-shadow: 8px 0 10px rgba(0, 0, 0, 0.1);
+}
+#cartmax-root .cartmax-footer-savings-icon { display: none; }
+#cartmax-root .cartmax-footer-savings-amount { font-size: 13px; font-weight: 600; }
+
+/* Checkout bar: total, "View details", green button with UPI line */
+#cartmax-root .cartmax-footer-checkout {
+  gap: 12px;
+  padding: 8px 16px 16px;
+}
+#cartmax-root .cartmax-footer-price { gap: 0; }
+#cartmax-root .cartmax-footer-price-amount {
+  color: var(--jh-ink);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 30px;
+}
+#cartmax-root .cartmax-price-breakup-link {
+  color: var(--jh-ink);
+  font-size: 0;
+  text-decoration: none;
+}
+#cartmax-root .cartmax-price-breakup-link::after {
+  content: "View details";
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  letter-spacing: 0;
+  text-transform: none;
+  text-decoration: underline;
+}
+#cartmax-root .cartmax-checkout-btn,
+#cartmax-root .cartmax-checkout-btn:hover {
+  flex: 1;
+  justify-content: space-between;
+  height: 48px;
+  padding: 7px 20px;
+  border-radius: 6px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+#cartmax-root .cartmax-checkout-btn .cartmax-checkout-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+#cartmax-root .cartmax-checkout-btn .cartmax-checkout-label::after {
+  content: "Extra 5% OFF on UPI";
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 10px;
+}
+
+/* Offers & Coupons panel */
+#cartmax-root .cartmax-offers-panel-header {
+  position: relative;
+  justify-content: center;
+  min-height: 60px;
+  padding: 10px 32px;
+  border-bottom: 0;
+}
+#cartmax-root .cartmax-offers-back {
+  position: absolute;
+  left: 24px;
+  background: none;
+  color: #18181B;
+}
+#cartmax-root .cartmax-offers-title {
+  color: var(--jh-ink);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 24px;
+}
+#cartmax-root .cartmax-offers-body { gap: 12px; padding: 12px 16px; }
+#cartmax-root .cartmax-offers-label {
+  color: #18181B;
+  font-size: 0;
+  letter-spacing: 0;
+  text-transform: none;
+}
+#cartmax-root .cartmax-offers-label::after {
+  content: "All Coupons";
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+}
+#cartmax-root .cartmax-offers-card {
+  height: auto;
+  min-height: 56px;
+  gap: 4px;
+  padding: 8px 12px;
+  border: 1px solid #9F9FA9;
+  border-radius: 6px;
+}
+#cartmax-root .cartmax-offers-card-accent {
+  width: 44px;
+  height: auto;
+  padding: 0;
+  background: none;
+}
+#cartmax-root .cartmax-offers-card-accent span {
+  color: var(--jh-green-dark);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 16px;
+  letter-spacing: 0;
+  text-align: center;
+  white-space: normal;
+  writing-mode: horizontal-tb;
+  transform: none;
+}
+#cartmax-root .cartmax-offers-card-info {
+  align-self: stretch;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 8px;
+  border-radius: 3px;
+  background: #FAFAFA;
+}
+#cartmax-root .cartmax-offers-card-code {
+  color: var(--jh-ink);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+#cartmax-root .cartmax-offers-card-savings {
+  color: #1A4D00;
+  font-size: 11px;
+  line-height: 16px;
+}
+#cartmax-root .cartmax-offers-card-btn {
+  width: 67px;
+  height: 40px;
+  margin: 0;
+  border: 1px solid var(--jh-green-dark);
+  border-radius: 8px 3px 8px 3px;
+  background: var(--jh-green);
+  box-shadow: 1px 1px 0 var(--jh-green-dark);
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Price breakup */
+#cartmax-root .cartmax-pb-backdrop { background: rgba(0, 0, 0, 0.25); }
+#cartmax-root .cartmax-price-breakup-header {
+  padding: 8px 16px;
+  min-height: 56px;
+  color: #18181B;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 26px;
+}
+#cartmax-root .cartmax-price-breakup-close { background: none; }
+#cartmax-root .cartmax-pb-divider { background: #D4D4D8; }
+#cartmax-root .cartmax-price-breakup-rows { padding: 24px 16px; }
+#cartmax-root .cartmax-pb-label {
+  color: #52525C;
+  font-weight: 500;
+  line-height: 20px;
+}
+#cartmax-root .cartmax-pb-amount { color: #18181B; }
+#cartmax-root .cartmax-pb-amount.cartmax-pb-discount { color: #008236; }
+#cartmax-root .cartmax-pb-amount.cartmax-pb-shipping { color: #E20019; }
+/* Shipping rules box (static text, placeholder until the client confirms) */
+#cartmax-root .cartmax-price-breakup-rows::after {
+  content: "Prepaid Orders\A ₹79–₹398.99 → Shipping ₹49\A ₹399 & above → Free Shipping 🎉\A\A Cash on Delivery (COD)\A ₹399–₹698.99 → Shipping ₹99\A ₹699–₹1,990 → Shipping ₹49";
+  padding: 16px;
+  border-radius: 6px;
+  background: #F4F4F5;
+  color: #52525C;
+  font-size: 14px;
+  line-height: 20px;
+  white-space: pre-line;
+}
+#cartmax-root .cartmax-price-breakup-total {
+  padding: 20px 16px;
+  border: 1px solid #E4E4E7;
+  color: #18181B;
+  font-weight: 700;
+}
