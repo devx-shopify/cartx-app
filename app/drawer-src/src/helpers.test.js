@@ -2,7 +2,7 @@ import { describe, test, expect } from 'vitest'
 import {
   hasFreebieMarker, showsQuantitySelector, giftChargedAmount,
   normalizeSectionOrder, BODY_SECTIONS, fillTemplate, formatQty, discountPercent,
-  couponShortfall, splitCoupons, savingsForCode,
+  couponShortfall, splitCoupons, savingsForCode, milestonePositions, mapProgress,
 } from './helpers.js'
 
 describe('normalizeSectionOrder', () => {
@@ -183,5 +183,23 @@ describe('giftChargedAmount', () => {
 
   test('falls back to line_price when final_line_price is absent', () => {
     expect(giftChargedAmount({ line_price: 5000 })).toBe(5000)
+  })
+})
+
+describe('milestonePositions / mapProgress', () => {
+  test('even spacing is unchanged', () => {
+    expect(milestonePositions(3, 'even').map(Math.round)).toEqual([33, 67, 100])
+    expect(mapProgress(50, 3, 'even')).toBe(50)
+  })
+  test('edges spacing puts milestones at both ends', () => {
+    expect(milestonePositions(3, 'edges')).toEqual([0, 50, 100])
+    expect(milestonePositions(1, 'edges')).toEqual([100])
+  })
+  test('edges fill lines up with the milestones', () => {
+    expect(mapProgress(100 / 3, 3, 'edges')).toBe(0) // first milestone reached
+    expect(mapProgress(200 / 3, 3, 'edges')).toBeCloseTo(50) // second reached
+    expect(mapProgress(100, 3, 'edges')).toBe(100)
+    expect(mapProgress(50, 3, 'edges')).toBeCloseTo(25) // halfway to the second
+    expect(mapProgress(10, 3, 'edges')).toBe(0) // before the first: no room on the track
   })
 })

@@ -1,6 +1,6 @@
 /* eslint-disable */
 import { h, Component, Fragment } from 'preact';
-import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId, hasFreebieMarker, showsQuantitySelector, giftChargedAmount, normalizeSectionOrder, fillTemplate, formatQty, discountPercent, splitCoupons, savingsForCode } from './helpers';
+import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId, hasFreebieMarker, showsQuantitySelector, giftChargedAmount, normalizeSectionOrder, milestonePositions, mapProgress, fillTemplate, formatQty, discountPercent, splitCoupons, savingsForCode } from './helpers';
 import { fireConfetti, setConfettiLottieUrl } from './confetti';
 import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLine, ensureCartxAttribute, ensureDrawerAttribute, localGiftDelta, giftIntendedQuantity, dispatchLocalBar } from './evaluate';
 import { isGraphqlCartEnabled, isStorefrontReady, fetchProductAvailability } from './storefront-cart';
@@ -864,6 +864,7 @@ export default class CartDrawer extends Component {
       savings_show_icon: l.savings_show_icon !== false,
       checkout_full_width: l.checkout_full_width === true,
       image_ratio: l.image_ratio === 'portrait' ? 'portrait' : 'square',
+      line_item_style: l.line_item_style === 'card' ? 'card' : 'divided',
     };
     this._upsells = {
       card_layout: l.upsells_card_layout || 'horizontal',
@@ -890,6 +891,7 @@ export default class CartDrawer extends Component {
       badge_image_url: pb.badge_image_url || '',
       badge_corner: pb.badge_corner === 'top-right' ? 'top-right' : 'top-left',
       reached_color: !!pb.reached_dot_color,
+      milestone_spacing: pb.milestone_spacing === 'edges' ? 'edges' : 'even',
     };
     this._addBtnColored = !!(drawer.colors && drawer.colors.add_button_bg);
     var ty = drawer.typography || {};
@@ -1804,17 +1806,19 @@ export default class CartDrawer extends Component {
     var bar = result.bar;
     var tiers = bar.tiers;
     var n = tiers.length;
-    var pct = Math.min(bar.progress_pct || 0, 100);
+    var spacing = this._progressBar.milestone_spacing;
+    var pct = mapProgress(bar.progress_pct, n, spacing);
+    var positions = milestonePositions(n, spacing);
     // Leave room so last milestone label doesn't clip at the right edge
     var trackPadRight = 30;
-    var usableWidth = 100;
 
     var pb = this._progressBar;
     var milestoneIconSvg = pb.milestone_icon_svg || '';
     var completedIconSvg = pb.completed_icon_svg || milestoneIconSvg;
     var progressCls = 'cartmax-progress'
       + (pb.card_style === 'card' ? ' cartmax-progress--card' : '')
-      + (pb.reached_color ? ' cartmax-progress--reached-color' : '');
+      + (pb.reached_color ? ' cartmax-progress--reached-color' : '')
+      + (spacing === 'edges' ? ' cartmax-progress--edges' : '');
 
     return (
       <div id="cartmax-progress" className={progressCls}>
@@ -1836,7 +1840,7 @@ export default class CartDrawer extends Component {
         <div className="cartmax-progress-track" style={{ marginRight: trackPadRight + 'px' }}>
           <div className="cartmax-progress-fill" style={{ width: pct + '%' }} ><span className='visually-hidden'>Progress fill</span></div>
           {tiers.map((tier, i) => {
-            var pos = ((i + 1) / n) * usableWidth;
+            var pos = positions[i];
             var cls = 'cartmax-milestone';
             var isActive = tier.state === 'active';
             if (isActive) cls += ' cartmax-milestone--active';
@@ -3100,7 +3104,12 @@ export default class CartDrawer extends Component {
                 onClick={function () { self.setState({ couponPanelOpen: true }); }}
               >
                 <span class="cartmax-coupon-link-icon"><IconTag /></span>
-                <span class="cartmax-coupon-link-label">{placeholder}</span>
+                <span class="cartmax-coupon-link-label">
+                  {placeholder}
+                  {this._text.coupon_link_subtitle
+                    ? <span class="cartmax-coupon-link-subtitle">{this._text.coupon_link_subtitle}</span>
+                    : null}
+                </span>
                 <span class="cartmax-coupon-link-chevron"><IconChevronRight /></span>
               </button>
             : <div class="cartmax-discount-input-row">
@@ -3499,6 +3508,9 @@ export default class CartDrawer extends Component {
     return (
       <div class={'cartmax-upsells ' + layoutClass + (btnOverImage ? ' cartmax-upsells--btn-over-image' : '')}>
         <div class="cartmax-upsells-heading" style={{ justifyContent: u.heading_position === 'center' ? 'center' : 'flex-start' }}>{headingText}</div>
+        {this._text.upsells_subheading
+          ? <div class={'cartmax-upsells-subheading' + (u.heading_position === 'center' ? ' cartmax-upsells-subheading--center' : '')}>{this._text.upsells_subheading}</div>
+          : null}
         {this.state.upsellError
           ? <div class="cartmax-upsell-error">{this.state.upsellError}</div>
           : null
@@ -3689,7 +3701,12 @@ export default class CartDrawer extends Component {
               }
             }}
           >
-            <span class="cartmax-checkout-label">{this.state.checkoutWaiting ? this._t('checkout_preparing', 'Preparing...') : this._text.checkout_button}</span>
+            {this._text.checkout_subtext && !this.state.checkoutWaiting
+              ? <span class="cartmax-checkout-text">
+                  <span class="cartmax-checkout-label">{this._text.checkout_button}</span>
+                  <span class="cartmax-checkout-subtext">{this._text.checkout_subtext}</span>
+                </span>
+              : <span class="cartmax-checkout-label">{this.state.checkoutWaiting ? this._t('checkout_preparing', 'Preparing...') : this._text.checkout_button}</span>}
             {this._layout.show_payment_icons && !this.state.checkoutWaiting ? (
               <span class="cartmax-payment-methods"><IconPaymentMethods /></span>
             ) : null}
@@ -3843,6 +3860,7 @@ export default class CartDrawer extends Component {
     if (typo.item_font) overlayClass += ' cartmax-item-font';
     if (this._layout.checkout_full_width) overlayClass += ' cartmax-checkout-full';
     if (this._layout.image_ratio === 'portrait') overlayClass += ' cartmax-img-portrait';
+    if (this._layout.line_item_style === 'card') overlayClass += ' cartmax-line-cards';
 
     var sec = this._sections;
     var countStyle = this._layout.header_count_style;

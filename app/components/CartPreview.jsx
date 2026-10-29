@@ -27,7 +27,7 @@ const DUMMY_UPSELLS = [
   { title: "Silk Scarf", price: "$35.00", compare: "$48.00" },
 ];
 
-function UpsellsPreviewBlock({ bg, border, text, upsellLayout, upsellHDim, upsellVDim, upsellHeading, upsellHeadingAlign, upsellBtnText, upsellShowCompare, upsellTitleSize, headingStyle, addBtnStyle, btnOverImage, discountText }) {
+function UpsellsPreviewBlock({ subheading, bg, border, text, upsellLayout, upsellHDim, upsellVDim, upsellHeading, upsellHeadingAlign, upsellBtnText, upsellShowCompare, upsellTitleSize, headingStyle, addBtnStyle, btnOverImage, discountText }) {
   const isVertical = upsellLayout === 'vertical';
   const btn = (h, over) => (
     <span style={{
@@ -50,6 +50,9 @@ function UpsellsPreviewBlock({ bg, border, text, upsellLayout, upsellHDim, upsel
       <div style={{ fontSize: 14, fontWeight: 400, color: "#5c6770", marginBottom: 16, textAlign: upsellHeadingAlign === 'center' ? 'center' : 'left', ...headingStyle }}>
         {upsellHeading}
       </div>
+      {subheading && (
+        <div style={{ margin: "-8px 0 12px", fontSize: 11, color: "#6b7280", textAlign: upsellHeadingAlign === "center" ? "center" : "left" }}>{subheading}</div>
+      )}
       <div style={{ display: "flex", gap: 20, overflowX: "auto", overflowY: "hidden", scrollbarWidth: "none", msOverflowStyle: "none" }} className="cartmax-preview-upsells-scroll">
         {DUMMY_UPSELLS.map((p, i) => (
           isVertical ? (
@@ -343,7 +346,7 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, vie
             <span>Add $5 more for free shipping!</span>
           </div>
         </div>
-        <div style={{ position: "relative", height: trackH, background: "#f1f3f5", margin: "8px 30px 58px 0" }}>
+        <div style={{ position: "relative", height: trackH, background: pb.track_color || "#f1f3f5", margin: `8px 30px 58px ${pb.milestone_spacing === "edges" ? 62 : 0}px` }}>
           <div
             style={{
               position: "absolute",
@@ -359,14 +362,15 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, vie
             { pos: 33, state: "active", label: "Free Gift", sub: "Above $20" },
             { pos: 67, state: "active", label: "Free Shipping", sub: "At $25" },
             { pos: 100, state: "next", label: "10% Off", sub: "At $30" },
-          ].map((m, i) => {
+          ].map((m, i, all) => {
+            if (pb.milestone_spacing === "edges") m = { ...m, pos: (i / (all.length - 1)) * 100 };
             const isActive = m.state === "active";
             const hasCustomSvg = isActive ? !!(pb.completed_icon_svg || pb.milestone_icon_svg) : !!pb.milestone_icon_svg;
             const reachedColor = isActive && pb.reached_dot_color;
             const dotBg = reachedColor ? pbReached : hasCustomSvg ? "transparent" : isActive ? primary : "#fff";
-            const dotBorder = reachedColor ? pbReached : hasCustomSvg ? "transparent" : primary;
+            const dotBorder = reachedColor ? pbReached : hasCustomSvg ? "transparent" : (m.state === "next" ? primary : (pb.locked_dot_color || primary));
             const dotShadow = hasCustomSvg ? "none" : `0 0 0 3px ${primary}1f`;
-            const labelColor = isActive ? text : m.state === "next" ? primary : "#9ca3af";
+            const labelColor = pb.label_color || (isActive ? text : m.state === "next" ? primary : "#9ca3af");
             const customSvg = isActive ? (pb.completed_icon_svg || pb.milestone_icon_svg) : pb.milestone_icon_svg;
 
             return (
@@ -430,7 +434,7 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, vie
       <div
         style={{
           padding: "16px 20px",
-          background: `color-mix(in srgb, ${secondaryAccent} 6%, #ffffff)`,
+          background: c.gifts_bg || `color-mix(in srgb, ${secondaryAccent} 6%, #ffffff)`,
           border: `1px solid color-mix(in srgb, ${secondaryAccent} 30%, #ffffff)`,
         }}
       >
@@ -586,7 +590,15 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, vie
         return (
           <div
             key={i}
-            style={{
+            style={l.line_item_style === "card" ? {
+              display: "flex",
+              gap: 10,
+              margin: `12px ${padX ?? 16}px 0`,
+              padding: 12,
+              border: `1px solid ${border}`,
+              borderRadius: radius,
+              background: bg,
+            } : {
               display: "flex",
               gap: 10,
               padding: `${density}px ${padX ?? 16}px`,
@@ -785,7 +797,7 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, vie
       {/* ── Discount block (coupon) ── */}
       {sec.show_coupons !== false && (
         <div style={{
-          background: `color-mix(in srgb, ${accent} 6%, transparent)`,
+          background: c.coupons_bg || `color-mix(in srgb, ${accent} 6%, transparent)`,
           border: `1px solid color-mix(in srgb, ${accent} 30%, transparent)`,
           padding: "16px 20px",
           display: "flex",
@@ -810,6 +822,9 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, vie
             </span>
             <span style={{ flex: 1, fontSize: 14, fontWeight: 500, lineHeight: "20px", letterSpacing: "0.7px", color: couponAsLink ? text : textSec }}>
               {tx.coupon_placeholder && tx.coupon_placeholder !== "Discount code" ? tx.coupon_placeholder : "Apply Coupon"}
+              {couponAsLink && tx.coupon_link_subtitle && (
+                <span style={{ display: "block", fontSize: 11, fontWeight: 400, letterSpacing: 0, color: text }}>{tx.coupon_link_subtitle}</span>
+              )}
             </span>
             {couponAsLink ? (
               <span style={{ color: textSec, flexShrink: 0, fontSize: 16, lineHeight: 1 }}>›</span>
@@ -910,7 +925,7 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, vie
       {/* ── Upsells ── */}
       {sec.show_upsells !== false && (
         <UpsellsPreviewBlock
-          bg={bg} border={border} text={text}
+          subheading={tx.upsells_subheading} bg={c.upsells_bg || bg} border={border} text={text}
           upsellLayout={upsellLayout} upsellHDim={upsellHDim} upsellVDim={upsellVDim}
           upsellHeading={upsellHeading} upsellHeadingAlign={upsellHeadingAlign} upsellBtnText={upsellBtnText}
           upsellShowCompare={upsellShowCompare} upsellTitleSize={upsellTitleSize}
@@ -1077,7 +1092,7 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, vie
         {/* Upsells in empty state */}
         {sec.show_upsells && upsellShowOnEmpty === 'always' && (
           <UpsellsPreviewBlock
-            bg={bg} border={border} text={text}
+            subheading={tx.upsells_subheading} bg={c.upsells_bg || bg} border={border} text={text}
             upsellLayout={upsellLayout} upsellHDim={upsellHDim} upsellVDim={upsellVDim}
             upsellHeading={tx.upsells_empty_heading || upsellHeading} upsellHeadingAlign={upsellHeadingAlign} upsellBtnText={upsellBtnText}
             upsellShowCompare={upsellShowCompare} upsellTitleSize={upsellTitleSize}
@@ -1156,7 +1171,12 @@ export default function CartPreview({ settings, promotionCoupons, showEmpty, vie
             fontSize: 13,
             padding: "0 20px",
           }}>
-            <span style={headingStyle}>{tx.checkout_button || "Checkout"}</span>
+            <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+              <span style={headingStyle}>{tx.checkout_button || "Checkout"}</span>
+              {tx.checkout_subtext && (
+                <span style={{ fontSize: 9, fontWeight: 400, letterSpacing: 0, textTransform: "none" }}>{tx.checkout_subtext}</span>
+              )}
+            </span>
             {l.show_payment_icons !== false && (
               <span style={{ display: "inline-flex", alignItems: "center" }}>
                 <svg width="62" height="24" viewBox="0 0 62 24" fill="none" xmlns="http://www.w3.org/2000/svg">

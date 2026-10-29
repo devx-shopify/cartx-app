@@ -501,6 +501,9 @@
       setOrClear(s2, "--cartmax-pb-card-border", pb.card_border);
       setOrClear(s2, "--cartmax-pb-fill", pb.fill_color);
       setOrClear(s2, "--cartmax-pb-reached", pb.reached_dot_color);
+      setOrClear(s2, "--cartmax-pb-track", pb.track_color);
+      setOrClear(s2, "--cartmax-pb-locked", pb.locked_dot_color);
+      setOrClear(s2, "--cartmax-pb-label", pb.label_color);
     }
     if (c2) {
       setOrClear(s2, "--cartmax-add-btn-bg", c2.add_button_bg);
@@ -509,6 +512,12 @@
       setOrClear(s2, "--cartmax-danger", c2.danger);
       setOrClear(s2, "--cartmax-muted", c2.muted);
       setOrClear(s2, "--cartmax-footer-bg", c2.footer_bg);
+      setOrClear(s2, "--cartmax-upsells-bg", c2.upsells_bg);
+      setOrClear(s2, "--cartmax-coupons-bg", c2.coupons_bg);
+      setOrClear(s2, "--cartmax-gifts-bg", c2.gifts_bg);
+      setOrClear(s2, "--cartmax-primary-hover", brandColor(c2.primary, "#1a1a1a") ? "color-mix(in srgb, " + c2.primary + " 85%, #000000)" : "");
+      setOrClear(s2, "--cartmax-ink", brandColor(c2.text, "#1a1a1a") ? c2.text : "");
+      setOrClear(s2, "--cartmax-line", brandColor(c2.border, "#f0f0f0") ? c2.border : "");
     }
     if (l2) {
       setOrClear(s2, "--cartmax-pad-x-desktop", Number(l2.content_padding) > 0 ? Number(l2.content_padding) + "px" : "");
@@ -525,6 +534,9 @@
       setOrClear(s2, "--cartmax-item-font", t2.item_font ? '"' + String(t2.item_font).replace(/["\\]/g, "") + '", sans-serif' : "");
     }
   }
+  function brandColor(value, builtIn) {
+    return !!value && String(value).trim().toLowerCase() !== builtIn;
+  }
   function setOrClear(style, name, value) {
     if (value) style.setProperty(name, value);
     else style.removeProperty(name);
@@ -539,6 +551,22 @@
       if (out.indexOf(key) === -1) out.push(key);
     });
     return out;
+  }
+  function milestonePositions(n2, spacing) {
+    var out = [];
+    for (var i2 = 0; i2 < n2; i2++) {
+      out.push(spacing === "edges" && n2 > 1 ? i2 / (n2 - 1) * 100 : (i2 + 1) / n2 * 100);
+    }
+    return out;
+  }
+  function mapProgress(pct, n2, spacing) {
+    var p2 = Math.max(0, Math.min(Number(pct) || 0, 100));
+    if (spacing !== "edges" || n2 < 2) return p2;
+    var seg = 100 / n2;
+    if (p2 <= seg) return 0;
+    var k2 = Math.min(Math.floor((p2 - seg) / seg), n2 - 2);
+    var within = (p2 - seg - k2 * seg) / seg;
+    return Math.round((k2 + within) / (n2 - 1) * 1e4) / 100;
   }
   function fillTemplate(template, values) {
     return String(template || "").replace(/\{(\w+)\}/g, function(match, key) {
@@ -3813,7 +3841,8 @@
         coupon_cards_layout: l2.coupon_cards_layout === "list" ? "list" : "scroll",
         savings_show_icon: l2.savings_show_icon !== false,
         checkout_full_width: l2.checkout_full_width === true,
-        image_ratio: l2.image_ratio === "portrait" ? "portrait" : "square"
+        image_ratio: l2.image_ratio === "portrait" ? "portrait" : "square",
+        line_item_style: l2.line_item_style === "card" ? "card" : "divided"
       };
       this._upsells = {
         card_layout: l2.upsells_card_layout || "horizontal",
@@ -3839,7 +3868,8 @@
         card_style: pb.card_style === "card" ? "card" : "plain",
         badge_image_url: pb.badge_image_url || "",
         badge_corner: pb.badge_corner === "top-right" ? "top-right" : "top-left",
-        reached_color: !!pb.reached_dot_color
+        reached_color: !!pb.reached_dot_color,
+        milestone_spacing: pb.milestone_spacing === "edges" ? "edges" : "even"
       };
       this._addBtnColored = !!(drawer.colors && drawer.colors.add_button_bg);
       var ty = drawer.typography || {};
@@ -4609,13 +4639,14 @@
       var bar = result.bar;
       var tiers = bar.tiers;
       var n2 = tiers.length;
-      var pct = Math.min(bar.progress_pct || 0, 100);
+      var spacing = this._progressBar.milestone_spacing;
+      var pct = mapProgress(bar.progress_pct, n2, spacing);
+      var positions = milestonePositions(n2, spacing);
       var trackPadRight = 30;
-      var usableWidth = 100;
       var pb = this._progressBar;
       var milestoneIconSvg = pb.milestone_icon_svg || "";
       var completedIconSvg = pb.completed_icon_svg || milestoneIconSvg;
-      var progressCls = "cartmax-progress" + (pb.card_style === "card" ? " cartmax-progress--card" : "") + (pb.reached_color ? " cartmax-progress--reached-color" : "");
+      var progressCls = "cartmax-progress" + (pb.card_style === "card" ? " cartmax-progress--card" : "") + (pb.reached_color ? " cartmax-progress--reached-color" : "") + (spacing === "edges" ? " cartmax-progress--edges" : "");
       return /* @__PURE__ */ k("div", { id: "cartmax-progress", className: progressCls }, pb.badge_image_url ? /* @__PURE__ */ k(
         "img",
         {
@@ -4625,7 +4656,7 @@
           "aria-hidden": "true"
         }
       ) : null, bar.top_message ? /* @__PURE__ */ k("div", { class: "cartmax-progress-msg-wrap" }, /* @__PURE__ */ k("div", { class: "cartmax-progress-msg" }, /* @__PURE__ */ k("span", null, bar.top_message))) : null, /* @__PURE__ */ k("div", { className: "cartmax-progress-track", style: { marginRight: trackPadRight + "px" } }, /* @__PURE__ */ k("div", { className: "cartmax-progress-fill", style: { width: pct + "%" } }, /* @__PURE__ */ k("span", { className: "visually-hidden" }, "Progress fill")), tiers.map((tier, i2) => {
-        var pos = (i2 + 1) / n2 * usableWidth;
+        var pos = positions[i2];
         var cls = "cartmax-milestone";
         var isActive = tier.state === "active";
         if (isActive) cls += " cartmax-milestone--active";
@@ -5591,7 +5622,7 @@
           }
         },
         /* @__PURE__ */ k("span", { class: "cartmax-coupon-link-icon" }, /* @__PURE__ */ k(IconTag, null)),
-        /* @__PURE__ */ k("span", { class: "cartmax-coupon-link-label" }, placeholder),
+        /* @__PURE__ */ k("span", { class: "cartmax-coupon-link-label" }, placeholder, this._text.coupon_link_subtitle ? /* @__PURE__ */ k("span", { class: "cartmax-coupon-link-subtitle" }, this._text.coupon_link_subtitle) : null),
         /* @__PURE__ */ k("span", { class: "cartmax-coupon-link-chevron" }, /* @__PURE__ */ k(IconChevronRight, null))
       ) : /* @__PURE__ */ k("div", { class: "cartmax-discount-input-row" }, /* @__PURE__ */ k(
         "input",
@@ -5961,7 +5992,7 @@
       var gapCfg = picked.strategies.gap_filler || {};
       var unlockTpl = gapCfg.cta_template || "Add to unlock [[reward]]";
       var imgPx = { small: 130, medium: 180, large: 230 }[u2.card_size] || 180;
-      return /* @__PURE__ */ k("div", { class: "cartmax-upsells " + layoutClass + (btnOverImage ? " cartmax-upsells--btn-over-image" : "") }, /* @__PURE__ */ k("div", { class: "cartmax-upsells-heading", style: { justifyContent: u2.heading_position === "center" ? "center" : "flex-start" } }, headingText), this.state.upsellError ? /* @__PURE__ */ k("div", { class: "cartmax-upsell-error" }, this.state.upsellError) : null, /* @__PURE__ */ k("div", { class: "cartmax-upsells-scroll" }, cards.map(function(p2, i2) {
+      return /* @__PURE__ */ k("div", { class: "cartmax-upsells " + layoutClass + (btnOverImage ? " cartmax-upsells--btn-over-image" : "") }, /* @__PURE__ */ k("div", { class: "cartmax-upsells-heading", style: { justifyContent: u2.heading_position === "center" ? "center" : "flex-start" } }, headingText), this._text.upsells_subheading ? /* @__PURE__ */ k("div", { class: "cartmax-upsells-subheading" + (u2.heading_position === "center" ? " cartmax-upsells-subheading--center" : "") }, this._text.upsells_subheading) : null, this.state.upsellError ? /* @__PURE__ */ k("div", { class: "cartmax-upsell-error" }, this.state.upsellError) : null, /* @__PURE__ */ k("div", { class: "cartmax-upsells-scroll" }, cards.map(function(p2, i2) {
         var avail = self._upsellAvail[p2.product_id];
         var vid = String(avail && avail.variantId || p2.variant_id).split("/").pop();
         var isAdding = self.state.updating["upsell_" + vid];
@@ -6110,7 +6141,7 @@
             }
           }
         },
-        /* @__PURE__ */ k("span", { class: "cartmax-checkout-label" }, this.state.checkoutWaiting ? this._t("checkout_preparing", "Preparing...") : this._text.checkout_button),
+        this._text.checkout_subtext && !this.state.checkoutWaiting ? /* @__PURE__ */ k("span", { class: "cartmax-checkout-text" }, /* @__PURE__ */ k("span", { class: "cartmax-checkout-label" }, this._text.checkout_button), /* @__PURE__ */ k("span", { class: "cartmax-checkout-subtext" }, this._text.checkout_subtext)) : /* @__PURE__ */ k("span", { class: "cartmax-checkout-label" }, this.state.checkoutWaiting ? this._t("checkout_preparing", "Preparing...") : this._text.checkout_button),
         this._layout.show_payment_icons && !this.state.checkoutWaiting ? /* @__PURE__ */ k("span", { class: "cartmax-payment-methods" }, /* @__PURE__ */ k(IconPaymentMethods, null)) : null
       )), trustMsg ? /* @__PURE__ */ k("div", { class: "cartmax-footer-trust" }, /* @__PURE__ */ k(IconLock, null), /* @__PURE__ */ k("span", null, trustMsg), /* @__PURE__ */ k(IconLock, null)) : null);
     }
@@ -6188,6 +6219,7 @@
       if (typo.item_font) overlayClass += " cartmax-item-font";
       if (this._layout.checkout_full_width) overlayClass += " cartmax-checkout-full";
       if (this._layout.image_ratio === "portrait") overlayClass += " cartmax-img-portrait";
+      if (this._layout.line_item_style === "card") overlayClass += " cartmax-line-cards";
       var sec = this._sections;
       var countStyle = this._layout.header_count_style;
       var bodySections = {

@@ -320,6 +320,9 @@ export function applyDrawerSettings(settings) {
     setOrClear(s, '--cartmax-pb-card-border', pb.card_border);
     setOrClear(s, '--cartmax-pb-fill', pb.fill_color);
     setOrClear(s, '--cartmax-pb-reached', pb.reached_dot_color);
+    setOrClear(s, '--cartmax-pb-track', pb.track_color);
+    setOrClear(s, '--cartmax-pb-locked', pb.locked_dot_color);
+    setOrClear(s, '--cartmax-pb-label', pb.label_color);
   }
 
   // The newer optional colours are cleared when emptied, so a merchant can go
@@ -331,6 +334,15 @@ export function applyDrawerSettings(settings) {
     setOrClear(s, '--cartmax-danger', c.danger);
     setOrClear(s, '--cartmax-muted', c.muted);
     setOrClear(s, '--cartmax-footer-bg', c.footer_bg);
+    setOrClear(s, '--cartmax-upsells-bg', c.upsells_bg);
+    setOrClear(s, '--cartmax-coupons-bg', c.coupons_bg);
+    setOrClear(s, '--cartmax-gifts-bg', c.gifts_bg);
+    // Elements that used fixed greys/black follow the brand colours once the
+    // merchant changes them from the built-in defaults (unchanged stores keep
+    // the exact look they always had).
+    setOrClear(s, '--cartmax-primary-hover', brandColor(c.primary, '#1a1a1a') ? 'color-mix(in srgb, ' + c.primary + ' 85%, #000000)' : '');
+    setOrClear(s, '--cartmax-ink', brandColor(c.text, '#1a1a1a') ? c.text : '');
+    setOrClear(s, '--cartmax-line', brandColor(c.border, '#f0f0f0') ? c.border : '');
   }
   if (l) {
     setOrClear(s, '--cartmax-pad-x-desktop', Number(l.content_padding) > 0 ? Number(l.content_padding) + 'px' : '');
@@ -346,6 +358,11 @@ export function applyDrawerSettings(settings) {
     setOrClear(s, '--cartmax-heading-spacing', Number(t.heading_letter_spacing) > 0 ? Number(t.heading_letter_spacing) + 'px' : '');
     setOrClear(s, '--cartmax-item-font', t.item_font ? '"' + String(t.item_font).replace(/["\\]/g, '') + '", sans-serif' : '');
   }
+}
+
+// True when a colour setting holds something other than its built-in default.
+function brandColor(value, builtIn) {
+  return !!value && String(value).trim().toLowerCase() !== builtIn;
 }
 
 function setOrClear(style, name, value) {
@@ -370,6 +387,29 @@ export function normalizeSectionOrder(order) {
     if (out.indexOf(key) === -1) out.push(key);
   });
   return out;
+}
+
+// Milestone positions (percent of the track) and the fill to match.
+// The bar's progress_pct is computed for 'even' spacing: milestone i sits at
+// (i + 1) / n and each segment is 100 / n wide. 'edges' puts the first
+// milestone at 0 and the last at 100, so the fill is remapped segment by
+// segment; progress before the first milestone has no room and shows as 0.
+export function milestonePositions(n, spacing) {
+  var out = [];
+  for (var i = 0; i < n; i++) {
+    out.push(spacing === 'edges' && n > 1 ? (i / (n - 1)) * 100 : ((i + 1) / n) * 100);
+  }
+  return out;
+}
+
+export function mapProgress(pct, n, spacing) {
+  var p = Math.max(0, Math.min(Number(pct) || 0, 100));
+  if (spacing !== 'edges' || n < 2) return p;
+  var seg = 100 / n;
+  if (p <= seg) return 0;
+  var k = Math.min(Math.floor((p - seg) / seg), n - 2); // segment between milestone k and k + 1
+  var within = (p - seg - k * seg) / seg;
+  return Math.round(((k + within) / (n - 1)) * 10000) / 100;
 }
 
 // Fill {name} placeholders. Unknown placeholders are left as they are.

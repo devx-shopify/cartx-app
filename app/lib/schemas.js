@@ -273,6 +273,9 @@ export const DrawerConfigSchema = z.object({
     danger: z.string().default(''), // "Add ₹X more", coupon errors, shipping value
     muted: z.string().default(''), // struck-through prices, price breakup labels
     footer_bg: z.string().default(''), // checkout bar
+    upsells_bg: z.string().default(''), // recommendations block
+    coupons_bg: z.string().default(''), // coupon block (today: accent tint)
+    gifts_bg: z.string().default(''), // claim gift / offer card block (today: secondary accent tint)
   }).default({}),
   shape: z.object({
     border_radius: z.enum(['none', 'small', 'medium', 'large', 'pill']).default('medium'),
@@ -343,6 +346,9 @@ export const DrawerConfigSchema = z.object({
     pb_shipping_value: z.string().default('Calculated at checkout'),
     pb_total: z.string().default('Total Amount'),
     shipping_note: z.string().default(''),
+    coupon_link_subtitle: z.string().default(''), // second line on the "Apply Coupon ›" row
+    upsells_subheading: z.string().default(''), // line under the upsell heading
+    checkout_subtext: z.string().default(''), // small line inside the checkout button
   }).default({}),
   layout: z.object({
     drawer_width: z.number().min(320).max(600).default(420),
@@ -385,6 +391,7 @@ export const DrawerConfigSchema = z.object({
     content_padding_mobile: z.number().min(0).max(48).default(0),
     checkout_full_width: z.boolean().default(false),
     image_ratio: z.enum(['square', 'portrait']).default('square'),
+    line_item_style: z.enum(['divided', 'card']).default('divided'),
   }).default({}),
   sections: z.object({
     show_coupons: z.boolean().default(true),
@@ -437,6 +444,11 @@ export const DrawerConfigSchema = z.object({
     // config is inlined on every storefront page.
     badge_image_url: z.string().default(''),
     badge_corner: z.enum(['top-left', 'top-right']).default('top-left'),
+    track_color: z.string().default(''),
+    locked_dot_color: z.string().default(''),
+    label_color: z.string().default(''),
+    // 'even': milestones at 1/n, 2/n … 100% (today). 'edges': first at the start, last at the end.
+    milestone_spacing: z.enum(['even', 'edges']).default('even'),
   }).default({}),
 }).default({})
 

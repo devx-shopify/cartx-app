@@ -762,6 +762,9 @@ function DesignTab({ s, update }) {
             <OptionalColorField label="Warning (Add ₹X more, errors)" value={s.colors.danger} fallback="#dc2626" onChange={(v) => update("colors.danger", v)} />
             <OptionalColorField label="Muted (struck prices, labels)" value={s.colors.muted} fallback="#80828d" onChange={(v) => update("colors.muted", v)} />
             <OptionalColorField label="Checkout bar background" value={s.colors.footer_bg} fallback={s.colors.background} onChange={(v) => update("colors.footer_bg", v)} />
+            <OptionalColorField label="Upsells block background" value={s.colors.upsells_bg} fallback={s.colors.background} onChange={(v) => update("colors.upsells_bg", v)} />
+            <OptionalColorField label="Coupons block background" value={s.colors.coupons_bg} fallback={s.colors.background} onChange={(v) => update("colors.coupons_bg", v)} />
+            <OptionalColorField label="Free gift block background" value={s.colors.gifts_bg} fallback={s.colors.background} onChange={(v) => update("colors.gifts_bg", v)} />
           </div>
 
 
@@ -959,6 +962,15 @@ function DesignTab({ s, update }) {
             onChange={(v) => update("layout.image_style", v)}
           />
           <SegmentedControl
+            label="Item style"
+            options={[
+              { value: "divided", label: "Lines" },
+              { value: "card", label: "Cards" },
+            ]}
+            value={s.layout.line_item_style || "divided"}
+            onChange={(v) => update("layout.line_item_style", v)}
+          />
+          <SegmentedControl
             label="Image shape"
             options={[
               { value: "square", label: "Square" },
@@ -1137,6 +1149,7 @@ function ContentTab({ s, update }) {
             ["line_discount_format", "Discount badge", "{pct}% off", "{pct} is the percentage. Also used on upsell cards."],
             ["out_of_stock", "Out of stock", "Out of stock", "Variant list and gift errors."],
             ["checkout_preparing", "Checkout button while waiting", "Preparing..."],
+            ["checkout_subtext", "Small line in the checkout button", "", "e.g. Extra 5% OFF on UPI"],
           ]} />
           <s-divider />
           <FieldLabel>Coupons</FieldLabel>
@@ -1152,11 +1165,13 @@ function ContentTab({ s, update }) {
             ["coupons_panel_title", "Offers panel title", "Offers & Coupons"],
             ["coupons_panel_label", "Offers panel list heading", "Available Coupons"],
             ["coupons_panel_placeholder", "Offers panel code field", "Enter Coupon Code"],
+            ["coupon_link_subtitle", "Second line on the coupon row", "", 'Shown under "Apply Coupon" when the code entry is one row.'],
           ]} />
           <s-divider />
           <FieldLabel>Upsells</FieldLabel>
           <TextFields s={s} update={update} fields={[
             ["upsells_empty_heading", "Heading on an empty cart", "Same as the upsell heading"],
+            ["upsells_subheading", "Line under the heading", "", "e.g. Order now and get it delivered by tomorrow"],
             ["upsell_sold_out", "Sold out", "Sold out"],
             ["upsell_adding", "While adding", "Adding..."],
           ]} />
@@ -1407,7 +1422,19 @@ function FeaturesTab({ s, update, onTestConfetti }) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             <OptionalColorField label="Progress fill" value={pb.fill_color} fallback={s.colors.accent} onChange={(v) => update("progress_bar.fill_color", v)} />
             <OptionalColorField label="Reached milestone" value={pb.reached_dot_color} fallback={s.colors.primary} onChange={(v) => update("progress_bar.reached_dot_color", v)} />
+            <OptionalColorField label="Track" value={pb.track_color} fallback="#f1f3f5" onChange={(v) => update("progress_bar.track_color", v)} />
+            <OptionalColorField label="Milestone not reached" value={pb.locked_dot_color} fallback="#d1d5db" onChange={(v) => update("progress_bar.locked_dot_color", v)} />
+            <OptionalColorField label="Milestone labels" value={pb.label_color} fallback="#6b7280" onChange={(v) => update("progress_bar.label_color", v)} />
           </div>
+          <SegmentedControl
+            label="Milestone spacing"
+            options={[
+              { value: "even", label: "Even" },
+              { value: "edges", label: "Edge to edge" },
+            ]}
+            value={pb.milestone_spacing || "even"}
+            onChange={(v) => update("progress_bar.milestone_spacing", v)}
+          />
           <s-text-field
             label="Corner badge image URL"
             value={pb.badge_image_url || ""}

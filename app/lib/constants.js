@@ -69,6 +69,9 @@ export const DEFAULT_CONFIG = {
       danger: '',
       muted: '',
       footer_bg: '',
+      upsells_bg: '',
+      coupons_bg: '',
+      gifts_bg: '',
     },
     shape: {
       border_radius: 'medium',
@@ -135,6 +138,9 @@ export const DEFAULT_CONFIG = {
       pb_shipping_value: 'Calculated at checkout',
       pb_total: 'Total Amount',
       shipping_note: '',
+      coupon_link_subtitle: '',
+      upsells_subheading: '',
+      checkout_subtext: '',
     },
     layout: {
       drawer_width: 420,
@@ -165,6 +171,7 @@ export const DEFAULT_CONFIG = {
       content_padding_mobile: 0,
       checkout_full_width: false,
       image_ratio: 'square',
+      line_item_style: 'divided',
     },
     sections: {
       show_coupons: true,
@@ -212,6 +219,10 @@ export const DEFAULT_CONFIG = {
       reached_dot_color: '',
       badge_image_url: '',
       badge_corner: 'top-left',
+      track_color: '',
+      locked_dot_color: '',
+      label_color: '',
+      milestone_spacing: 'even',
     },
   },
 }
