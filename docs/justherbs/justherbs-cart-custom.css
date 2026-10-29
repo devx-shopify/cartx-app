@@ -1,0 +1,531 @@
+/* Just Herbs cart drawer — cartx Custom CSS
+   Source design: Figma "Just Herbs" (section "Cart", node 19:19924), mobile.
+   Colours, block backgrounds, item cards, the coupon row, sublines, labels
+   and milestone spacing come from Customize Cart settings
+   (justherbs-cart-settings.json). This file holds what settings don't cover:
+   the type scale, the milestone band, button shapes, the ticket-shaped
+   applied coupon and the gift sticker.
+   Embedded in justherbs-cart-settings.json (advanced.custom_css). Icons are
+   written as GIFT_BADGE / COUPON_TICKET / DELIVERY_TRUCK here; the JSON has
+   them embedded. */
+
+#cartmax-root .cartmax-drawer {
+  --jh-ink: #1A1A1A;
+  --jh-green: #358C58;
+  --jh-green-dark: #084121;
+  --jh-mint: #EBF3EE;
+  --jh-pink: #F9105E;
+  --jh-line: rgba(0, 19, 37, 0.08);
+}
+
+/* Header: "Cart" + red count badge */
+#cartmax-root .cartmax-header {
+  min-height: 60px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  border-bottom: 0;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.059);
+  position: relative;
+  z-index: 1;
+}
+#cartmax-root .cartmax-title {
+  gap: 4px;
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 24px;
+}
+#cartmax-root .cartmax-header-count {
+  width: 20px;
+  height: 20px;
+  background: #D92727;
+  color: #F1F1F1;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 14px;
+}
+#cartmax-root .cartmax-close {
+  background: none;
+  color: var(--jh-ink);
+}
+
+/* Milestone band (track, label colours and spacing: settings) */
+#cartmax-root .cartmax-progress {
+  padding-top: 6px;
+  padding-bottom: 4px;
+  border-bottom: 0;
+  background: var(--jh-mint);
+}
+#cartmax-root .cartmax-progress-msg {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #1C1B17;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 19px;
+  letter-spacing: 0;
+}
+#cartmax-root .cartmax-progress-track {
+  height: 10px;
+  margin-top: 30px;
+  margin-bottom: 52px;
+  border: 0.5px solid #8F8F8F;
+  border-radius: 10px;
+}
+#cartmax-root .cartmax-progress-fill { border-radius: 10px; }
+#cartmax-root .cartmax-milestone .cartmax-milestone-dot {
+  width: 34px;
+  height: 40px;
+  margin-top: -18px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+#cartmax-root .cartmax-milestone-label {
+  top: 22px;
+  max-width: 90px;
+  letter-spacing: 0;
+}
+/* The next milestone's label uses the primary colour; Figma keeps all labels dark */
+#cartmax-root .cartmax-milestone--next .cartmax-milestone-label { color: #1C1B17; }
+#cartmax-root .cartmax-milestone .cartmax-milestone-label-main {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 10px;
+}
+#cartmax-root .cartmax-milestone .cartmax-milestone-sub-label {
+  margin-top: 2px;
+  color: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 13px;
+  letter-spacing: 0;
+}
+
+/* Cart items (cards: settings) */
+#cartmax-root .cartmax-line-item {
+  gap: 12px;
+  padding: 10px;
+  border-color: var(--jh-line);
+  border-radius: 8px;
+}
+#cartmax-root .cartmax-line-image {
+  width: 60px;
+  height: 60px;
+  border: 1px solid #909090;
+  border-radius: 4px;
+}
+#cartmax-root .cartmax-line-details { gap: 4px; }
+#cartmax-root .cartmax-line-title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 21px;
+}
+#cartmax-root .cartmax-line-price {
+  gap: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 16px;
+}
+#cartmax-root .cartmax-line-price-original {
+  font-size: 12px;
+  font-weight: 400;
+}
+#cartmax-root .cartmax-line-savings-badge {
+  color: #CC3434;
+  font-size: 11px;
+}
+#cartmax-root .cartmax-variant-pill {
+  padding: 4px 8px;
+  border: 1px solid var(--jh-line);
+  border-radius: 8px;
+  color: #666666;
+  font-size: 12px;
+  line-height: 18px;
+}
+#cartmax-root .cartmax-qty-controls {
+  height: 32px;
+  border: 0;
+}
+#cartmax-root .cartmax-qty-btn {
+  width: 32px;
+  height: 32px;
+  color: var(--jh-ink);
+}
+#cartmax-root .cartmax-qty-value {
+  border: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 32px;
+}
+#cartmax-root .cartmax-line-discount-tag {
+  border-color: rgba(40, 110, 68, 0.2);
+  background: var(--jh-mint);
+  color: var(--jh-green-dark);
+}
+
+/* Free gift line: mint card, gift sticker, "Free Gift" (text: settings) */
+#cartmax-root .cartmax-line-item.cartmax-line-freebie {
+  overflow: visible;
+  content-visibility: visible;
+  border-color: rgba(40, 110, 68, 0.12);
+  background: var(--jh-mint);
+}
+#cartmax-root .cartmax-line-item.cartmax-line-freebie::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: -10px;
+  width: 33px;
+  height: 33px;
+  background: url("GIFT_BADGE") center / contain no-repeat;
+  pointer-events: none;
+}
+#cartmax-root .cartmax-line-freebie .cartmax-line-image {
+  width: 46px;
+  height: 46px;
+}
+#cartmax-root .cartmax-line-freebie .cartmax-gift-badge {
+  padding: 0;
+  background: none;
+  color: #2D784B;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 16px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Coupons: "Coupons / Apply now and save extra! ›" row (text: settings) */
+#cartmax-root .cartmax-coupons { padding: 12px 16px 0; }
+#cartmax-root .cartmax-discount-block {
+  padding: 0;
+  border: 0;
+}
+#cartmax-root .cartmax-coupon-link {
+  min-height: 57px;
+  gap: 12px;
+  padding: 8px;
+  border-color: var(--jh-line);
+  border-radius: 8px;
+}
+#cartmax-root .cartmax-coupon-link-icon {
+  width: 24px;
+  height: 24px;
+  background: url("COUPON_TICKET") center / 24px no-repeat;
+}
+#cartmax-root .cartmax-coupon-link-icon svg { display: none; }
+#cartmax-root .cartmax-coupon-link-label {
+  color: var(--jh-green);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 21px;
+}
+#cartmax-root .cartmax-coupons .cartmax-discount-cards { display: none; }
+
+/* Applied coupon: ticket card with notches */
+#cartmax-root .cartmax-applied-cards { gap: 2px; margin-top: 8px; }
+#cartmax-root .cartmax-discount-card.cartmax-discount-card--applied {
+  position: relative;
+  height: auto;
+  min-height: 52px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #F8F8EE 0%, #AAD9B2 100%);
+}
+#cartmax-root .cartmax-discount-card--applied::before,
+#cartmax-root .cartmax-discount-card--applied::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  margin-top: -10px;
+  border-radius: 50%;
+  background: #FFFFFF;
+}
+#cartmax-root .cartmax-discount-card--applied::before { left: -10px; }
+#cartmax-root .cartmax-discount-card--applied::after { right: -10px; }
+#cartmax-root .cartmax-discount-card--applied .cartmax-discount-card-accent { display: none; }
+#cartmax-root .cartmax-discount-card--applied .cartmax-discount-card-info {
+  padding: 0;
+  background: none;
+}
+#cartmax-root .cartmax-discount-card-btn.cartmax-discount-card-btn--remove {
+  color: var(--jh-green-dark);
+  font-size: 14px;
+  text-transform: none;
+}
+#cartmax-root .cartmax-applied-saved {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 20px;
+}
+
+/* Coupon cards (Offers & Coupons view) */
+#cartmax-root .cartmax-discount-card-code,
+#cartmax-root .cartmax-offers-card-code {
+  color: var(--jh-ink);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+#cartmax-root .cartmax-discount-card-savings,
+#cartmax-root .cartmax-offers-card-savings {
+  color: #1A4D00;
+  font-size: 11px;
+  line-height: 16px;
+}
+#cartmax-root .cartmax-offers-card {
+  height: auto;
+  min-height: 56px;
+  gap: 4px;
+  padding: 8px 12px;
+  border: 1px solid #9F9FA9;
+  border-radius: 6px;
+}
+#cartmax-root .cartmax-offers-card-accent {
+  width: 44px;
+  height: auto;
+  padding: 0;
+  background: none;
+}
+#cartmax-root .cartmax-offers-card-accent span {
+  color: var(--jh-green-dark);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 16px;
+  letter-spacing: 0;
+  text-align: center;
+  white-space: normal;
+  writing-mode: horizontal-tb;
+  transform: none;
+}
+#cartmax-root .cartmax-offers-card--locked .cartmax-offers-card-accent span { color: #8E8E8E; }
+#cartmax-root .cartmax-offers-card-info {
+  align-self: stretch;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 8px;
+  border-radius: 3px;
+  background: #FAFAFA;
+}
+#cartmax-root .cartmax-offers-card-locked-msg {
+  font-size: 11px;
+  line-height: 14px;
+}
+
+/* Green buttons: ADD, Apply (8/3/8/3 corners, hard shadow) */
+#cartmax-root .cartmax-offers-card-btn,
+#cartmax-root .cartmax-upsell-add,
+#cartmax-root .cartmax-upsell-add:hover:not(:disabled) {
+  border: 1px solid var(--jh-green-dark);
+  border-radius: 8px 3px 8px 3px;
+  background: var(--jh-green);
+  box-shadow: 1px 1px 0 var(--jh-green-dark);
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: none;
+}
+#cartmax-root .cartmax-offers-card-btn {
+  width: 67px;
+  height: 40px;
+  margin: 0;
+}
+
+/* Offers & Coupons view */
+#cartmax-root .cartmax-offers-panel-header {
+  position: relative;
+  justify-content: center;
+  min-height: 60px;
+  border-bottom: 0;
+}
+#cartmax-root .cartmax-offers-back {
+  position: absolute;
+  left: 24px;
+  background: none;
+  color: #18181B;
+}
+#cartmax-root .cartmax-offers-title {
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 24px;
+}
+#cartmax-root .cartmax-offers-body { gap: 12px; padding-top: 12px; }
+#cartmax-root .cartmax-offers-label {
+  color: #18181B;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+#cartmax-root .cartmax-offers-input-row {
+  gap: 16px;
+  padding: 8px 8px 8px 20px;
+  border-color: #D4D4D8;
+}
+#cartmax-root .cartmax-offers-input-btn {
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 8px 3px 8px 3px;
+  background: none;
+  color: var(--jh-green-dark);
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: none;
+}
+
+/* Recommendations: "Special price" block (background, sublines: settings) */
+#cartmax-root .cartmax-upsells {
+  margin: 12px 16px;
+  padding: 8px 12px 12px;
+  border: 1px solid rgba(40, 110, 68, 0.08);
+  border-radius: 12px;
+}
+#cartmax-root .cartmax-upsells-heading {
+  margin-bottom: 4px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 21px;
+}
+#cartmax-root .cartmax-upsells-subheading {
+  width: fit-content;
+  margin: 0 auto 12px;
+  padding-left: 22px;
+  background: url("DELIVERY_TRUCK") left center / 16px no-repeat;
+  color: #555555;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+#cartmax-root .cartmax-upsells-scroll {
+  gap: 8px;
+  margin-left: -12px;
+  margin-right: -12px;
+  padding-left: 12px;
+  padding-right: 12px;
+  scroll-padding-left: 12px;
+}
+#cartmax-root .cartmax-upsell-card {
+  position: relative;
+  width: 282px;
+  gap: 10px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+}
+#cartmax-root .cartmax-upsell-img,
+#cartmax-root .cartmax-upsell-img-placeholder {
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+}
+#cartmax-root .cartmax-upsell-info {
+  gap: 3px;
+  padding-right: 62px;
+}
+#cartmax-root .cartmax-upsell-title {
+  color: #1B1B1B;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 15px;
+}
+#cartmax-root .cartmax-upsell-price { gap: 4px; }
+#cartmax-root .cartmax-upsell-sale {
+  padding: 2px 6px;
+  border: 1px solid #FFFFFF;
+  border-radius: 50px;
+  background: var(--jh-pink);
+  box-shadow: 1px 1px 0 var(--jh-pink);
+  color: #F1F1F1;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 14px;
+}
+#cartmax-root .cartmax-upsell-compare { font-size: 11px; }
+#cartmax-root .cartmax-upsell-discount {
+  color: #CC3434;
+  font-size: 11px;
+  font-weight: 400;
+}
+#cartmax-root .cartmax-upsell-add,
+#cartmax-root .cartmax-upsell-add:hover:not(:disabled) {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  width: 54px;
+  height: 34px;
+  margin: -17px 0 0;
+  padding: 0;
+}
+
+/* Savings strip */
+#cartmax-root .cartmax-footer { box-shadow: none; }
+#cartmax-root .cartmax-footer-savings {
+  gap: 4px;
+  padding: 2px 16px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 20px;
+  box-shadow: 8px 0 10px rgba(0, 0, 0, 0.1);
+}
+#cartmax-root .cartmax-footer-savings-amount { font-size: 13px; font-weight: 600; }
+
+/* Checkout bar (full width, subline, colours: settings) */
+#cartmax-root .cartmax-footer-checkout { padding-top: 8px; padding-bottom: 16px; }
+#cartmax-root .cartmax-footer-price { gap: 0; }
+#cartmax-root .cartmax-footer-price-amount {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 30px;
+}
+#cartmax-root .cartmax-price-breakup-link {
+  color: var(--jh-ink);
+  font-size: 12px;
+  line-height: 18px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+#cartmax-root .cartmax-checkout-btn,
+#cartmax-root .cartmax-checkout-btn:hover {
+  justify-content: space-between;
+  height: 48px;
+  padding: 7px 20px;
+  border-radius: 6px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+#cartmax-root .cartmax-checkout-label {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Price breakup */
+#cartmax-root .cartmax-pb-backdrop { background: rgba(0, 0, 0, 0.25); }
+#cartmax-root .cartmax-price-breakup-header {
+  min-height: 56px;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 26px;
+}
+#cartmax-root .cartmax-price-breakup-close { background: none; }
+#cartmax-root .cartmax-pb-label { font-weight: 500; line-height: 20px; }
+#cartmax-root .cartmax-pb-shipping-note {
+  padding: 16px;
+  color: #52525C;
+  font-size: 14px;
+  line-height: 20px;
+}
+#cartmax-root .cartmax-price-breakup-total {
+  border: 1px solid #E4E4E7;
+  font-weight: 700;
+}

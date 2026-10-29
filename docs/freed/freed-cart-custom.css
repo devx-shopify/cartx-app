@@ -1,59 +1,40 @@
 /* FREED cart drawer — cartx Custom CSS
    Source design: Figma "FREED / CartX" (node 1:4322).
-   This file is embedded in freed-cart-settings.json (advanced.custom_css).
-   Edit here, then rebuild the JSON, or paste into Customize Cart → Custom CSS. */
+   Colours, side padding, header, milestone card, add buttons, gift line and
+   checkout bar come from Customize Cart settings (freed-cart-settings.json).
+   This file holds what settings don't cover: FREED's type scale, spacing
+   between blocks, image sizes, coupon badge shape and the artwork. */
 
 #cartmax-root .cartmax-drawer {
   --fr-ink: #18181B;
   --fr-muted: #52525C;
   --fr-lime: #CFF665;
   --fr-pink: #F238A7;
-  --fr-green: #016630;
   --fr-line: #D4D4D8;
-  --fr-pad: 32px;
   color: var(--fr-ink);
-}
-
-@media (max-width: 768px) {
-  #cartmax-root .cartmax-drawer { --fr-pad: 16px; }
 }
 
 /* Announcement bar */
 #cartmax-root .cartmax-overlay .cartmax-announcement {
-  background: var(--fr-ink);
-  color: #FFFFFF;
   padding: 8px 10px;
   font: 400 12px/16px "Roboto", sans-serif;
   letter-spacing: 2px;
   text-transform: uppercase;
 }
 
-/* Header: centred "CART (2)", close on the right */
+/* Header */
 #cartmax-root .cartmax-header {
-  position: relative;
-  justify-content: center;
-  padding: 24px var(--fr-pad) 12px;
+  padding-top: 24px;
+  padding-bottom: 12px;
   border-bottom: 0;
 }
 #cartmax-root .cartmax-title {
   gap: 4px;
-  font: 400 24px/32px "Anton", sans-serif;
+  font-size: 24px;
+  line-height: 32px;
   letter-spacing: 0.5px;
-  text-transform: uppercase;
 }
-#cartmax-root .cartmax-header-count {
-  width: auto;
-  height: auto;
-  border-radius: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-}
-#cartmax-root .cartmax-header-count::before { content: "("; }
-#cartmax-root .cartmax-header-count::after { content: ")"; }
 #cartmax-root .cartmax-close {
-  position: absolute;
-  right: calc(var(--fr-pad) - 6px);
   background: none;
   color: var(--fr-ink);
 }
@@ -61,19 +42,11 @@
   #cartmax-root .cartmax-title { font-size: 18px; }
 }
 
-/* Body order: progress, gift picker, line items, upsells, coupons */
-#cartmax-root .cartmax-body .cartmax-upsells { order: 1; }
-#cartmax-root .cartmax-body .cartmax-coupons { order: 2; }
-
-/* Milestone card */
+/* Milestone card (card, colours: settings) */
 #cartmax-root .cartmax-progress {
-  position: relative;
-  margin: 28px var(--fr-pad) 8px;
+  margin-top: 28px;
   padding: 20px 40px 4px 24px;
-  border: 1px solid var(--fr-lime);
-  border-bottom: 1px solid var(--fr-lime);
   border-radius: 12px;
-  background: linear-gradient(170.5deg, #FFFFFF 0%, var(--fr-lime) 100%);
 }
 #cartmax-root .cartmax-progress-msg-wrap { margin: 0 -40px 0 -24px; }
 #cartmax-root .cartmax-progress-msg {
@@ -82,32 +55,23 @@
   color: var(--fr-ink);
   font: 500 14px/20px "Montserrat", sans-serif;
   letter-spacing: 0;
-  text-align: center;
 }
 #cartmax-root .cartmax-progress-track {
   height: 2px;
   margin-top: 28px;
   margin-bottom: 64px;
-  background: #FBFBFB;
 }
-#cartmax-root .cartmax-progress-fill {
-  border-radius: 0;
-  background: linear-gradient(90deg, #F1F1F1 0%, var(--fr-pink) 35%);
-}
-#cartmax-root .cartmax-milestone .cartmax-milestone-dot,
-#cartmax-root .cartmax-milestone--custom .cartmax-milestone-dot {
+#cartmax-root .cartmax-progress-fill { border-radius: 0; }
+#cartmax-root .cartmax-milestone .cartmax-milestone-dot {
   position: relative;
   width: 32px;
   height: 32px;
   padding: 6px;
-  border: 1px solid #E4E4E7;
-  background: #FFFFFF;
   box-shadow: none;
 }
-#cartmax-root .cartmax-milestone--active .cartmax-milestone-dot,
-#cartmax-root .cartmax-milestone--active.cartmax-milestone--custom .cartmax-milestone-dot {
-  border-color: var(--fr-pink);
-  background: var(--fr-pink);
+#cartmax-root .cartmax-milestone:not(.cartmax-milestone--active) .cartmax-milestone-dot {
+  border: 1px solid #E4E4E7;
+  background: #FFFFFF;
 }
 #cartmax-root .cartmax-milestone--active .cartmax-milestone-dot::after {
   content: "";
@@ -135,7 +99,7 @@
   letter-spacing: 0;
 }
 
-/* "SPECIAL OFFER" sticker (embedded image, no upload needed) */
+/* "SPECIAL OFFER" sticker (embedded, so no Shopify Files upload is needed) */
 #cartmax-root .cartmax-progress::before {
   content: "";
   position: absolute;
@@ -148,23 +112,19 @@
   pointer-events: none;
 }
 
-/* "Pick one free gift" cards (offers with add mode = display) */
+/* "Pick one free gift" cards */
 #cartmax-root .cartmax-claims {
   margin: 0;
-  padding: 16px var(--fr-pad);
   border: 0;
-  border-radius: 0;
   background: none;
 }
 #cartmax-root .cartmax-claims-heading {
   margin-bottom: 16px;
-  font: 400 16px/24px "Anton", sans-serif;
-  letter-spacing: 2px;
+  font-size: 16px;
+  line-height: 24px;
   text-align: left;
-  text-transform: uppercase;
 }
 #cartmax-root .cartmax-claim-card {
-  width: 300px;
   gap: 16px;
   padding: 8px;
   border: 1px solid var(--fr-line);
@@ -176,21 +136,29 @@
   height: 72px;
   border-radius: 4px;
 }
+#cartmax-root .cartmax-claim-info {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+#cartmax-root .cartmax-claim-title,
+#cartmax-root .cartmax-claim-error { grid-column: 1 / -1; }
 #cartmax-root .cartmax-claim-title {
   color: var(--fr-ink);
-  font: 500 14px/20px "Roboto", sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
 }
+#cartmax-root .cartmax-claim-price { gap: 4px; font-size: 16px; line-height: 24px; }
+#cartmax-root .cartmax-claim-price-free { font-family: "Montserrat", sans-serif; }
 #cartmax-root .cartmax-claim-btn {
   padding: 8px 16px;
   border: 0;
   border-radius: 6px;
-  font: 400 14px/16px "Anton", sans-serif;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-}
-#cartmax-root .cartmax-claim-btn--add {
-  background: var(--fr-lime);
-  color: #000000;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 16px;
 }
 #cartmax-root .cartmax-claim-btn--remove {
   border: 1px solid var(--fr-line);
@@ -198,13 +166,14 @@
   color: var(--fr-muted);
 }
 
-/* Line items */
+/* Cart items */
 #cartmax-root .cartmax-line-item {
   align-items: center;
   gap: 16px;
-  padding: 12px var(--fr-pad);
-  border-bottom: 0;
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
+#cartmax-root .cartmax-line-item:not(.cartmax-line-gift--highlight) { border-bottom: 0; }
 #cartmax-root .cartmax-line-image {
   width: 82px;
   height: 90px;
@@ -213,24 +182,22 @@
 #cartmax-root .cartmax-line-details { gap: 4px; }
 #cartmax-root .cartmax-line-title {
   color: var(--fr-ink);
-  font: 500 16px/24px "Roboto", sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
 }
 #cartmax-root .cartmax-line-price {
   gap: 4px;
   color: var(--fr-ink);
-  font: 700 16px/24px "Roboto", sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 24px;
 }
-#cartmax-root .cartmax-line-price-original {
-  color: var(--fr-muted);
-  font-weight: 400;
-}
-#cartmax-root .cartmax-line-savings-badge {
-  color: var(--fr-green);
-  font: 700 16px/24px "Montserrat", sans-serif;
-}
-#cartmax-root .cartmax-line-savings-badge svg { display: none !important; }
-#cartmax-root .cartmax-line-remove {
-  color: var(--fr-muted);
+#cartmax-root .cartmax-line-price-original { font-weight: 400; }
+#cartmax-root .cartmax-line-savings-badge { font: 700 16px/24px "Montserrat", sans-serif; }
+#cartmax-root .cartmax-line-remove-text {
+  font: 400 12px/16px "Roboto", sans-serif;
+  letter-spacing: 2px;
 }
 #cartmax-root .cartmax-variant-pill {
   padding: 4px 8px;
@@ -249,6 +216,7 @@
   height: 32px;
   color: #000000;
 }
+#cartmax-root .cartmax-qty-btn:disabled { color: #9F9FA9; opacity: 1; }
 #cartmax-root .cartmax-qty-value {
   width: 32px;
   border: 0;
@@ -256,11 +224,9 @@
   font: 600 14px/32px "Montserrat", sans-serif;
 }
 
-/* Free gift line (gift added from the offer cards) */
+/* Free gift line (highlight: settings) */
 #cartmax-root .cartmax-line-item.cartmax-line-freebie {
-  margin: 8px var(--fr-pad);
   padding: 8px 56px 8px 8px;
-  border: 1px solid var(--fr-pink);
   border-radius: 8px;
   background: rgba(242, 56, 167, 0.1);
 }
@@ -277,25 +243,23 @@
 #cartmax-root .cartmax-line-freebie .cartmax-gift-badge {
   padding: 0;
   background: none;
-  color: var(--fr-green);
+  color: var(--cartmax-success);
   font: 700 16px/24px "Roboto", sans-serif;
 }
 
-/* Upsells ("You may also like") */
+/* "You may also like" */
 #cartmax-root .cartmax-upsells {
   margin-top: 16px;
-  padding: 24px var(--fr-pad) 16px;
+  padding-top: 24px;
   border-top: 1px solid var(--fr-line);
 }
 #cartmax-root .cartmax-upsells-heading {
   margin-bottom: 16px;
-  font: 400 16px/24px "Anton", sans-serif;
-  letter-spacing: 2px;
-  text-transform: uppercase;
+  font-size: 16px;
+  line-height: 24px;
 }
 #cartmax-root .cartmax-upsells-scroll { gap: 16px; }
 #cartmax-root .cartmax-upsell-card {
-  position: relative;
   width: 320px;
   gap: 16px;
   padding: 0 0 16px;
@@ -319,22 +283,20 @@
   gap: 4px;
   font: 700 16px/24px "Montserrat", sans-serif;
 }
-#cartmax-root .cartmax-upsell-sale { color: var(--fr-ink); font-weight: 700; }
-#cartmax-root .cartmax-upsell-compare { color: var(--fr-muted); font-weight: 400; }
-#cartmax-root .cartmax-upsell-add {
-  position: absolute;
+#cartmax-root .cartmax-upsell-sale { color: var(--fr-ink); }
+#cartmax-root .cartmax-upsell-compare { font-weight: 400; }
+#cartmax-root .cartmax-upsells--btn-over-image .cartmax-upsell-media .cartmax-upsell-add {
   left: 8px;
   top: 74px;
+  bottom: auto;
   width: 66px;
   height: 32px;
   padding: 0;
-  border: 0;
   border-radius: 6px;
-  background: var(--fr-lime);
-  color: #000000;
-  font: 400 14px/16px "Anton", sans-serif;
-  letter-spacing: 2px;
-  text-transform: uppercase;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 16px;
+  transform: none;
 }
 #cartmax-root .cartmax-upsell-add--soldout {
   background: #E4E4E7;
@@ -342,42 +304,28 @@
   letter-spacing: 0.5px;
 }
 
-/* Coupons in the cart body */
-#cartmax-root .cartmax-coupons { padding: 32px var(--fr-pad) 24px; }
+/* Coupons in the cart */
+#cartmax-root .cartmax-coupons { padding-top: 32px; padding-bottom: 24px; }
 #cartmax-root .cartmax-discount-block {
-  padding: 0;
+  padding-top: 0;
+  padding-bottom: 0;
   border: 0;
   background: none;
 }
-#cartmax-root .cartmax-discount-input-row {
-  height: 56px;
-  padding: 0 8px 0 16px;
+#cartmax-root .cartmax-coupon-link {
+  min-height: 56px;
+  padding: 16px;
   border: 1px solid var(--fr-ink);
-  border-radius: 6px;
-}
-#cartmax-root .cartmax-discount-input {
   color: var(--fr-ink);
   font: 600 16px/24px "Montserrat", sans-serif;
 }
-#cartmax-root .cartmax-discount-input::placeholder { color: var(--fr-ink); }
-#cartmax-root .cartmax-discount-divider { background: var(--fr-line); }
-#cartmax-root .cartmax-discount-viewall {
-  color: var(--fr-ink);
-  font: 400 14px/20px "Anton", sans-serif;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-}
-#cartmax-root .cartmax-discount-cards {
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 12px;
-  overflow: visible;
-}
+#cartmax-root .cartmax-coupon-link-chevron { color: var(--fr-ink); }
+#cartmax-root .cartmax-coupon-link-chevron svg { width: 24px !important; }
+#cartmax-root .cartmax-discount-cards { gap: 12px; margin-top: 12px; }
 
-/* Coupon cards: same look in the cart body and in the Offers & Coupons panel */
+/* Coupon cards: cart and Offers & Coupons panel */
 #cartmax-root .cartmax-discount-card,
 #cartmax-root .cartmax-offers-card {
-  width: 100%;
   height: 72px;
   gap: 4px;
   padding: 4px;
@@ -399,7 +347,8 @@
   position: absolute;
   inset: 8px;
   background: var(--fr-lime);
-  clip-path: polygon(50% 0%, 61% 15%, 79% 9%, 82% 27%, 100% 32%, 91% 50%, 100% 68%, 82% 73%, 79% 91%, 61% 85%, 50% 100%, 39% 85%, 21% 91%, 18% 73%, 0% 68%, 9% 50%, 0% 32%, 18% 27%, 21% 9%, 39% 15%);
+  /* FREED's starburst, exported from Figma (assets/icons/coupon-starburst.svg) */
+  clip-path: path("M5.54209 24L0 33.9418L10.9484 37.0508L14.0571 48L24.0019 42.4575L33.9429 48L37.0516 37.0508L48 33.9418L42.4579 24L48 14.0582L37.0516 10.9492L33.9429 0L24.0019 5.54253L14.0571 0L10.9484 10.9492L0 14.0582L5.54209 24Z");
 }
 #cartmax-root .cartmax-discount-card-accent span,
 #cartmax-root .cartmax-offers-card-accent span {
@@ -424,9 +373,8 @@
 #cartmax-root .cartmax-discount-card-code,
 #cartmax-root .cartmax-offers-card-code {
   color: var(--fr-ink);
-  font: 400 12px/18px "Anton", sans-serif;
-  letter-spacing: 2px;
-  text-transform: uppercase;
+  font-size: 12px;
+  line-height: 18px;
 }
 #cartmax-root .cartmax-discount-card-savings,
 #cartmax-root .cartmax-offers-card-savings {
@@ -442,56 +390,78 @@
   border: 0;
   background: none;
   color: #000000;
-  font: 400 14px/20px "Anton", sans-serif;
-  letter-spacing: 2px;
-  text-transform: uppercase;
+  font-size: 14px;
+  line-height: 20px;
 }
 
-/* Applied coupon chip: pink frame with the code and a remove button */
-#cartmax-root .cartmax-applied-chips { margin-top: 12px; }
-#cartmax-root .cartmax-applied-chip {
-  width: 100%;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border: 4px solid var(--fr-pink);
-  border-radius: 6px;
+/* Coupons the cart can't use yet */
+#cartmax-root .cartmax-discount-card--locked .cartmax-discount-card-accent,
+#cartmax-root .cartmax-offers-card--locked .cartmax-offers-card-accent { background: #E4E4E7; }
+#cartmax-root .cartmax-discount-card--locked .cartmax-discount-card-accent::before,
+#cartmax-root .cartmax-offers-card--locked .cartmax-offers-card-accent::before { background: #333333; }
+#cartmax-root .cartmax-discount-card--locked .cartmax-discount-card-accent span,
+#cartmax-root .cartmax-offers-card--locked .cartmax-offers-card-accent span { color: #8E8E8E; }
+
+/* Applied coupon card */
+#cartmax-root .cartmax-discount-card.cartmax-discount-card--applied {
+  border: 0;
+  background: var(--fr-pink);
+}
+#cartmax-root .cartmax-discount-card-btn.cartmax-discount-card-btn--remove {
+  margin: 0;
+  padding: 0 16px;
+  align-self: stretch;
+  border-radius: 0 3px 3px 0;
   background: #FAFAFA;
 }
-#cartmax-root .cartmax-applied-chip-code {
-  flex: 1;
-  color: var(--fr-ink);
-  font: 400 14px/20px "Anton", sans-serif;
-  letter-spacing: 2px;
-  text-transform: uppercase;
+#cartmax-root .cartmax-applied-saved {
+  margin-top: 8px;
+  font: 500 14px/20px "Montserrat", sans-serif;
 }
-#cartmax-root .cartmax-applied-chip-check { color: #008236; }
 
 /* Offers & Coupons panel */
 #cartmax-root .cartmax-offers-panel-header {
   justify-content: center;
   position: relative;
-  padding: 24px var(--fr-pad) 16px;
+  padding-top: 24px;
+  padding-bottom: 16px;
   border-bottom: 0;
 }
 #cartmax-root .cartmax-offers-back {
   position: absolute;
-  left: var(--fr-pad);
+  left: var(--cartmax-pad-x, 32px);
   background: none;
+  color: var(--fr-ink);
 }
 #cartmax-root .cartmax-offers-title {
-  font: 400 16px/24px "Anton", sans-serif;
+  font-size: 16px;
+  line-height: 24px;
   letter-spacing: 0.5px;
-  text-transform: uppercase;
 }
-#cartmax-root .cartmax-offers-body { gap: 12px; padding: 32px var(--fr-pad); }
+#cartmax-root .cartmax-offers-body { gap: 12px; padding-top: 32px; padding-bottom: 32px; }
 #cartmax-root .cartmax-offers-label {
   color: var(--fr-ink);
   font: 600 16px/24px "Montserrat", sans-serif;
   letter-spacing: 0;
   text-transform: none;
 }
+#cartmax-root .cartmax-offers-input-row {
+  gap: 16px;
+  padding: 8px 8px 8px 20px;
+  border-color: var(--fr-line);
+}
+#cartmax-root .cartmax-offers-input { font-size: 16px; line-height: 24px; }
+#cartmax-root .cartmax-offers-input::placeholder { color: var(--fr-ink); }
+#cartmax-root .cartmax-offers-input-btn {
+  padding: 10px 24px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  letter-spacing: 0.5px;
+}
 
-/* Footer: savings strip + lime checkout bar */
+/* Checkout bar (background, full-width button: settings) */
 #cartmax-root .cartmax-footer { box-shadow: none; }
 #cartmax-root .cartmax-footer-savings {
   gap: 4px;
@@ -499,13 +469,8 @@
   font: 600 14px/20px "Montserrat", sans-serif;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.16);
 }
-#cartmax-root .cartmax-footer-savings-icon { display: none; }
 #cartmax-root .cartmax-footer-savings-amount { font-weight: 600; }
-#cartmax-root .cartmax-footer-checkout {
-  gap: 32px;
-  padding: 20px var(--fr-pad);
-  background: var(--fr-lime);
-}
+#cartmax-root .cartmax-footer-checkout { gap: 32px; padding-top: 20px; padding-bottom: 20px; }
 #cartmax-root .cartmax-footer-price { gap: 4px; }
 #cartmax-root .cartmax-footer-price-amount {
   color: #1E1F24;
@@ -513,62 +478,49 @@
   letter-spacing: 0.5px;
 }
 #cartmax-root .cartmax-price-breakup-link {
-  padding: 0;
-  font-size: 0;
-  text-align: left;
-  text-decoration: none;
-}
-#cartmax-root .cartmax-price-breakup-link::after {
-  content: "View Price Breakup";
   color: #212127;
   font: 500 14px/20px "Montserrat", sans-serif;
   letter-spacing: 0;
   text-transform: none;
-  text-decoration: underline;
 }
 #cartmax-root .cartmax-checkout-btn,
 #cartmax-root .cartmax-checkout-btn:hover {
-  flex: 1;
   height: 56px;
   padding: 16px 12px;
   border-radius: 6px;
-  background: #000000;
-  color: #FFFFFF;
 }
 #cartmax-root .cartmax-checkout-label {
   font: 900 16px/24px "Montserrat", sans-serif;
   letter-spacing: 0.5px;
-  text-transform: uppercase;
 }
 @media (max-width: 768px) {
-  #cartmax-root .cartmax-footer-checkout { padding: 16px; }
   #cartmax-root .cartmax-footer-price-amount { font-size: 20px; line-height: 28px; }
-  #cartmax-root .cartmax-price-breakup-link::after { text-decoration: none; }
+  #cartmax-root .cartmax-price-breakup-link { text-decoration: none; }
   #cartmax-root .cartmax-checkout-label { font-size: 14px; line-height: 20px; }
 }
 
-/* Price breakup sheet */
+/* Price breakup */
 #cartmax-root .cartmax-pb-backdrop { background: rgba(0, 0, 0, 0.2); }
 #cartmax-root .cartmax-price-breakup-header {
-  padding: 16px var(--fr-pad);
   color: var(--fr-ink);
   font: 700 18px/26px "Montserrat", sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
 }
 #cartmax-root .cartmax-price-breakup-close { background: none; }
 #cartmax-root .cartmax-pb-divider { background: var(--fr-line); }
-#cartmax-root .cartmax-price-breakup-rows { padding: 24px var(--fr-pad); }
-#cartmax-root .cartmax-pb-label {
-  color: var(--fr-muted);
-  font: 500 14px/20px "Montserrat", sans-serif;
-}
+#cartmax-root .cartmax-pb-label { gap: 8px; font: 500 14px/20px "Montserrat", sans-serif; }
 #cartmax-root .cartmax-pb-amount {
   color: var(--fr-ink);
   font: 500 14px/20px "Montserrat", sans-serif;
 }
-#cartmax-root .cartmax-pb-amount.cartmax-pb-discount { color: #008236; }
-#cartmax-root .cartmax-pb-amount.cartmax-pb-shipping { color: #E20019; }
+#cartmax-root .cartmax-pb-info { color: #71717B; }
+#cartmax-root .cartmax-pb-shipping-note {
+  padding: 16px 20px;
+  color: var(--fr-muted);
+  font: 400 14px/20px "Montserrat", sans-serif;
+}
 #cartmax-root .cartmax-price-breakup-total {
-  padding: 20px var(--fr-pad);
   border: 1px solid #E4E4E7;
   color: var(--fr-ink);
   font: 700 16px/24px "Montserrat", sans-serif;
@@ -586,11 +538,4 @@
   font: 700 14px/20px "Montserrat", sans-serif;
   letter-spacing: 2px;
   text-transform: uppercase;
-}
-#cartmax-root .cartmax-empty-subtitle { display: none; }
-/* Empty cart shows "Recommended for you" instead of the cart heading */
-#cartmax-root .cartmax-body:has(.cartmax-empty) + .cartmax-upsells .cartmax-upsells-heading { font-size: 0; }
-#cartmax-root .cartmax-body:has(.cartmax-empty) + .cartmax-upsells .cartmax-upsells-heading::after {
-  content: "Recommended for you";
-  font-size: 16px;
 }

@@ -1,13 +1,14 @@
 # FREED cart drawer: cartx setup guide
 
-How to set up the FREED cart design (Figma "FREED / CartX") on FREED's store using cartx. Most of it is settings plus one import file, with no code changes. What the current app can't do yet is listed in `freed-cart-feasibility.md`.
+How to set up the FREED cart design (Figma "FREED / CartX") on FREED's store using cartx. It's settings plus one import file, with no code changes. The import uses the drawer design options released on 29 Oct 2026, so the store's cartx must be on that release. What cartx can't do yet is listed in `freed-cart-feasibility.md`.
 
 **Files in `docs/freed/`**
 
 | File | What it is |
 |---|---|
-| `freed-cart-settings.json` | Customize Cart import file: colours, fonts, text, layout, sections, announcement bar, progress bar icons, and the FREED Custom CSS |
+| `freed-cart-settings.json` | Customize Cart import file: colours, fonts, text, layout, coupon and milestone options, progress bar icons, and the FREED Custom CSS |
 | `freed-cart-custom.css` | The same Custom CSS as a separate file, for review and edits |
+| `assets/icons/coupon-starburst.svg`, `coupon-starburst-locked.svg` | Coupon badge starburst from Figma (its outline is already in the Custom CSS) |
 | `assets/special-offer-sticker.png` | "SPECIAL OFFER" sticker, full size, for reference only. A small copy is already embedded in the Custom CSS. |
 | `assets/milestones/gift-icon.svg` | Milestone icon, not yet reached (dark gift, from Figma) |
 | `assets/milestones/gift-icon-reached.svg` | Milestone icon, reached (white gift on the pink dot, from Figma) |
@@ -31,7 +32,7 @@ cartx saves its settings **per theme**, and the import replaces all drawer setti
 
 ## 2. Back up the current drawer settings
 
-In cartx → **Customize Cart → Backup & restore** → **Export**. Keep the downloaded `cartx-drawer-settings.json`. Importing that file restores the previous state.
+In cartx → **Customize Cart → Advanced → Backup & restore** → **Export settings**. Keep the downloaded `cartx-drawer-settings.json`. Importing that file restores the previous state.
 
 ## 3. Images
 
@@ -42,15 +43,15 @@ Nothing needs uploading to Shopify Files:
 
 ## 4. Prepare and import the settings file
 
-1. In cartx → **Customize Cart → Backup & restore** → **Import** → choose `freed-cart-settings.json`.
+1. In cartx → **Customize Cart → Advanced → Backup & restore** → **Import settings** → choose `freed-cart-settings.json`.
 2. The toast says "Settings imported — save to apply". Click **Save** in the save bar.
 3. Check the milestone icons:
-   - Open **Customize Cart → Progress bar**.
+   - Open **Customize Cart → Features → Progress bar**.
    - **Milestone icon** should show the dark gift, and **Completed milestone icon** the white gift. The import already sets both.
    - If either is empty, upload `assets/milestones/gift-icon.svg` and `assets/milestones/gift-icon-reached.svg`.
    - **Save**.
 4. Add the empty-cart illustration:
-   - Open **Customize Cart → Empty cart → Empty state icon**.
+   - Open **Customize Cart → Content → Empty cart → Empty state icon**.
    - Upload `assets/empty-cart.svg`.
    - **Save**.
 
@@ -58,16 +59,19 @@ Nothing needs uploading to Shopify Files:
 
 | Area | Value |
 |---|---|
-| Fonts | Montserrat (base), Anton (headings, buttons), Roboto (cart items), loaded from Google Fonts. This can only be set by import, because Customize Cart has no font URL field. |
-| Colours | Text `#18181B`, secondary text `#52525C`, borders `#D4D4D8`, accent pink `#F238A7`, secondary accent lime `#CFF665`, checkout `#000000`, savings strip `#333333` with white text |
-| Drawer | 560 px wide on desktop (the app maximum; the Figma frame is 600 px), full width on mobile, square images |
-| Text | Title "Cart" with item count "(2)", checkout "Check out", savings "You are saving {amount} on this order" (Figma says "on this product", but the amount is the whole cart's saving), gift heading "Pick one free gift", empty title "Your cart is empty" with no subtitle and no button, no trust message |
-| Announcement bar | "Free Shipping on All Orders ₹399 & Above" *(placeholder)*, static |
-| Progress bar | Thin track. Milestone icons from Figma: dark gift (not reached), white gift on pink (reached), blue tick badge |
-| Sections | Progress bar, claim gifts, offer cards, coupons, upsells on. Bottom ribbon off (not in the design). |
-| Upsells | Horizontal cards, heading "You may also like" on the left, button "Add", shown on the empty cart too |
-| Payment icons | On (GPay, PhonePe, Paytm, as in the design) |
-| Custom CSS | The FREED look: header, gradient milestone card with the "SPECIAL OFFER" sticker, cart items, gift line, recommendations, coupon cards, Offers & Coupons view, lime checkout bar, price breakup, empty state, mobile spacing |
+| Fonts | Google Fonts URL with Montserrat (base), Anton (heading font, uppercase, 2 px spacing) and Roboto (product font). Design → Typography. |
+| Colours | Text `#18181B`, secondary `#52525C`, borders `#D4D4D8`, pink `#F238A7`, lime `#CFF665` (ADD buttons, checkout bar), checkout `#000000`, savings strip `#333333`; success `#016630`, warning `#E20019`, muted `#52525C` |
+| Drawer | 600 px wide on desktop, 32 px side padding (16 px on mobile), full width on mobile |
+| Header | Centred "CART (2)" |
+| Cart items | Size pill above the name, REMOVE text link, quantity "01", discount "50%" without icon, pink highlighted gift line, gift prices on the gift cards |
+| Coupons | "Apply Coupon ›" row, list layout, code field in Offers & Coupons, coupons not yet reachable shown with "Add ₹X more", applied coupon as a card with "You saved ₹X" |
+| Upsells | "You may also like" (empty cart: "Recommended for you"), ADD over the image, discount %, shown on the empty cart; placed before the coupons |
+| Milestone card | Card style with a white-to-lime gradient and lime border, pink fill and reached dots, track `#FBFBFB`, FREED gift icons |
+| Text | Title "Cart", checkout "Check out", "View Price Breakup", savings "You are saving {amount} on this order", gift heading "Pick one free gift", shipping rules *(placeholder)*, empty title with no subtitle or button |
+| Announcement bar | "Free Shipping on All Orders ₹399 & Above" *(placeholder)*, black with white text |
+| Sections | Progress bar, claim gifts, offer cards, coupons, upsells on; bottom ribbon off |
+| Payment icons | On (GPay, PhonePe, Paytm); full-width checkout button on a lime bar |
+| Custom CSS | FREED's type scale and spacing, the "SPECIAL OFFER" sticker, blue tick on reached milestones, gift icon on the gift line, starburst coupon badges, card shapes, mobile sizes |
 
 ## 5. Set up the milestones (progress bar)
 
@@ -122,9 +126,9 @@ Go to **Promotions → Create → Offer**:
 | Quantity per variant | 1 |
 | Trigger | The cart rule that unlocks the pick *(client to confirm)* |
 
-Use an **Offer**, not a **Claim Gift**. The Claim Gift button always reads "Claim gift", and the text can't be changed today. The Offer card button reads "Add", as in Figma.
+Use an **Offer** with "Show offer card only". (A Claim Gift also works now: its button text is set to "Add" by the import.)
 
-The drawer shows these as the "Pick one free gift" cards. The chosen gift appears as a pink gift line with "FREE" and no quantity controls.
+The drawer shows these as the "Pick one free gift" cards with "~~₹999~~ Free". The price is stored when the offer is saved, so save the offer once after creating it. The chosen gift appears as a pink gift line with "FREE" and no quantity controls.
 
 ## 7. Coupons
 
@@ -137,7 +141,7 @@ Create the discount codes in Shopify first (**Discounts**). Then for each code, 
 | Savings text | You can save ₹130 on this order |
 | Min. cart total / quantity | As per the code's minimum |
 
-Coupons appear as cards under "Apply Coupon" in the cart and in the **Offers & Coupons** view (View All). The cart only shows coupons it already qualifies for. See the feasibility doc for the "Add ₹X more" version.
+The cart shows the "Apply Coupon ›" row and the coupon cards. Coupons the cart doesn't qualify for yet show greyed out with "Add ₹X more to apply this coupon", closest first. An applied code shows as a pink card with REMOVE and "You saved ₹X with this coupon". Tapping the row opens **Offers & Coupons**, which has the code field.
 
 ## 8. Upsells ("You may also like" / "Recommended for you")
 
@@ -155,10 +159,10 @@ Open the test theme preview and check each Figma screen at desktop width and on 
 |---|---|---|
 | 1 | Add one product | Drawer opens. "CART (1)", announcement bar, milestone card with sticker, cart item, "You may also like", coupons, lime checkout bar. |
 | 2 | Cross ₹999 | First milestone turns pink with a blue check, and confetti plays |
-| 3 | Gift picker | "Pick one free gift" cards. Add one: a pink gift line appears with FREE and no quantity buttons. |
-| 4 | Coupon | Tap Apply on a card: the pink applied chip shows. Remove clears it. |
-| 5 | View All | The Offers & Coupons view slides in. Back returns to the cart. |
-| 6 | View Price Breakup | Bottom sheet with Total MRP, Discount on MRP, Coupon Discount, Shipping Fee, Total |
+| 3 | Gift picker | "Pick one free gift" cards with "~~₹X~~ Free". Add one: a pink gift line appears with FREE and no quantity buttons. |
+| 4 | Coupon | Apply a code: pink card with REMOVE and "You saved ₹X with this coupon". Remove clears it. A coupon with a higher minimum shows "Add ₹X more". |
+| 5 | Apply Coupon › | The Offers & Coupons view slides in with the code field. Back returns to the cart. |
+| 6 | View Price Breakup | Bottom sheet with Total MRP, Discount on MRP, Coupon Discount, Shipping Fee with info icon and the shipping-rules box, Total |
 | 7 | Empty the cart | Cart illustration, "YOUR CART IS EMPTY", "Recommended for you" cards |
 | 8 | Checkout | Goes to checkout with discounts applied |
 | 9 | Live theme | The live store still shows the theme's own cart (cartx embed off) |

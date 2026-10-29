@@ -4,14 +4,18 @@ This plans the cartx changes the FREED design needs beyond settings and CSS: the
 - Its default keeps today's behaviour, so other merchants see no change until they switch it on.
 - FREED turns the options on through its settings file.
 
+**Status (29 Oct 2026): Phase A is released.** PR #37 (drawer design options) merged into `development` and released to `main` with PR #38; server deployed to Fly and the drawer with `shopify app deploy` on 29 Oct. Every setting is documented in `docs/drawer-settings.md`. Beyond this plan, the release also added: success / warning / muted colours, side padding, checkout bar colour and full-width button, portrait images, product font, block backgrounds, item cards, milestone track / label colours and edge-to-edge spacing, and sublines for the coupon row, upsell heading and checkout button. Phases B and C are still blocked on the client.
+
 **Phases**
 
-| Phase | Scope | Effort | Blocked on |
+| Phase | Scope | Effort | Status |
 |---|---|---|---|
-| A1 | FREED design features #1–#11, except #5 (dropped) | ~1.5–2 weeks | Client approval of which items to build |
-| A2 | Customization settings #12–#22: FREED needs these today through Custom CSS, and other stores would use them too | ~2–2.5 weeks | Nothing (our call) |
-| B | Judge.me stars on recommendations | M (2–4 days) | Client confirms Judge.me and turns on metafield sync |
-| C | Pincode / delivery date / COD check | M–L (1–2 weeks) | Client's logistics provider and API access |
+| A1 | FREED design features #1–#11, except #5 (dropped) | ~1.5–2 weeks | ✅ Released 29 Oct |
+| A2 | Customization settings #12–#22: FREED needs these today through Custom CSS, and other stores would use them too | ~2–2.5 weeks | ✅ Released 29 Oct |
+| B | Judge.me stars on recommendations | M (2–4 days) | Blocked: client confirms Judge.me and turns on metafield sync |
+| C | Pincode / delivery date / COD check | M–L (1–2 weeks) | Blocked: client's logistics provider and API access |
+
+**Known follow-up from the release:** the "Milestone labels" colour doesn't apply to the *next* milestone, which still uses the primary colour (Just Herbs works around it in CSS). Small fix for the next drawer release.
 
 **Decisions (27 Oct 2026)**
 - **Build everything in A1 and A2**, in one release. Each item is a general option that's off by default, so building it doesn't depend on client approval. The client's answers only set FREED's values.
