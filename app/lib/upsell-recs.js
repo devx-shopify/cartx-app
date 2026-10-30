@@ -6,6 +6,7 @@
 // =============================================================
 
 import { rankUpsells, computeGap, adjustedTotal } from './upsell-rank.js';
+import { isSellable } from './sellable.js';
 
 // "gid://shopify/Product/123" | 123 | "123" -> "123"
 export function numericId(id) {
@@ -93,7 +94,7 @@ export function pickRecommendations(input) {
     cards.push(toCard(snapshot, source, triggerId));
   }
   function takeDefaults() {
-    defaults.forEach(function (p) { take(p, 'default', null); });
+    defaults.forEach(function (p) { if (isSellable(p)) take(p, 'default', null); });
   }
 
   var limit = input.limit || settings.max_visible || 4;
@@ -109,7 +110,7 @@ export function pickRecommendations(input) {
     if (!recs || !recs.length) return;
     recs.slice(0, maxPerTrigger).forEach(function (recId) {
       var snap = catalog[numericId(recId)];
-      if (!snap || (snap.status && snap.status !== 'ACTIVE')) return; // draft / archived / deleted
+      if (!snap || !isSellable(snap)) return; // draft / archived / off the Online Store / deleted
       take(snap, 'rule', triggerId);
     });
   });

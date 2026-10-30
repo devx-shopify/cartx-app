@@ -6,7 +6,7 @@ import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLi
 import { isGraphqlCartEnabled, isStorefrontReady, fetchProductAvailability } from './storefront-cart';
 import { pickRecommendations, selectUpsells } from '../../lib/upsell-recs.js';
 import { initStore as gqlInitStore, subscribe as gqlSubscribe, getOptimisticCart as gqlGetCart, changeQuantity as gqlChangeQuantity, removeLine as gqlRemoveLine, addLine as gqlAddLine, applyDiscountCode as gqlApplyCoupon, removeDiscountCode as gqlRemoveCoupon, whenSettled as gqlWhenSettled } from './cart-store';
-import { isAjaxCartStoreEnabled, subscribe as ajaxSubscribe, getOptimisticCart as ajaxGetCart, init as ajaxInit, reconcileFromServer as ajaxReconcile, addLine as ajaxAddLine, changeQuantity as ajaxChangeQty, removeLine as ajaxRemoveLine, whenSettled as ajaxWhenSettled, cartHasDiscounts } from './ajax-cart-store';
+import { isAjaxCartStoreEnabled, subscribe as ajaxSubscribe, getOptimisticCart as ajaxGetCart, init as ajaxInit, reconcileFromServer as ajaxReconcile, addLine as ajaxAddLine, changeQuantity as ajaxChangeQty, removeLine as ajaxRemoveLine, whenSettled as ajaxWhenSettled, onAddRejected as ajaxOnAddRejected, cartHasDiscounts } from './ajax-cart-store';
 import { tracker } from './tracker';
 import { ANALYTICS_EVENTS } from './analytics-events';
 
@@ -264,6 +264,8 @@ export default class CartDrawer extends Component {
     this._upsellAvail = {};          // product_id -> { available, variantId } live availability for upsell cards
     this._upsellAvailRequested = {}; // product_id -> true, fetched once per session
     this._recsPool = [];             // Shopify-recommended products topping up the candidates
+    this._rejectedVids = {};         // variant_id -> true: Shopify refused the add this session (draft / off the Online Store / sold out)
+    this._pendingUpsellAdds = {};    // variant_id -> product_id, so a rejected upsell add can hide its card
     this._recsFetched = {};          // seed product + intent -> true, fetched once per session
     // Monotonic token for cart reads. A /cart.js read issued before a mutation
     // can resolve after it; we drop any read older than the latest authoritative
@@ -531,6 +533,7 @@ export default class CartDrawer extends Component {
           this._maybeRunAjaxPromo(c);
         }
       });
+      this._unsubAjaxReject = ajaxOnAddRejected((vids) => this._onAddRejected(vids));
       ajaxInit(this.state.cart);
       // The Liquid-embedded initial cart (data-initial-cart) lacks /cart.js-only
       // fields — notably discount_codes — so an ALREADY-applied discount code
@@ -754,6 +757,7 @@ export default class CartDrawer extends Component {
   componentWillUnmount() {
     if (this._unsubGql) this._unsubGql();
     if (this._unsubAjax) this._unsubAjax();
+    if (this._unsubAjaxReject) this._unsubAjaxReject();
     if (this._onAtcSubmit) document.removeEventListener('submit', this._onAtcSubmit, true);
     if (this._onPublicAdd) window.removeEventListener('cartx:add', this._onPublicAdd);
     if (this._openRevealTimer) clearTimeout(this._openRevealTimer);
@@ -2402,6 +2406,44 @@ export default class CartDrawer extends Component {
     }, INLINE_ERROR_HOLD_MS);
   }
 
+  // Shopify refused an add (AJAX cart store). Gift cards for the variant drop
+  // their "Claimed" state, show why for a moment, then hide for the session; a
+  // refused upsell card hides. The server already leaves draft / off-store
+  // products out, so this only catches what it can't know (e.g. stock).
+  _onAddRejected(vids) {
+    var claimed = Object.assign({}, this.state.claimed);
+    var self = this;
+    (vids || []).forEach(function (vid) {
+      vid = String(vid);
+      self._rejectedVids[vid] = true;
+      ['claim_', 'offer_'].forEach(function (prefix) {
+        if (!claimed[prefix + vid]) return;
+        delete claimed[prefix + vid];
+        self._showClaimError(prefix + vid, self._t('gift_unavailable', 'Unavailable'));
+      });
+      var pid = self._pendingUpsellAdds[vid];
+      if (pid) {
+        delete self._pendingUpsellAdds[vid];
+        self._upsellAvail[pid] = { available: false, variantId: null, rejected: true };
+        self._showUpsellError('Could not add — out of stock or unavailable.');
+      }
+    });
+    this.setState({ claimed: claimed });
+  }
+
+  // Track an AJAX-store add only once Shopify has accepted it: wait for the
+  // sync, then check the line is really in the cart and wasn't refused.
+  _trackWhenAdded(variantId, event, props) {
+    var vid = String(variantId).split('/').pop();
+    var self = this;
+    ajaxWhenSettled(10000).then(function () {
+      if (self._rejectedVids[vid]) return;
+      var cart = ajaxGetCart();
+      var inCart = !!(cart && (cart.items || []).some(function (it) { return String(it.variant_id) === vid && String(it.key || '').indexOf('pending') !== 0; }));
+      if (inCart) tracker.track(event, props);
+    });
+  }
+
   _clearClaimError(key) {
     if (this._errorTimers[key]) {
       clearTimeout(this._errorTimers[key]);
@@ -2437,7 +2479,7 @@ export default class CartDrawer extends Component {
       this.setState({ claimed: Object.assign({}, this.state.claimed, { [key]: true }) });
       ajaxAddLine(variantId, 1, props,
         { price: 0, title: gift && gift.title, product_title: gift && gift.title, image: gift && gift.image });
-      tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, { promotion_id: claimId, promotion_type: 'claim-gift', variant_id: String(variantId) });
+      this._trackWhenAdded(variantId, ANALYTICS_EVENTS.GIFT_CLAIMED, { promotion_id: claimId, promotion_type: 'claim-gift', variant_id: String(variantId) });
       return;
     }
 
@@ -2639,7 +2681,11 @@ export default class CartDrawer extends Component {
                 data-cartmax-promo-type="offer"
                 ref={function (el) { self._observePromo(el); }}
               >
-                {(group.gifts || []).map(function (g) {
+                {(group.gifts || []).filter(function (g) {
+                  // Hide a gift Shopify refused this session, once its error has shown.
+                  var rv = String(g.variant_id).split('/').pop();
+                  return !self._rejectedVids[rv] || self.state.claimError['offer_' + rv];
+                }).map(function (g) {
                   var vid = String(g.variant_id);
                   if (vid.startsWith('gid://')) vid = vid.split('/').pop();
                   var btnKey = 'offer_' + vid;
@@ -2707,10 +2753,14 @@ export default class CartDrawer extends Component {
     if (!cg.applicable_to_current_page) return null;
     if (cg.threshold_remaining) return null;
 
-    var allGifts = cg.gifts || [];
+    var self = this;
+    // Hide a gift Shopify refused this session, once its error has been shown.
+    var allGifts = (cg.gifts || []).filter(function (g) {
+      var vid = String(g.variant_id).split('/').pop();
+      return !self._rejectedVids[vid] || self.state.claimError['claim_' + vid];
+    });
     if (allGifts.length === 0) return null;
 
-    var self = this;
     var cart = this.state.cart;
     var maxClaims = cg.max_claims || allGifts.length;
     var claimLabel = this._t('claim_gift_button', 'Claim gift');
@@ -3271,9 +3321,14 @@ export default class CartDrawer extends Component {
         // rules from the optimistic cart, before the server confirms the add.
         product_id: productMeta && productMeta.product_id,
       };
-      if (this._graphqlCart) gqlAddLine(variantId, 1, props, meta);
-      else ajaxAddLine(variantId, 1, props, meta);
-      tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, addedProps);
+      if (this._graphqlCart) {
+        gqlAddLine(variantId, 1, props, meta);
+        tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, addedProps);
+        return;
+      }
+      if (c.product_id) this._pendingUpsellAdds[String(variantId).split('/').pop()] = String(c.product_id);
+      ajaxAddLine(variantId, 1, props, meta);
+      this._trackWhenAdded(variantId, ANALYTICS_EVENTS.UPSELL_ADDED, addedProps);
       return;
     }
     var key = 'upsell_' + variantId;
@@ -3431,6 +3486,8 @@ export default class CartDrawer extends Component {
   // the rules and default list, then ranking), so adding a recommendation swaps
   // in its own recommendations and the unlock CTA tracks the cart instantly.
   _upsellCards(upsells, items, bar) {
+    var self = this;
+    var notRejected = function (c) { var a = self._upsellAvail[c.product_id]; return !(a && a.rejected); };
     var unavailable = {};
     for (var pid in this._upsellAvail) {
       if (Object.prototype.hasOwnProperty.call(this._upsellAvail, pid) && this._upsellAvail[pid].available === false) {
@@ -3455,7 +3512,7 @@ export default class CartDrawer extends Component {
       // Recommendations top up existing candidates; they never invent a list.
       if (candidates.length > 0) this._ensureUpsellRecs(settings.strategies, items, max - candidates.length);
       return {
-        cards: selectUpsells(Object.assign({}, input, { unavailable: unavailable, extraPool: this._recsPool })),
+        cards: selectUpsells(Object.assign({}, input, { unavailable: unavailable, extraPool: this._recsPool })).filter(notRejected),
         showSoldOut: settings.sold_out === 'show',
         strategies: settings.strategies || {},
       };
@@ -3469,7 +3526,7 @@ export default class CartDrawer extends Component {
         source: 'default',
         trigger_product_id: null,
       });
-    }).filter(function (p) { return cartVariantIds.indexOf(p.variant_id) === -1; });
+    }).filter(function (p) { return cartVariantIds.indexOf(p.variant_id) === -1; }).filter(notRejected);
     this._ensureUpsellAvailability(cards);
     return { cards: cards, showSoldOut: true, strategies: upsells.strategies || {} };
   }

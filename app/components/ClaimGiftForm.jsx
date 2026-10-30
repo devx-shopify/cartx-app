@@ -2,6 +2,7 @@ import { useState, forwardRef, useImperativeHandle } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { isFrozenHandle } from "../lib/constants.js";
 import VariantList, { extractVariantData } from "./VariantList.jsx";
+import { unsellableReason } from "../lib/sellable.js";
 import TargetingSection from "./TargetingSection.jsx";
 import TagTargetingSection from "./TagTargetingSection.jsx";
 import VStack from "./VStack.jsx";
@@ -32,12 +33,14 @@ function buildInitialDisplay(claimGift, variantDataMap) {
   if (claimGift?.claimable_variant_data?.length) {
     return claimGift.claimable_variant_data.map((d) => ({
       variant_id: d.variant_id, title: d.title || d.variant_id, variant_title: null, image: d.image || "",
+      // Prefer the live status the loader just fetched over the stored one.
+      hidden: unsellableReason(variantDataMap?.[d.variant_id] || d),
     }));
   }
   if (claimGift?.claimable_variants && variantDataMap) {
     return claimGift.claimable_variants.map((vid) => {
       const d = variantDataMap[vid] || {};
-      return { variant_id: vid, title: d.title || vid, variant_title: null, image: d.image || "" };
+      return { variant_id: vid, title: d.title || vid, variant_title: null, image: d.image || "", hidden: unsellableReason(d) };
     });
   }
   return [];

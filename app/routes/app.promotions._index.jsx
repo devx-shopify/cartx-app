@@ -19,12 +19,14 @@ import {
   getActivePlan,
   planOfferLimit,
 } from "../lib/billing.server.js";
+import { syncSnapshotStatuses } from "../lib/product-sync.server.js";
+import { unsellableReason } from "../lib/sellable.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const preferred = await getSelectedTheme(session.shop);
   const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
-  const config = await loadConfig(shopId, themeId);
+  const config = await syncSnapshotStatuses(admin, shopId, themeId, await loadConfig(shopId, themeId));
 
   // Resolve the plan's active-offer limit HERE (this page's own loader) so the
   // upgrade note is driven by fresh, authoritative data — not the parent layout's
@@ -39,17 +41,25 @@ export const loader = async ({ request }) => {
 
   const promotions = [];
   for (const offer of config.offers) {
-    promotions.push({ id: offer.id, type: "offer", name: offer.name, enabled: offer.enabled, trigger: triggerSummary(offer), needsAttention: offer._needs_attention || null });
+    promotions.push({ id: offer.id, type: "offer", name: offer.name, enabled: offer.enabled, trigger: triggerSummary(offer), needsAttention: offer._needs_attention || hiddenGiftsNote(offer.reward?.type === "auto_add_gift" ? offer.reward.gift_variant_data : null) });
   }
   for (const coupon of config.coupons) {
     promotions.push({ id: coupon.id, type: "coupon", name: coupon.is_automatic ? coupon.title : coupon.code, enabled: coupon.enabled, trigger: coupon.display_message || coupon.type_label || "Discount", needsAttention: null });
   }
   for (const gift of config.claim_gifts) {
-    promotions.push({ id: gift.id, type: "claim-gift", name: gift.name, enabled: gift.enabled, trigger: gift.trigger ? (gift.trigger.type === "price" ? `Rs.${gift.trigger.threshold} cart total` : `${gift.trigger.threshold} items`) : "No trigger", needsAttention: gift._needs_attention || null });
+    promotions.push({ id: gift.id, type: "claim-gift", name: gift.name, enabled: gift.enabled, trigger: gift.trigger ? (gift.trigger.type === "price" ? `Rs.${gift.trigger.threshold} cart total` : `${gift.trigger.threshold} items`) : "No trigger", needsAttention: gift._needs_attention || hiddenGiftsNote(gift.claimable_variant_data) });
   }
 
   return { promotions, offerLimit: Number.isFinite(offerLimit) ? offerLimit : null };
 };
+
+// Gift products that can't be added to cart are picked but hidden in the cart.
+function hiddenGiftsNote(data) {
+  const hidden = (data || []).filter((d) => unsellableReason(d));
+  if (hidden.length === 0) return null;
+  if (hidden.length === data.length) return "No gift product is live (draft, archived or not on the Online Store), so this promotion is hidden in the cart.";
+  return `${hidden.length} of ${data.length} gift products aren't live (draft, archived or not on the Online Store) and are hidden in the cart.`;
+}
 
 function triggerSummary(offer) {
   const parts = [];

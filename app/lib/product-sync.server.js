@@ -12,11 +12,17 @@
 // trying to give a product that no longer exists. Drafts may be incomplete (the
 // schema enforces "≥1 gift/claim variant" only when enabled), which is what lets
 // us park a broken promotion instead of failing to save and leaving it live.
+//
+// A product set to DRAFT / ARCHIVED (or taken off the Online Store) is NOT a
+// delete: the snapshot's status is refreshed and the promotion stays on. The
+// eval leaves unsellable products out of the cart (sellable.js), so the rest of
+// the promotion keeps working and the product comes back when it's live again.
 // =============================================================
 
 import { loadConfig, saveConfig, listConfigThemeIds } from './config.server.js'
 import { captureException } from './sentry.server.js'
-import { variantDisplayTitle } from './graphql.server.js'
+import { variantDisplayTitle, fetchVariantData } from './graphql.server.js'
+import { isSellable } from './sellable.js'
 import { syncUpsellProduct, removeUpsellProduct } from './upsells.server.js'
 
 function numeric(id) {
@@ -55,6 +61,7 @@ async function fetchProduct(admin, productId) {
           title
           handle
           status
+          onlineStoreUrl
           featuredMedia { preview { image { url } } }
           variants(first: 100) { nodes { id title displayName image { url } price compareAtPrice } }
         }
@@ -74,10 +81,11 @@ async function fetchProduct(admin, productId) {
         compareAtPrice: v.compareAtPrice || null,
       }
     }
-    // available = sellable on the storefront. DRAFT / ARCHIVED = intentional
-    // takedown (treated like a soft delete for promotions), distinct from a
-    // temporary out-of-stock (which stays live + is handled at the drawer).
-    return { found: true, available: p.status === 'ACTIVE', title: p.title || '', handle: p.handle || '', image: productImage, byVariant }
+    // status + online_store decide whether the cart may offer it (sellable.js).
+    // UNLISTED is sellable; out-of-stock is handled live in the drawer.
+    const status = p.status || ''
+    const online_store = !!p.onlineStoreUrl
+    return { found: true, status, online_store, available: isSellable({ status, online_store }), title: p.title || '', handle: p.handle || '', image: productImage, byVariant }
   } catch (err) {
     console.error('[cartx] product-sync fetchProduct error:', err)
     return { error: true }
@@ -85,18 +93,16 @@ async function fetchProduct(admin, productId) {
 }
 
 // Reconcile ONE config against a product's current state.
-//   product = null                       → DELETED    (drop refs; draft if emptied)
-//   product = { available: false, ... }  → DRAFT/ARCHIVED (auto-draft the promo,
-//                                           reversibly; keep refs)
-//   product = { available: true, ... }   → ACTIVE     (refresh + backfill; drop
-//                                           refs to variants gone from the product;
-//                                           re-enable if WE auto-drafted it)
+//   product = null       → DELETED (drop refs; draft the promo if emptied)
+//   product = { ... }    → refresh title/image/price/status + backfill; drop refs
+//                          to variants gone from the product; re-enable a promo
+//                          WE auto-drafted. Draft/archived products are kept and
+//                          only flagged, so the cart skips just that product.
 // Returns true if the config changed. Exported for unit tests.
 export function reconcileConfig(config, productId, product) {
   let changed = false
   const pid = numeric(productId)
   const deleted = !product
-  const unavailable = !!product && product.available === false
   const isLive = (vid) => !!(product && product.byVariant[numeric(vid)])
 
   // Whether a snapshot entry belongs to this product. Prefer the stamped
@@ -109,7 +115,7 @@ export function reconcileConfig(config, productId, product) {
   }
 
   // Refresh a variant-data entry in place; returns true if it should be REMOVED
-  // (variant no longer on the product). Only called when the product is ACTIVE.
+  // (variant no longer on the product). Only called when the product exists.
   const refreshEntry = (entry, withPrice) => {
     const v = product.byVariant[numeric(entry.variant_id)]
     if (!v) return true
@@ -123,6 +129,8 @@ export function reconcileConfig(config, productId, product) {
       if (entry.price !== price) { entry.price = price; changed = true }
       if ((entry.compare_at_price || '') !== compareAt) { entry.compare_at_price = compareAt; changed = true }
     }
+    if (entry.status !== product.status) { entry.status = product.status; changed = true }
+    if (entry.online_store !== product.online_store) { entry.online_store = product.online_store; changed = true }
     if (numeric(entry.product_id) !== pid) { entry.product_id = pid; changed = true }
     return false
   }
@@ -131,7 +139,7 @@ export function reconcileConfig(config, productId, product) {
   //   promo   = object carrying `enabled` (offer OR claim gift)
   //   holder  = object holding the arrays (offer.reward for offers; cg itself)
   //   dataKey / idsKey = the variant-data + variant-id array field names
-  const reconcilePromo = (promo, holder, dataKey, idsKey, deletedMsg, draftMsg, withPrice) => {
+  const reconcilePromo = (promo, holder, dataKey, idsKey, deletedMsg, withPrice) => {
     const data = holder[dataKey] || []
     if (!data.some(belongs)) return
     if (deleted) {
@@ -144,18 +152,9 @@ export function reconcileConfig(config, productId, product) {
         promo._auto_disabled = true
         promo._needs_attention = deletedMsg
       }
-    } else if (unavailable) {
-      // Product taken down (draft/archived): draft the promo so its bar/gift
-      // stops showing. Reversible (re-enabled below when it goes ACTIVE). Refs
-      // are kept so nothing is lost.
-      if (promo.enabled) {
-        promo.enabled = false
-        promo._auto_disabled = true
-        promo._needs_attention = draftMsg
-        changed = true
-      }
     } else {
-      // ACTIVE: refresh + drop refs to variants no longer on the product.
+      // Refresh (status included) + drop refs to variants no longer on the
+      // product. A drafted product stays referenced; the eval skips it.
       const drop = new Set()
       for (const d of data.filter(belongs)) { if (refreshEntry(d, withPrice)) drop.add(numeric(d.variant_id)) }
       if (drop.size) {
@@ -163,8 +162,9 @@ export function reconcileConfig(config, productId, product) {
         holder[idsKey] = (holder[idsKey] || []).filter((v) => !drop.has(numeric(v)))
         changed = true
       }
-      // Re-enable ONLY if WE auto-drafted it (e.g. the product was un-drafted)
-      // and it still has a valid reward. Never touch a merchant's manual disable.
+      // Re-enable ONLY if WE auto-drafted it (older builds drafted the promo when
+      // a gift went to draft) and it still has a reward. Never touch a
+      // merchant's manual disable.
       if (promo._auto_disabled && (holder[idsKey] || []).length > 0) {
         promo.enabled = true
         delete promo._auto_disabled
@@ -180,19 +180,17 @@ export function reconcileConfig(config, productId, product) {
     if (!r || r.type !== 'auto_add_gift') continue
     reconcilePromo(offer, r, 'gift_variant_data', 'gift_variants',
       'A gift product in this offer was deleted. Pick a new gift and re-enable it.',
-      'A gift product in this offer was set to draft/hidden. Re-publish it (or pick another gift) and it will turn back on.',
       true)
   }
 
   // ── Claim gifts: enabled + arrays both on the claim gift object ──
   for (const cg of config.claim_gifts || []) {
     reconcilePromo(cg, cg, 'claimable_variant_data', 'claimable_variants',
-      'A claim gift product was deleted. Pick a new one and re-enable it.',
-      'A claim gift product was set to draft/hidden. Re-publish it (or pick another) and it will turn back on.')
+      'A claim gift product was deleted. Pick a new one and re-enable it.')
   }
 
-  // ── Upsells (product-level; empty list simply renders nothing; the drawer's
-  // live availability check shows "Sold out" for a drafted product) ──
+  // ── Upsells (product-level; empty list simply renders nothing; an
+  // unsellable product is kept but left out of the cart) ──
   const ups = config.upsells
   if (ups && Array.isArray(ups.products)) {
     const before = ups.products.length
@@ -208,6 +206,8 @@ export function reconcileConfig(config, productId, product) {
         const compareAt = v.compareAtPrice || undefined
         if (p.compare_at_price !== compareAt) { p.compare_at_price = compareAt; changed = true }
         if (product.handle && p.handle !== product.handle) { p.handle = product.handle; changed = true }
+        if (p.status !== product.status) { p.status = product.status; changed = true }
+        if (p.online_store !== product.online_store) { p.online_store = product.online_store; changed = true }
         return p
       })
       .filter(Boolean)
@@ -215,6 +215,46 @@ export function reconcileConfig(config, productId, product) {
   }
 
   return changed
+}
+
+// Stamp the current product status + Online Store flag onto every gift and
+// default-upsell snapshot in one Admin API call. Run from the admin pages so
+// configs saved before these were stored (or missed by a webhook) catch up.
+// Returns true if the config changed. Deleted variants are left to the
+// products/delete webhook.
+export async function refreshSnapshotStatuses(admin, config) {
+  const entries = []
+  for (const o of config.offers || []) {
+    if (o.reward?.type === 'auto_add_gift') entries.push(...(o.reward.gift_variant_data || []))
+  }
+  for (const cg of config.claim_gifts || []) entries.push(...(cg.claimable_variant_data || []))
+  const upsells = (config.upsells?.products || []).filter((p) => p.variant_id)
+  const vids = [...new Set([...entries.map((d) => numeric(d.variant_id)), ...upsells.map((p) => numeric(p.variant_id))])]
+  if (vids.length === 0) return false
+
+  const map = {}
+  for (let i = 0; i < vids.length; i += 250) Object.assign(map, await fetchVariantData(admin, vids.slice(i, i + 250)))
+  let changed = false
+  for (const entry of [...entries, ...upsells]) {
+    const d = map[numeric(entry.variant_id)]
+    if (!d?.status) continue
+    if (entry.status !== d.status) { entry.status = d.status; changed = true }
+    if (entry.online_store !== d.online_store) { entry.online_store = d.online_store; changed = true }
+    if (!entry.product_id && d.product_id) { entry.product_id = d.product_id; changed = true }
+  }
+  return changed
+}
+
+// Admin page loaders: refresh statuses and save when they moved. Never throws;
+// a failed refresh just leaves the page on the stored data.
+export async function syncSnapshotStatuses(admin, shopId, themeId, config) {
+  try {
+    if (await refreshSnapshotStatuses(admin, config)) await saveConfig(shopId, themeId, config)
+  } catch (err) {
+    console.error('[cartx] snapshot status refresh failed:', shopId, themeId, err)
+    captureException(err, { tags: { area: 'product_sync_status' }, extra: { shopId, themeId } })
+  }
+  return config
 }
 
 async function applyToShop(shop, productId, product) {

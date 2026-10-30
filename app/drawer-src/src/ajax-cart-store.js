@@ -206,6 +206,23 @@ function isVidUnavailable(vid) {
 }
 function markVidUnavailable(vid) { _unavailableVids[vid] = Date.now(); }
 
+// The drawer listens for rejected adds so a gift or upsell card that Shopify
+// refused (draft product, off the Online Store, sold out) stops saying
+// "Claimed" and hides, instead of the line silently vanishing.
+var _rejectSubs = [];
+export function onAddRejected(fn) {
+  _rejectSubs.push(fn);
+  return function unsubscribe() {
+    var i = _rejectSubs.indexOf(fn);
+    if (i !== -1) _rejectSubs.splice(i, 1);
+  };
+}
+function notifyRejected(vids) {
+  for (var i = 0; i < _rejectSubs.length; i++) {
+    try { _rejectSubs[i](vids); } catch (e) { console.error('[cartx] ajax-store reject subscriber error:', e); }
+  }
+}
+
 async function runSync() {
   // _syncing is already claimed by queueSync(); release/hand-off on early return.
   if (!_state.localCart) { completeAndTriggerNext(); return; }
@@ -258,6 +275,7 @@ async function runSync() {
         // cooldown; localCart snaps to the server cart below, dropping the line.
         if (!addRes.ok) {
           items.forEach(function (it) { markVidUnavailable(it.id); });
+          notifyRejected(items.map(function (it) { return String(it.id); }));
         } else {
           // The add response already carries the real price/title/image for every
           // line it created. We used to read only `.ok` and throw the body away,

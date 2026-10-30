@@ -34,7 +34,7 @@ export async function fetchVariantData(admin, variantIds) {
             price
             compareAtPrice
             image { url }
-            product { id, title, featuredMedia { preview { image { url } } } }
+            product { id, title, status, onlineStoreUrl, featuredMedia { preview { image { url } } } }
           }
         }
       }`,
@@ -53,6 +53,12 @@ export async function fetchVariantData(admin, variantIds) {
       const product_id = node.product?.id ? node.product.id.split('/').pop() : '';
       // Prices (major units, e.g. "999.00") show as "~~₹999~~ Free" on gift cards.
       const entry = { title, image, product_id, price: node.price || '', compare_at_price: node.compareAtPrice || '' };
+      // Whether /cart/add.js will accept it (see sellable.js). Drafts can still
+      // be picked; the cart just leaves them out until they're live.
+      if (node.product?.status) {
+        entry.status = node.product.status;
+        entry.online_store = !!node.product.onlineStoreUrl;
+      }
       map[node.id] = entry;
       map[numericId] = entry;
     }
@@ -69,6 +75,10 @@ export function enrichVariantData(variantIds, variantDataMap) {
     const entry = { variant_id: vid, product_id: d.product_id || '', title: d.title || '', image: d.image || '' };
     if (d.price) entry.price = String(d.price);
     if (d.compare_at_price) entry.compare_at_price = String(d.compare_at_price);
+    if (d.status) {
+      entry.status = d.status;
+      entry.online_store = d.online_store !== false;
+    }
     return entry;
   });
 }

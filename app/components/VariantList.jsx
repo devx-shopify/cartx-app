@@ -1,3 +1,5 @@
+import { unsellableReason } from "../lib/sellable.js";
+
 export default function VariantList({ variants, onRemove, emptyText }) {
   if (!variants || variants.length === 0) {
     return emptyText ? (
@@ -46,6 +48,7 @@ export default function VariantList({ variants, onRemove, emptyText }) {
             {v.variant_title && v.variant_title !== "Default Title" && (
               <s-text color="subdued">{v.variant_title}</s-text>
             )}
+            {v.hidden && <s-badge tone="warning">{v.hidden}: hidden in cart</s-badge>}
           </div>
           {onRemove && (
             <s-button
@@ -75,6 +78,8 @@ export function extractVariantData(selection) {
           product.images?.[0]?.originalSrc ||
           product.featuredImage?.url ||
           "",
+        // The picker gives the status only; Online Store is checked on save.
+        hidden: unsellableReason({ status: product.status }),
       });
     }
   }

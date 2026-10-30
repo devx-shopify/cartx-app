@@ -10,6 +10,7 @@ import { buildBar, getRibbonFromBar } from "../lib/evaluate/bar.server.js";
 import { resolveAvailableCoupons } from "../lib/evaluate/coupons.server.js";
 import { resolveClaimGifts } from "../lib/evaluate/claims.server.js";
 import { loadUpsellAddRates } from "../lib/upsell-stats.server.js";
+import { sellableConfig } from "../lib/evaluate/sellable.server.js";
 
 function verifyProxyHmac(requestUrl) {
   const secret = process.env.SHOPIFY_API_SECRET;
@@ -106,7 +107,10 @@ export const action = async ({ request }) => {
 
   let config;
   try {
-    config = await loadConfig(shopId, themeId);
+    // Gifts and upsells whose product is draft / archived / off the Online
+    // Store are dropped here, so the drawer never offers something
+    // /cart/add.js will reject.
+    config = sellableConfig(await loadConfig(shopId, themeId));
   } catch (err) {
     console.error('[cartx] loadConfig error:', err);
     return Response.json({ error: "Config load failed" }, { status: 500 });
