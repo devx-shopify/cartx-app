@@ -6,7 +6,7 @@ import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLi
 import { isGraphqlCartEnabled, isStorefrontReady, fetchProductAvailability } from './storefront-cart';
 import { pickRecommendations, selectUpsells } from '../../lib/upsell-recs.js';
 import { initStore as gqlInitStore, subscribe as gqlSubscribe, getOptimisticCart as gqlGetCart, changeQuantity as gqlChangeQuantity, removeLine as gqlRemoveLine, addLine as gqlAddLine, applyDiscountCode as gqlApplyCoupon, removeDiscountCode as gqlRemoveCoupon, whenSettled as gqlWhenSettled } from './cart-store';
-import { isAjaxCartStoreEnabled, subscribe as ajaxSubscribe, getOptimisticCart as ajaxGetCart, init as ajaxInit, reconcileFromServer as ajaxReconcile, addLine as ajaxAddLine, changeQuantity as ajaxChangeQty, removeLine as ajaxRemoveLine, whenSettled as ajaxWhenSettled, onAddRejected as ajaxOnAddRejected, cartHasDiscounts } from './ajax-cart-store';
+import { isAjaxCartStoreEnabled, subscribe as ajaxSubscribe, getOptimisticCart as ajaxGetCart, init as ajaxInit, reconcileFromServer as ajaxReconcile, addLine as ajaxAddLine, changeQuantity as ajaxChangeQty, removeLine as ajaxRemoveLine, whenSettled as ajaxWhenSettled, getState as ajaxGetState, onAddRejected as ajaxOnAddRejected, cartHasDiscounts } from './ajax-cart-store';
 import { tracker } from './tracker';
 import { ANALYTICS_EVENTS } from './analytics-events';
 
@@ -2432,14 +2432,16 @@ export default class CartDrawer extends Component {
   }
 
   // Track an AJAX-store add only once Shopify has accepted it: wait for the
-  // sync, then check the line is really in the cart and wasn't refused.
+  // sync, then look for the line in the cart Shopify returned (serverCart),
+  // not the optimistic one. If the sync is still running at the timeout the
+  // line isn't there yet and the event is skipped rather than guessed.
   _trackWhenAdded(variantId, event, props) {
     var vid = String(variantId).split('/').pop();
     var self = this;
     ajaxWhenSettled(10000).then(function () {
       if (self._rejectedVids[vid]) return;
-      var cart = ajaxGetCart();
-      var inCart = !!(cart && (cart.items || []).some(function (it) { return String(it.variant_id) === vid && String(it.key || '').indexOf('pending') !== 0; }));
+      var cart = ajaxGetState().serverCart;
+      var inCart = !!(cart && (cart.items || []).some(function (it) { return String(it.variant_id) === vid; }));
       if (inCart) tracker.track(event, props);
     });
   }

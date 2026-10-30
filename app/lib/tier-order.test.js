@@ -11,8 +11,8 @@ const p1200 = t('p1200', 'price', 1200)
 const p2000 = t('p2000', 'price', 2000)
 
 describe('defaultTierOrder', () => {
-  it('sorts quantity milestones first, then price, each by amount', () => {
-    expect(ids(defaultTierOrder([p2000, p799, buy1, p1200]))).toEqual(['buy1', 'p799', 'p1200', 'p2000'])
+  it('sorts price milestones first, then quantity, each by amount', () => {
+    expect(ids(defaultTierOrder([p2000, p799, buy1, p1200]))).toEqual(['p799', 'p1200', 'p2000', 'buy1'])
   })
 
   it('reads trigger_type when there is no type (bar evaluator tiers)', () => {
@@ -23,7 +23,7 @@ describe('defaultTierOrder', () => {
 
 describe('orderTiers', () => {
   it('uses the default order when nothing was reordered', () => {
-    expect(ids(orderTiers([p2000, p1200, buy1], []))).toEqual(['buy1', 'p1200', 'p2000'])
+    expect(ids(orderTiers([p2000, p1200, buy1], []))).toEqual(['p1200', 'p2000', 'buy1'])
   })
 
   it('slots a milestone missing from the saved order in by amount', () => {
@@ -45,8 +45,8 @@ describe('orderTiers', () => {
 
   it('places a new kind where it goes by default', () => {
     const q3 = t('q3', 'quantity', 3)
-    expect(ids(orderTiers([p799, p2000, q3], ['p799', 'p2000']))).toEqual(['q3', 'p799', 'p2000'])
-    expect(ids(orderTiers([buy1, p799], ['buy1']))).toEqual(['buy1', 'p799'])
+    expect(ids(orderTiers([p799, p2000, q3], ['p799', 'p2000']))).toEqual(['p799', 'p2000', 'q3'])
+    expect(ids(orderTiers([buy1, p799], ['buy1']))).toEqual(['p799', 'buy1'])
   })
 
   it('ignores saved ids that no longer exist', () => {
@@ -56,8 +56,8 @@ describe('orderTiers', () => {
 
 describe('isDefaultTierOrder / outOfAmountOrder', () => {
   it('detects the default order', () => {
-    expect(isDefaultTierOrder([buy1, p799, p2000])).toBe(true)
-    expect(isDefaultTierOrder([p799, buy1])).toBe(false)
+    expect(isDefaultTierOrder([p799, p2000, buy1])).toBe(true)
+    expect(isDefaultTierOrder([buy1, p799])).toBe(false)
   })
 
   it('lists same-kind pairs shown higher amount first', () => {

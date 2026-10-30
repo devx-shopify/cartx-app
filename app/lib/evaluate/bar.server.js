@@ -251,6 +251,8 @@ export function buildBar(config, page, adjustedTotal, adjustedQty, moneyFormat, 
     const qtyTiers = computeTierStates(qtyMerged, adjustedQty)
 
     // States are worked out in amount order above; this is display order only.
+    // With no saved order it is price then quantity, each by amount, which is
+    // what this bar has always shown (and so the same "next" milestone).
     const allTiers = orderTiers([...priceTiers, ...qtyTiers], tierOrder)
     const nextTier = allTiers.find((t) => t.state === 'next')
     const allComplete = allTiers.every((t) => t.state === 'active')

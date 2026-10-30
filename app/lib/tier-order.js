@@ -3,14 +3,15 @@
 // Shared by the bar evaluator (bar.server.js) and Settings → Progress bar, so
 // the admin list and the cart always show the same order.
 //
-// Default: by trigger amount, quantity milestones first, then price. A
+// Default: by trigger amount, price milestones first, then quantity (the order
+// the bar has always used for a mixed bar). A
 // merchant may drag milestones into any order (tier_order); that order is kept
 // as saved, even when it puts a higher amount first. Milestones missing from
 // the saved order (added after it was saved) are slotted in by amount instead
 // of being appended at the end.
 // =============================================================
 
-const TYPE_RANK = { quantity: 0, price: 1 }
+const TYPE_RANK = { price: 0, quantity: 1 }
 
 function defaultTypeOf(t) {
   return t.type || t._trigger_type || t.trigger_type
@@ -24,7 +25,7 @@ function compareDefault(typeOf) {
   }
 }
 
-// The order with no manual arrangement: quantity by amount, then price by amount.
+// The order with no manual arrangement: price by amount, then quantity by amount.
 export function defaultTierOrder(tiers, typeOf = defaultTypeOf) {
   return tiers.slice().sort(compareDefault(typeOf))
 }
@@ -58,7 +59,7 @@ export function orderTiers(tiers, tierOrder, typeOf = defaultTypeOf) {
       const first = placed.findIndex((p) => typeOf(p) === type)
       if (first !== -1) at = first
     }
-    // …else where its kind goes by default (quantity at the start, price at the end).
+    // …else where its kind goes by default (price at the start, quantity at the end).
     if (at === -1) at = (TYPE_RANK[type] ?? 2) === 0 ? 0 : placed.length
     placed.splice(at, 0, t)
   }

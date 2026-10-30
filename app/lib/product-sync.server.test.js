@@ -4,8 +4,11 @@ import { describe, test, expect, vi } from 'vitest'
 vi.mock('./config.server.js', () => ({ loadConfig: vi.fn(), saveConfig: vi.fn(), listConfigThemeIds: vi.fn() }))
 vi.mock('./upsells.server.js', () => ({ syncUpsellProduct: vi.fn(), removeUpsellProduct: vi.fn() }))
 vi.mock('./sentry.server.js', () => ({ captureException: vi.fn() }))
+vi.mock('./graphql.server.js', async (orig) => ({ ...(await orig()), fetchVariantData: vi.fn() }))
 
-const { reconcileConfig } = await import('./product-sync.server.js')
+const { reconcileConfig, applySnapshotStatuses, syncSnapshotStatuses } = await import('./product-sync.server.js')
+const { loadConfig, saveConfig } = await import('./config.server.js')
+const { fetchVariantData } = await import('./graphql.server.js')
 
 const product = {
   status: 'ACTIVE',
@@ -70,5 +73,39 @@ describe('reconcileConfig — draft products', () => {
     reconcileConfig(c, '1', draft)
     expect(c.upsells.products).toHaveLength(1)
     expect(c.upsells.products[0].status).toBe('DRAFT')
+  })
+})
+
+describe('snapshot status refresh', () => {
+  const live = { status: 'DRAFT', online_store: false, product_id: '1' }
+
+  test('applySnapshotStatuses touches only status fields', () => {
+    const c = config({ variant_id: '11', product_id: '1', title: 'Arm Cuff', price: '999.00' })
+    expect(applySnapshotStatuses(c, { 11: live })).toBe(true)
+    expect(c.offers[0].reward.gift_variant_data[0]).toEqual({ variant_id: '11', product_id: '1', title: 'Arm Cuff', price: '999.00', status: 'DRAFT', online_store: false })
+    expect(applySnapshotStatuses(c, { 11: live })).toBe(false)
+  })
+
+  test('saves onto the freshly loaded config, not the page copy', async () => {
+    fetchVariantData.mockResolvedValue({ 11: live })
+    const pageCopy = config({ variant_id: '11', product_id: '1', title: 'Old' })
+    const stored = config({ variant_id: '11', product_id: '1', title: 'Renamed meanwhile' })
+    stored.offers[0].name = 'Saved meanwhile'
+    loadConfig.mockResolvedValue(stored)
+    saveConfig.mockClear()
+
+    const out = await syncSnapshotStatuses({}, 'shop', 'theme', pageCopy)
+    expect(out.offers[0].reward.gift_variant_data[0].status).toBe('DRAFT')
+    expect(saveConfig).toHaveBeenCalledTimes(1)
+    const saved = saveConfig.mock.calls[0][2]
+    expect(saved.offers[0].name).toBe('Saved meanwhile')
+    expect(saved.offers[0].reward.gift_variant_data[0]).toMatchObject({ title: 'Renamed meanwhile', status: 'DRAFT', online_store: false })
+  })
+
+  test('does not save when nothing moved', async () => {
+    fetchVariantData.mockResolvedValue({ 11: { status: 'ACTIVE', online_store: true, product_id: '1' } })
+    saveConfig.mockClear()
+    await syncSnapshotStatuses({}, 'shop', 'theme', config({ variant_id: '11', product_id: '1', status: 'ACTIVE', online_store: true }))
+    expect(saveConfig).not.toHaveBeenCalled()
   })
 })

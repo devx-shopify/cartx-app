@@ -222,20 +222,22 @@ export function reconcileConfig(config, productId, product) {
 // configs saved before these were stored (or missed by a webhook) catch up.
 // Returns true if the config changed. Deleted variants are left to the
 // products/delete webhook.
-export async function refreshSnapshotStatuses(admin, config) {
+function snapshotEntries(config) {
   const entries = []
   for (const o of config.offers || []) {
     if (o.reward?.type === 'auto_add_gift') entries.push(...(o.reward.gift_variant_data || []))
   }
   for (const cg of config.claim_gifts || []) entries.push(...(cg.claimable_variant_data || []))
-  const upsells = (config.upsells?.products || []).filter((p) => p.variant_id)
-  const vids = [...new Set([...entries.map((d) => numeric(d.variant_id)), ...upsells.map((p) => numeric(p.variant_id))])]
-  if (vids.length === 0) return false
+  entries.push(...(config.upsells?.products || []).filter((p) => p.variant_id))
+  return entries
+}
 
-  const map = {}
-  for (let i = 0; i < vids.length; i += 250) Object.assign(map, await fetchVariantData(admin, vids.slice(i, i + 250)))
+// Write fetched statuses onto the config's gift / upsell snapshots in place.
+// Touches only status, online_store and a missing product_id. Returns true
+// when anything changed.
+export function applySnapshotStatuses(config, map) {
   let changed = false
-  for (const entry of [...entries, ...upsells]) {
+  for (const entry of snapshotEntries(config)) {
     const d = map[numeric(entry.variant_id)]
     if (!d?.status) continue
     if (entry.status !== d.status) { entry.status = d.status; changed = true }
@@ -245,11 +247,24 @@ export async function refreshSnapshotStatuses(admin, config) {
   return changed
 }
 
-// Admin page loaders: refresh statuses and save when they moved. Never throws;
-// a failed refresh just leaves the page on the stored data.
+// Current status of every gift / upsell snapshot's product, by numeric variant id.
+export async function fetchSnapshotStatuses(admin, config) {
+  const vids = [...new Set(snapshotEntries(config).map((d) => numeric(d.variant_id)))]
+  const map = {}
+  for (let i = 0; i < vids.length; i += 250) Object.assign(map, await fetchVariantData(admin, vids.slice(i, i + 250)))
+  return map
+}
+
+// Admin page loaders: show live statuses and store them when they moved.
+// The save re-reads the stored config and patches only the status fields, so
+// it can't overwrite a settings save made while the statuses were fetched.
+// Never throws; a failed refresh just leaves the page on the stored data.
 export async function syncSnapshotStatuses(admin, shopId, themeId, config) {
   try {
-    if (await refreshSnapshotStatuses(admin, config)) await saveConfig(shopId, themeId, config)
+    const map = await fetchSnapshotStatuses(admin, config)
+    if (!applySnapshotStatuses(config, map)) return config
+    const latest = await loadConfig(shopId, themeId)
+    if (applySnapshotStatuses(latest, map)) await saveConfig(shopId, themeId, latest)
   } catch (err) {
     console.error('[cartx] snapshot status refresh failed:', shopId, themeId, err)
     captureException(err, { tags: { area: 'product_sync_status' }, extra: { shopId, themeId } })

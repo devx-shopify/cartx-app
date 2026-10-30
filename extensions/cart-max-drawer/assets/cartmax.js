@@ -5077,15 +5077,17 @@
       this.setState({ claimed });
     }
     // Track an AJAX-store add only once Shopify has accepted it: wait for the
-    // sync, then check the line is really in the cart and wasn't refused.
+    // sync, then look for the line in the cart Shopify returned (serverCart),
+    // not the optimistic one. If the sync is still running at the timeout the
+    // line isn't there yet and the event is skipped rather than guessed.
     _trackWhenAdded(variantId, event, props) {
       var vid = String(variantId).split("/").pop();
       var self = this;
       whenSettled2(1e4).then(function() {
         if (self._rejectedVids[vid]) return;
-        var cart = getOptimisticCart2();
+        var cart = getState2().serverCart;
         var inCart = !!(cart && (cart.items || []).some(function(it) {
-          return String(it.variant_id) === vid && String(it.key || "").indexOf("pending") !== 0;
+          return String(it.variant_id) === vid;
         }));
         if (inCart) tracker.track(event, props);
       });
