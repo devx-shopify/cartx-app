@@ -14,7 +14,7 @@ How to set up the FREED cart design (Figma "FREED / CartX") on FREED's store usi
 | `assets/milestones/gift-icon-reached.svg` | Milestone icon, reached (white gift on the pink dot, from Figma) |
 | `assets/milestones/tick-badge.svg` | Blue tick on a reached milestone (already inside the Custom CSS) |
 | `assets/milestones/truck-icon.svg`, `arm-cuff-icon.svg` | Reward icons from the reward-first design, for reference only. cartx uses the two shared milestone icons above for every milestone. |
-| `assets/empty-cart.svg` | Empty-cart illustration for the Empty cart icon upload (29 KB) |
+| `assets/empty-cart.svg` | Empty-cart illustration (already in the import file; kept here for reference) |
 
 **Values marked *(placeholder)*** come from the Figma mock-up. Replace them with FREED's real offers, products and copy.
 
@@ -39,21 +39,13 @@ In cartx → **Customize Cart → Advanced → Backup & restore** → **Export s
 Nothing needs uploading to Shopify Files:
 
 - The "SPECIAL OFFER" sticker is embedded in the Custom CSS, so the import brings it in.
-- The empty-cart illustration is uploaded in Customize Cart in step 4.
+- The empty-cart illustration is in the import file too.
 
 ## 4. Prepare and import the settings file
 
 1. In cartx → **Customize Cart → Advanced → Backup & restore** → **Import settings** → choose `freed-cart-settings.json`.
 2. The toast says "Settings imported — save to apply". Click **Save** in the save bar.
-3. Check the milestone icons:
-   - Open **Customize Cart → Features → Progress bar**.
-   - **Milestone icon** should show the dark gift, and **Completed milestone icon** the white gift. The import already sets both.
-   - If either is empty, upload `assets/milestones/gift-icon.svg` and `assets/milestones/gift-icon-reached.svg`.
-   - **Save**.
-4. Add the empty-cart illustration:
-   - Open **Customize Cart → Content → Empty cart → Empty state icon**.
-   - Upload `assets/empty-cart.svg`.
-   - **Save**.
+That's the whole drawer: the import carries the colours, fonts, text, layout, milestone icons, empty-cart illustration and Custom CSS. To double-check, **Features → Progress bar** shows the dark and white gift icons, and **Content → Empty cart** shows the cart illustration.
 
 **What the import sets**
 
