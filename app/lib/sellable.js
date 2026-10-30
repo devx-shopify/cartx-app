@@ -13,9 +13,11 @@
 export var SELLABLE_STATUSES = ['ACTIVE', 'UNLISTED'];
 
 // `status` is the Admin API ProductStatus; `online_store` is whether the product
-// has an Online Store URL. Snapshots saved before these were stored carry
-// neither, so a missing value counts as sellable (they backfill on the next
-// product update or admin visit).
+// is published to the Online Store (Product.publishedAt). Not onlineStoreUrl:
+// that is null on every product while the storefront is password-protected
+// (dev stores, pre-launch), which would hide everything. Snapshots saved
+// before these were stored carry neither, so a missing value counts as
+// sellable (they backfill on the next product update or admin visit).
 export function isSellable(entry) {
   if (!entry) return false;
   var status = entry.status ? String(entry.status).toUpperCase() : '';

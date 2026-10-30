@@ -34,7 +34,7 @@ export async function fetchVariantData(admin, variantIds) {
             price
             compareAtPrice
             image { url }
-            product { id, title, status, onlineStoreUrl, featuredMedia { preview { image { url } } } }
+            product { id, title, status, publishedAt, featuredMedia { preview { image { url } } } }
           }
         }
       }`,
@@ -57,7 +57,7 @@ export async function fetchVariantData(admin, variantIds) {
       // be picked; the cart just leaves them out until they're live.
       if (node.product?.status) {
         entry.status = node.product.status;
-        entry.online_store = !!node.product.onlineStoreUrl;
+        entry.online_store = !!node.product.publishedAt;
       }
       map[node.id] = entry;
       map[numericId] = entry;

@@ -72,7 +72,7 @@ export function productNodeToRow(node) {
     price: v?.price ?? "0",
     compareAtPrice: v?.compareAtPrice || null,
     status: node.status || "ACTIVE",
-    onlineStore: !!node.onlineStoreUrl,
+    onlineStore: !!node.publishedAt,
   };
 }
 
@@ -81,7 +81,7 @@ export const PRODUCT_SNAPSHOT_FIELDS = `
   title
   handle
   status
-  onlineStoreUrl
+  publishedAt
   featuredImage { url }
   variants(first: 1) { nodes { id price compareAtPrice } }
 `;
@@ -297,7 +297,7 @@ export async function fetchDefaultProducts(admin, productIds) {
         price: v?.price ?? "0",
         compare_at_price: v?.compareAtPrice || undefined,
         status: node.status || "ACTIVE",
-        online_store: !!node.onlineStoreUrl,
+        online_store: !!node.publishedAt,
       };
     });
 }

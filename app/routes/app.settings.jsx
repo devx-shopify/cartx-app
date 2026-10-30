@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { orderTiers, defaultTierOrder, isDefaultTierOrder, outOfAmountOrder } from "../lib/tier-order.js";
 import { useLoaderData, useFetcher, useOutletContext } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { ThemeCopyCard, ThemeSwitcher } from "./app.jsx";
@@ -82,13 +83,9 @@ export const loader = async ({ request }) => {
     });
   }
 
-  // Sort lineup by saved tier_order; unsaved items append in their natural order
+  // Same order the cart uses: the saved tier_order, with anything not in it
+  // slotted in by amount (or by amount alone when nothing was reordered).
   const order = config.progress_bar.tier_order || [];
-  const indexOf = (id) => {
-    const i = order.indexOf(id);
-    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
-  };
-  lineup.sort((a, b) => indexOf(a.id) - indexOf(b.id));
 
   return {
     progressBar: config.progress_bar,
@@ -96,7 +93,7 @@ export const loader = async ({ request }) => {
     upsellRuleCount: await countRules(shopId, themeId),
     bottomRibbon: config.bottom_ribbon,
     crossPageRemoval: config.cross_page_removal_behavior,
-    lineup,
+    lineup: orderTiers(lineup, order),
   };
 };
 
@@ -445,7 +442,7 @@ export default function Settings() {
         .map((t) => incomingById.get(t.id));
       const existingIds = new Set(kept.map((t) => t.id));
       const added = data.lineup.filter((t) => !existingIds.has(t.id));
-      return [...kept, ...added];
+      return added.length ? orderTiers([...kept, ...added], kept.map((t) => t.id)) : kept;
     });
     initialRef.current = snapshot();
   }, [data, snapshot]);
@@ -474,7 +471,9 @@ export default function Settings() {
       all_complete_message: allCompleteMessage,
       bottom_ribbon: { enabled: ribbonEnabled, oos_message_override: oosOverride || "" },
       cross_page_removal_behavior: crossPageBehavior,
-      tier_order: lineup.map((t) => t.id),
+      // An order that matches the default is saved as "no manual order", so
+      // milestones added later keep falling into place by amount.
+      tier_order: isDefaultTierOrder(lineup) ? [] : lineup.map((t) => t.id),
     };
     fetcher.submit(JSON.stringify(payload), { method: "POST", encType: "application/json" });
   }
@@ -547,6 +546,10 @@ export default function Settings() {
   }
   function handleDragEnd() { setDragId(null); setDragOverId(null); }
 
+  const lineupIsDefault = isDefaultTierOrder(lineup);
+  const reversed = outOfAmountOrder(lineup);
+  const amountLabel = (t) => (t.type === "price" ? `₹${t.threshold}` : `${t.threshold} items`);
+
   return (
     <>
       <ui-save-bar id="settings-save-bar">
@@ -582,10 +585,16 @@ export default function Settings() {
                     <s-text fontWeight="semibold">Bar tier order</s-text>
                     <div style={{ marginTop: 2 }}>
                       <s-text color="subdued" variant="bodySm">
-                        Drag to reorder. Activation is still based on each tier's threshold — only the visual position changes.
+                        Ordered by trigger amount. Drag to reorder. Activation is still based on each tier's threshold — only the visual position changes.
                       </s-text>
                     </div>
                   </div>
+                  {reversed.length > 0 && (
+                    <s-banner tone="info">
+                      {amountLabel(reversed[0][0])} is placed before {amountLabel(reversed[0][1])}. Customers will see a
+                      reached milestone after one that isn&apos;t reached yet. Reset to sort by amount.
+                    </s-banner>
+                  )}
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {lineup.map((item, i) => {
                       const isMilestone = item.source === "milestone";
@@ -634,6 +643,14 @@ export default function Settings() {
                     })}
                   </div>
                 </VStack>
+              )}
+
+              {lineup.length > 1 && !lineupIsDefault && (
+                <div>
+                  <s-button variant="tertiary" onClick={() => setLineup(defaultTierOrder(lineup))}>
+                    Reset to default order
+                  </s-button>
+                </div>
               )}
 
               <MilestoneForm onAdd={addMilestone} submitting={submitting} />

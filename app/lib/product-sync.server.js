@@ -61,7 +61,7 @@ async function fetchProduct(admin, productId) {
           title
           handle
           status
-          onlineStoreUrl
+          publishedAt
           featuredMedia { preview { image { url } } }
           variants(first: 100) { nodes { id title displayName image { url } price compareAtPrice } }
         }
@@ -84,7 +84,7 @@ async function fetchProduct(admin, productId) {
     // status + online_store decide whether the cart may offer it (sellable.js).
     // UNLISTED is sellable; out-of-stock is handled live in the drawer.
     const status = p.status || ''
-    const online_store = !!p.onlineStoreUrl
+    const online_store = !!p.publishedAt
     return { found: true, status, online_store, available: isSellable({ status, online_store }), title: p.title || '', handle: p.handle || '', image: productImage, byVariant }
   } catch (err) {
     console.error('[cartx] product-sync fetchProduct error:', err)
