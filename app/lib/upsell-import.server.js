@@ -2,7 +2,11 @@
 // downloadable sample sheet. The file format lives in upsell-csv.js.
 import prisma from "../db.server.js";
 import { identifierKey, parseCsv, readImportRows, toCsv } from "./upsell-csv.js";
+import { isSellable } from "./sellable.js";
 import { PRODUCT_SNAPSHOT_FIELDS, adminQuery, cleanRecommendedIds, productNodeToRow, upsertSnapshots } from "./upsells.server.js";
+
+// Snapshot rows use onlineStore; isSellable reads the config-style online_store.
+const snap = (row) => ({ status: row.status, online_store: row.onlineStore });
 
 const HANDLES_PER_QUERY = 50; // keeps the search query string well under the API limit
 const PARALLEL_QUERIES = 4; // lookups in flight at once: faster for big sheets, gentle on the rate limit
@@ -96,7 +100,7 @@ export async function planImport(admin, csvText, cap) {
     }
     entry.triggerId = trigger.productId;
     entry.triggerTitle = trigger.title;
-    if (trigger.status !== "ACTIVE") entry.messages.push("Trigger product isn't active.");
+    if (!isSellable(snap(trigger))) entry.messages.push("Trigger product isn't live on the Online Store.");
 
     const unknown = [];
     const found = [];
@@ -110,8 +114,8 @@ export async function planImport(admin, csvText, cap) {
     if (removed.duplicate) entry.messages.push(`${removed.duplicate} duplicate ${removed.duplicate === 1 ? "product" : "products"} left out.`);
     if (removed.overCap) entry.messages.push(`Over the limit of ${cap}; the last ${removed.overCap} left out.`);
     const titles = Object.fromEntries(found.map((p) => [p.productId, p]));
-    const inactive = ids.filter((id) => titles[id].status !== "ACTIVE").length;
-    if (inactive) entry.messages.push(`${inactive} recommended ${inactive === 1 ? "product isn't" : "products aren't"} active (kept, hidden until active).`);
+    const inactive = ids.filter((id) => !isSellable(snap(titles[id]))).length;
+    if (inactive) entry.messages.push(`${inactive} recommended ${inactive === 1 ? "product isn't" : "products aren't"} live (kept, hidden in the cart until live).`);
     entry.recIds = ids;
     entry.recs = ids.map((id) => titles[id].title);
 

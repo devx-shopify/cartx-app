@@ -2160,6 +2160,16 @@
   }).catch(function() {
   });
 
+  // app/lib/sellable.js
+  var SELLABLE_STATUSES = ["ACTIVE", "UNLISTED"];
+  function isSellable(entry) {
+    if (!entry) return false;
+    var status = entry.status ? String(entry.status).toUpperCase() : "";
+    if (status && SELLABLE_STATUSES.indexOf(status) === -1) return false;
+    if (entry.online_store === false) return false;
+    return true;
+  }
+
   // app/lib/upsell-recs.js
   function numericId2(id) {
     if (id === null || id === void 0) return "";
@@ -2220,7 +2230,7 @@
     }
     function takeDefaults() {
       defaults.forEach(function(p2) {
-        take(p2, "default", null);
+        if (isSellable(p2)) take(p2, "default", null);
       });
     }
     var limit = input.limit || settings.max_visible || 4;
@@ -2234,7 +2244,7 @@
       if (!recs || !recs.length) return;
       recs.slice(0, maxPerTrigger).forEach(function(recId) {
         var snap = catalog[numericId2(recId)];
-        if (!snap || snap.status && snap.status !== "ACTIVE") return;
+        if (!snap || !isSellable(snap)) return;
         take(snap, "rule", triggerId);
       });
     });
@@ -2856,6 +2866,23 @@
   function markVidUnavailable(vid) {
     _unavailableVids[vid] = Date.now();
   }
+  var _rejectSubs = [];
+  function onAddRejected(fn) {
+    _rejectSubs.push(fn);
+    return function unsubscribe() {
+      var i2 = _rejectSubs.indexOf(fn);
+      if (i2 !== -1) _rejectSubs.splice(i2, 1);
+    };
+  }
+  function notifyRejected(vids) {
+    for (var i2 = 0; i2 < _rejectSubs.length; i2++) {
+      try {
+        _rejectSubs[i2](vids);
+      } catch (e2) {
+        console.error("[cartx] ajax-store reject subscriber error:", e2);
+      }
+    }
+  }
   async function runSync2() {
     if (!_state2.localCart) {
       completeAndTriggerNext2();
@@ -2899,6 +2926,9 @@
             items.forEach(function(it) {
               markVidUnavailable(it.id);
             });
+            notifyRejected(items.map(function(it) {
+              return String(it.id);
+            }));
           } else {
             try {
               var added = await addRes.json();
@@ -3386,6 +3416,8 @@
       this._upsellAvail = {};
       this._upsellAvailRequested = {};
       this._recsPool = [];
+      this._rejectedVids = {};
+      this._pendingUpsellAdds = {};
       this._recsFetched = {};
       this._cartReadSeq = 0;
       this._activeOps = /* @__PURE__ */ new Set();
@@ -3563,6 +3595,7 @@
             this._maybeRunAjaxPromo(c2);
           }
         });
+        this._unsubAjaxReject = onAddRejected((vids) => this._onAddRejected(vids));
         init(this.state.cart);
         fetchCart().then((c2) => {
           if (c2) reconcileFromServer(c2);
@@ -3734,6 +3767,7 @@
     componentWillUnmount() {
       if (this._unsubGql) this._unsubGql();
       if (this._unsubAjax) this._unsubAjax();
+      if (this._unsubAjaxReject) this._unsubAjaxReject();
       if (this._onAtcSubmit) document.removeEventListener("submit", this._onAtcSubmit, true);
       if (this._onPublicAdd) window.removeEventListener("cartx:add", this._onPublicAdd);
       if (this._openRevealTimer) clearTimeout(this._openRevealTimer);
@@ -5018,6 +5052,46 @@
         this.setState({ claimError: clear });
       }, INLINE_ERROR_HOLD_MS);
     }
+    // Shopify refused an add (AJAX cart store). Gift cards for the variant drop
+    // their "Claimed" state, show why for a moment, then hide for the session; a
+    // refused upsell card hides. The server already leaves draft / off-store
+    // products out, so this only catches what it can't know (e.g. stock).
+    _onAddRejected(vids) {
+      var claimed = Object.assign({}, this.state.claimed);
+      var self = this;
+      (vids || []).forEach(function(vid) {
+        vid = String(vid);
+        self._rejectedVids[vid] = true;
+        ["claim_", "offer_"].forEach(function(prefix) {
+          if (!claimed[prefix + vid]) return;
+          delete claimed[prefix + vid];
+          self._showClaimError(prefix + vid, self._t("gift_unavailable", "Unavailable"));
+        });
+        var pid = self._pendingUpsellAdds[vid];
+        if (pid) {
+          delete self._pendingUpsellAdds[vid];
+          self._upsellAvail[pid] = { available: false, variantId: null, rejected: true };
+          self._showUpsellError("Could not add \u2014 out of stock or unavailable.");
+        }
+      });
+      this.setState({ claimed });
+    }
+    // Track an AJAX-store add only once Shopify has accepted it: wait for the
+    // sync, then look for the line in the cart Shopify returned (serverCart),
+    // not the optimistic one. If the sync is still running at the timeout the
+    // line isn't there yet and the event is skipped rather than guessed.
+    _trackWhenAdded(variantId, event, props) {
+      var vid = String(variantId).split("/").pop();
+      var self = this;
+      whenSettled2(1e4).then(function() {
+        if (self._rejectedVids[vid]) return;
+        var cart = getState2().serverCart;
+        var inCart = !!(cart && (cart.items || []).some(function(it) {
+          return String(it.variant_id) === vid;
+        }));
+        if (inCart) tracker.track(event, props);
+      });
+    }
     _clearClaimError(key) {
       if (this._errorTimers[key]) {
         clearTimeout(this._errorTimers[key]);
@@ -5048,7 +5122,7 @@
           props,
           { price: 0, title: gift && gift.title, product_title: gift && gift.title, image: gift && gift.image }
         );
-        tracker.track(ANALYTICS_EVENTS.GIFT_CLAIMED, { promotion_id: claimId, promotion_type: "claim-gift", variant_id: String(variantId) });
+        this._trackWhenAdded(variantId, ANALYTICS_EVENTS.GIFT_CLAIMED, { promotion_id: claimId, promotion_type: "claim-gift", variant_id: String(variantId) });
         return;
       }
       this._clearClaimError(key);
@@ -5232,7 +5306,10 @@
               self._observePromo(el);
             }
           },
-          (group.gifts || []).map(function(g2) {
+          (group.gifts || []).filter(function(g2) {
+            var rv = String(g2.variant_id).split("/").pop();
+            return !self._rejectedVids[rv] || self.state.claimError["offer_" + rv];
+          }).map(function(g2) {
             var vid = String(g2.variant_id);
             if (vid.startsWith("gid://")) vid = vid.split("/").pop();
             var btnKey = "offer_" + vid;
@@ -5283,9 +5360,12 @@
       var cg = result.claim_gifts;
       if (!cg.applicable_to_current_page) return null;
       if (cg.threshold_remaining) return null;
-      var allGifts = cg.gifts || [];
-      if (allGifts.length === 0) return null;
       var self = this;
+      var allGifts = (cg.gifts || []).filter(function(g2) {
+        var vid = String(g2.variant_id).split("/").pop();
+        return !self._rejectedVids[vid] || self.state.claimError["claim_" + vid];
+      });
+      if (allGifts.length === 0) return null;
       var cart = this.state.cart;
       var maxClaims = cg.max_claims || allGifts.length;
       var claimLabel = this._t("claim_gift_button", "Claim gift");
@@ -5765,9 +5845,14 @@
           // rules from the optimistic cart, before the server confirms the add.
           product_id: productMeta && productMeta.product_id
         };
-        if (this._graphqlCart) addLine(variantId, 1, props, meta);
-        else addLine2(variantId, 1, props, meta);
-        tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, addedProps);
+        if (this._graphqlCart) {
+          addLine(variantId, 1, props, meta);
+          tracker.track(ANALYTICS_EVENTS.UPSELL_ADDED, addedProps);
+          return;
+        }
+        if (c2.product_id) this._pendingUpsellAdds[String(variantId).split("/").pop()] = String(c2.product_id);
+        addLine2(variantId, 1, props, meta);
+        this._trackWhenAdded(variantId, ANALYTICS_EVENTS.UPSELL_ADDED, addedProps);
         return;
       }
       var key = "upsell_" + variantId;
@@ -5925,6 +6010,11 @@
     // the rules and default list, then ranking), so adding a recommendation swaps
     // in its own recommendations and the unlock CTA tracks the cart instantly.
     _upsellCards(upsells, items, bar) {
+      var self = this;
+      var notRejected = function(c2) {
+        var a2 = self._upsellAvail[c2.product_id];
+        return !(a2 && a2.rejected);
+      };
       var unavailable = {};
       for (var pid in this._upsellAvail) {
         if (Object.prototype.hasOwnProperty.call(this._upsellAvail, pid) && this._upsellAvail[pid].available === false) {
@@ -5947,7 +6037,7 @@
         this._ensureUpsellAvailability(candidates.concat(this._recsPool));
         if (candidates.length > 0) this._ensureUpsellRecs(settings.strategies, items, max - candidates.length);
         return {
-          cards: selectUpsells(Object.assign({}, input, { unavailable, extraPool: this._recsPool })),
+          cards: selectUpsells(Object.assign({}, input, { unavailable, extraPool: this._recsPool })).filter(notRejected),
           showSoldOut: settings.sold_out === "show",
           strategies: settings.strategies || {}
         };
@@ -5964,7 +6054,7 @@
         });
       }).filter(function(p2) {
         return cartVariantIds.indexOf(p2.variant_id) === -1;
-      });
+      }).filter(notRejected);
       this._ensureUpsellAvailability(cards);
       return { cards, showSoldOut: true, strategies: upsells.strategies || {} };
     }

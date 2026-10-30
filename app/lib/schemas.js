@@ -70,6 +70,10 @@ export const OfferSchema = z.object({
         // Major units as Shopify returns them ("999.00"); shown on gift cards.
         price: z.string().optional(),
         compare_at_price: z.string().optional(),
+        // Product status + Online Store publication; unsellable gifts are left
+        // out of the cart (sellable.js).
+        status: z.string().optional(),
+        online_store: z.boolean().optional(),
       })).optional(),
       quantity_per_variant: z.number().int().min(1),
       add_mode: z.enum(['auto', 'display']),
@@ -141,6 +145,8 @@ export const ClaimGiftSchema = z.object({
     product_id: z.string().optional(),
     title: z.string(),
     image: z.string(),
+    status: z.string().optional(),
+    online_store: z.boolean().optional(),
   })).optional(),
   max_claims: z.number().int().min(1).optional(),
   section_heading: z.string().min(1),
@@ -176,6 +182,8 @@ export const UpsellProductSchema = z.object({
   variant_id: z.string().min(1),
   price: z.string().min(1),
   compare_at_price: z.string().optional(),
+  status: z.string().optional(),
+  online_store: z.boolean().optional(),
 })
 
 // Hard ceiling for both caps: bounds the proxy payload and the import sheet width.

@@ -41,10 +41,13 @@ Prisma/Postgres; deployed on Fly.io; Sentry monitoring; two Shopify Functions
   (Shopify CDN); server changes ship to Fly. CI (`.github/workflows/fly-deploy.yml`)
   deliberately excludes `app/drawer-src/**`, so a drawer-only push runs no CI —
   that is correct, not a failure.
-- `app/lib/upsell-rank.js` and `app/lib/upsell-recs.js` are imported by BOTH the
-  server and the drawer bundle (esbuild follows the relative import). They must
-  stay dependency-free (upsell-recs may import upsell-rank), and a change to
-  either needs BOTH deploys. upsell-rank.js is also the single home for
+- `app/lib/upsell-rank.js`, `app/lib/upsell-recs.js` and `app/lib/sellable.js`
+  are imported by BOTH the server and the drawer bundle (esbuild follows the
+  relative import). They must stay dependency-free (upsell-recs may import
+  upsell-rank and sellable), and a change to any of them needs BOTH deploys.
+  sellable.js is the single rule for "can the storefront sell this product"
+  (ACTIVE or UNLISTED, published to the Online Store); gifts and upsells that
+  fail it are picked in the admin but left out of evaluate-cart. upsell-rank.js is also the single home for
   `adjustedTotal` / `adjustedQty` — do not reintroduce local copies; three had
   already drifted apart once.
 - Upsells: `upsell-recs.js` picks the candidates (cart-based product rules from

@@ -1,5 +1,6 @@
 import { pageMatch, getActiveEntries, customerMatchesTags } from '../helpers.server.js'
 import { resolveTemplate } from './messages.server.js'
+import { orderTiers } from '../tier-order.js'
 
 function collectBarEntries(config, page, customer) {
   const entries = []
@@ -227,24 +228,6 @@ function computeTierStates(tiers, currentValue) {
   })
 }
 
-function applyTierOrder(tiers, tierOrder) {
-  if (!Array.isArray(tierOrder) || tierOrder.length === 0) return tiers
-  const byId = new Map(tiers.map((t) => [t.id, t]))
-  const seen = new Set()
-  const ordered = []
-  for (const id of tierOrder) {
-    const t = byId.get(id)
-    if (t && !seen.has(id)) {
-      ordered.push(t)
-      seen.add(id)
-    }
-  }
-  for (const t of tiers) {
-    if (!seen.has(t.id)) ordered.push(t)
-  }
-  return ordered
-}
-
 export function buildBar(config, page, adjustedTotal, adjustedQty, moneyFormat, customer) {
   if (!config.progress_bar.enabled) return null
 
@@ -267,7 +250,10 @@ export function buildBar(config, page, adjustedTotal, adjustedQty, moneyFormat, 
     qtyMerged.sort((a, b) => a.threshold - b.threshold)
     const qtyTiers = computeTierStates(qtyMerged, adjustedQty)
 
-    const allTiers = applyTierOrder([...priceTiers, ...qtyTiers], tierOrder)
+    // States are worked out in amount order above; this is display order only.
+    // With no saved order it is price then quantity, each by amount, which is
+    // what this bar has always shown (and so the same "next" milestone).
+    const allTiers = orderTiers([...priceTiers, ...qtyTiers], tierOrder)
     const nextTier = allTiers.find((t) => t.state === 'next')
     const allComplete = allTiers.every((t) => t.state === 'active')
 
@@ -314,7 +300,7 @@ export function buildBar(config, page, adjustedTotal, adjustedQty, moneyFormat, 
     moneyFormat
   )
   if (bar && bar.tiers) {
-    bar.tiers = applyTierOrder(bar.tiers, tierOrder)
+    bar.tiers = orderTiers(bar.tiers, tierOrder)
   }
   return bar
 }

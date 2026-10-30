@@ -2,6 +2,7 @@ import { useState, forwardRef, useImperativeHandle } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { isFrozenHandle } from "../lib/constants.js";
 import VariantList, { extractVariantData } from "./VariantList.jsx";
+import { unsellableReason } from "../lib/sellable.js";
 import TargetingSection from "./TargetingSection.jsx";
 import TagTargetingSection from "./TagTargetingSection.jsx";
 import VStack from "./VStack.jsx";
@@ -16,6 +17,7 @@ function buildVariantDisplay(ids, dataMap) {
       title: d.title || vid,
       variant_title: null,
       image: d.image || "",
+      hidden: unsellableReason(d),
     };
   });
 }

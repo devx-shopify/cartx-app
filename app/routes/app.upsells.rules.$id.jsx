@@ -8,6 +8,7 @@ import { markStep } from "../lib/onboarding.server.js";
 import { editRule, loadCatalog, getRule, friendlyError } from "../lib/upsells.server.js";
 import VStack from "../components/VStack.jsx";
 import { OrderedProducts, Thumb, mergeSelection, productGid } from "../components/UpsellProducts.jsx";
+import { unsellableReason } from "../lib/sellable.js";
 
 const LIST_URL = "/app/upsells?tab=rules";
 const SAVE_BAR_ID = "upsell-rule-save-bar";
@@ -29,7 +30,7 @@ export const loader = async ({ request, params }) => {
   const rule = await getRule(shopId, themeId, sourceId);
   if (!rule && !isNew) throw new Response("Rule not found", { status: 404 });
   const catalog = rule ? await loadCatalog(shopId, [rule.triggerProductId, ...rule.recommendedIds]) : {};
-  const display = (id) => ({ id, title: catalog[id]?.title || `Product ${id}`, image: catalog[id]?.image_url || "" });
+  const display = (id) => ({ id, title: catalog[id]?.title || `Product ${id}`, image: catalog[id]?.image_url || "", hidden: catalog[id] ? unsellableReason(catalog[id]) : null });
 
   return {
     isNew,

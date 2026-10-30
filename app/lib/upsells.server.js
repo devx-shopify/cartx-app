@@ -9,6 +9,7 @@ import {
   triggerProductIds,
 } from "./upsell-recs.js";
 import { UPSELL_CAP_LIMIT } from "./schemas.js";
+import { isSellable } from "./sellable.js";
 
 export { numericId };
 
@@ -56,6 +57,7 @@ export function rowToSnapshot(row) {
     price: row.price,
     compare_at_price: row.compareAtPrice || undefined,
     status: row.status,
+    online_store: row.onlineStore !== false,
   };
 }
 
@@ -70,6 +72,7 @@ export function productNodeToRow(node) {
     price: v?.price ?? "0",
     compareAtPrice: v?.compareAtPrice || null,
     status: node.status || "ACTIVE",
+    onlineStore: !!node.publishedAt,
   };
 }
 
@@ -78,6 +81,7 @@ export const PRODUCT_SNAPSHOT_FIELDS = `
   title
   handle
   status
+  publishedAt
   featuredImage { url }
   variants(first: 1) { nodes { id price compareAtPrice } }
 `;
@@ -292,6 +296,8 @@ export async function fetchDefaultProducts(admin, productIds) {
         variant_id: v?.id ?? "",
         price: v?.price ?? "0",
         compare_at_price: v?.compareAtPrice || undefined,
+        status: node.status || "ACTIVE",
+        online_store: !!node.publishedAt,
       };
     });
 }
@@ -329,7 +335,8 @@ function settingsOf(upsells) {
 // it's added. `bar` and `addRates` feed the gap-filler and performance ranking.
 export async function buildUpsellsPayload({ shopId, themeId, upsells, items, bar, addRates = {} }) {
   const settings = settingsOf(upsells);
-  const defaults = upsells.products || [];
+  // Drafts / products off the Online Store can be picked but never reach the cart.
+  const defaults = (upsells.products || []).filter(isSellable);
   const base = {
     enabled: true,
     heading: upsells.heading,
