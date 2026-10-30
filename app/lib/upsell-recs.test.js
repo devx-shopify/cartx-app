@@ -74,6 +74,18 @@ describe('pickRecommendations: cart_based', () => {
     expect(ids(cards)).toEqual(['11'])
   })
 
+  test('keeps unlisted products, skips ones off the Online Store', () => {
+    const catalog = { ...catalogOf(11), 12: snap(12, { status: 'UNLISTED' }), 13: snap(13, { online_store: false }) }
+    const cards = pickRecommendations({ items: [line(1)], rules: { 1: ['13', '12', '11'] }, catalog, settings: CART_BASED })
+    expect(ids(cards)).toEqual(['12', '11'])
+  })
+
+  test('skips draft default products', () => {
+    const defaults = [snap(21, { status: 'DRAFT' }), snap(22)]
+    const cards = pickRecommendations({ items: [], defaults, settings: { mode: 'static' } })
+    expect(ids(cards)).toEqual(['22'])
+  })
+
   test('max_per_trigger reads only the first N of a rule', () => {
     const rules = { 1: ['11', '12', '13'] }
     const cards = pickRecommendations({ items: [line(1)], rules, catalog: catalogOf(11, 12, 13), settings: { ...CART_BASED, max_per_trigger: 2 } })

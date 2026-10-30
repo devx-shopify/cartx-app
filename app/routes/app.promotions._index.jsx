@@ -19,12 +19,14 @@ import {
   getActivePlan,
   planOfferLimit,
 } from "../lib/billing.server.js";
+import { syncSnapshotStatuses } from "../lib/product-sync.server.js";
+import { unsellableReason } from "../lib/sellable.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const preferred = await getSelectedTheme(session.shop);
   const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
-  const config = await loadConfig(shopId, themeId);
+  const config = await syncSnapshotStatuses(admin, shopId, themeId, await loadConfig(shopId, themeId));
 
   // Resolve the plan's active-offer limit HERE (this page's own loader) so the
   // upgrade note is driven by fresh, authoritative data — not the parent layout's
@@ -39,17 +41,37 @@ export const loader = async ({ request }) => {
 
   const promotions = [];
   for (const offer of config.offers) {
-    promotions.push({ id: offer.id, type: "offer", name: offer.name, enabled: offer.enabled, trigger: triggerSummary(offer), needsAttention: offer._needs_attention || null });
+    promotions.push({ id: offer.id, type: "offer", name: offer.name, enabled: offer.enabled, trigger: triggerSummary(offer), needsAttention: offer._needs_attention || null, hiddenGifts: hiddenGiftsLabel(offer.reward?.type === "auto_add_gift" ? offer.reward.gift_variant_data : null) });
   }
   for (const coupon of config.coupons) {
     promotions.push({ id: coupon.id, type: "coupon", name: coupon.is_automatic ? coupon.title : coupon.code, enabled: coupon.enabled, trigger: coupon.display_message || coupon.type_label || "Discount", needsAttention: null });
   }
   for (const gift of config.claim_gifts) {
-    promotions.push({ id: gift.id, type: "claim-gift", name: gift.name, enabled: gift.enabled, trigger: gift.trigger ? (gift.trigger.type === "price" ? `Rs.${gift.trigger.threshold} cart total` : `${gift.trigger.threshold} items`) : "No trigger", needsAttention: gift._needs_attention || null });
+    promotions.push({ id: gift.id, type: "claim-gift", name: gift.name, enabled: gift.enabled, trigger: gift.trigger ? (gift.trigger.type === "price" ? `Rs.${gift.trigger.threshold} cart total` : `${gift.trigger.threshold} items`) : "No trigger", needsAttention: gift._needs_attention || null, hiddenGifts: hiddenGiftsLabel(gift.claimable_variant_data) });
   }
 
   return { promotions, offerLimit: Number.isFinite(offerLimit) ? offerLimit : null };
 };
+
+// Gift products that can't be added to cart (draft, archived, not on the Online
+// Store) stay picked but are hidden in the cart. Row badge text, or null.
+function hiddenGiftsLabel(data) {
+  const hidden = (data || []).filter((d) => unsellableReason(d));
+  if (hidden.length === 0) return null;
+  if (hidden.length === data.length) return "All gifts hidden in cart";
+  return `${hidden.length} ${hidden.length === 1 ? "gift" : "gifts"} hidden in cart`;
+}
+
+// Promotions whose hidden-gifts banner was dismissed, per browser. The banner
+// returns only when a promotion not in this list is affected.
+const HIDDEN_GIFTS_DISMISSED_KEY = "cartx:hidden-gifts-dismissed";
+
+function readDismissed() {
+  try {
+    const ids = JSON.parse(window.localStorage.getItem(HIDDEN_GIFTS_DISMISSED_KEY));
+    return Array.isArray(ids) ? ids : [];
+  } catch { return []; }
+}
 
 function triggerSummary(offer) {
   const parts = [];
@@ -176,6 +198,19 @@ export default function PromotionsIndex() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
 
+  // Only promotions that were actually switched off (a product was deleted).
+  const turnedOff = promotions.filter((p) => p.needsAttention && !p.enabled);
+  const withHiddenGifts = promotions.filter((p) => p.hiddenGifts);
+  // null until read on the client, so the server render never shows the banner.
+  const [dismissedHidden, setDismissedHidden] = useState(null);
+  useEffect(() => { setDismissedHidden(readDismissed()); }, []);
+  const showHiddenBanner = dismissedHidden !== null && withHiddenGifts.some((p) => !dismissedHidden.includes(p.id));
+  const dismissHiddenBanner = () => {
+    const ids = withHiddenGifts.map((p) => p.id);
+    setDismissedHidden(ids);
+    try { window.localStorage.setItem(HIDDEN_GIFTS_DISMISSED_KEY, JSON.stringify(ids)); } catch { /* storage blocked */ }
+  };
+
   useEffect(() => {
     if (fetcher.data?.toast) shopify.toast.show(fetcher.data.toast);
     if (fetcher.data?.error) shopify.toast.show(fetcher.data.error, { isError: true });
@@ -277,14 +312,30 @@ export default function PromotionsIndex() {
       </div>
 
       {/* Auto-drafted promotions (a product they used was deleted) */}
-      {promotions.some((p) => p.needsAttention) && (
+      {turnedOff.length > 0 && (
         <s-banner tone="warning" heading="Some promotions were turned off automatically">
-          <s-stack direction="block" gap="100">
+          <s-stack direction="block" gap="small-200">
             <s-text>
               A product used by these promotions was deleted, so they were moved to draft to
               avoid a broken cart. Re-select a product and re-enable them:
             </s-text>
-            {promotions.filter((p) => p.needsAttention).map((p) => (
+            {turnedOff.map((p) => (
+              <s-text key={p.id}>• {p.name || p.type}</s-text>
+            ))}
+          </s-stack>
+        </s-banner>
+      )}
+
+      {/* Gift products that aren't live. The promotion still runs; those gifts
+          are left out of the cart until the product is live. Dismissible. */}
+      {showHiddenBanner && (
+        <s-banner tone="info" heading="Some gift products are hidden in the cart" dismissible onDismiss={dismissHiddenBanner}>
+          <s-stack direction="block" gap="small-200">
+            <s-text>
+              These promotions are still active, but some of their gift products are draft, archived or not on
+              the Online Store, so the cart leaves them out until they&apos;re live:
+            </s-text>
+            {withHiddenGifts.map((p) => (
               <s-text key={p.id}>• {p.name || p.type}</s-text>
             ))}
           </s-stack>
@@ -439,7 +490,10 @@ export default function PromotionsIndex() {
                               onMouseEnter={(e) => { e.currentTarget.style.textDecoration = "underline"; }}
                               onMouseLeave={(e) => { e.currentTarget.style.textDecoration = "none"; }}
                             >{promo.name}</span>
-                            <s-text color="subdued">{TYPE_LABELS[promo.type]}</s-text>
+                            <s-stack direction="inline" gap="small-200" alignItems="center">
+                              <s-text color="subdued">{TYPE_LABELS[promo.type]}</s-text>
+                              {promo.hiddenGifts ? <s-badge tone="warning">{promo.hiddenGifts}</s-badge> : null}
+                            </s-stack>
                           </s-stack>
                         </s-stack>
                       </s-table-cell>

@@ -172,7 +172,8 @@ model UpsellProduct {
   variantId      String // first variant; the drawer picks the first available at runtime
   price          String // Shopify decimal string, display only (same as the config snapshots)
   compareAtPrice String?
-  status         String   @default("ACTIVE") // ACTIVE | DRAFT | ARCHIVED
+  status         String   @default("ACTIVE") // ACTIVE | UNLISTED | DRAFT | ARCHIVED
+  onlineStore    Boolean  @default(true) // published to the Online Store (else /cart/add.js rejects it)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

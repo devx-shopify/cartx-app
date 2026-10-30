@@ -15,6 +15,8 @@ import { listRules, deleteRules, setRulesEnabled, fetchDefaultProducts, getShopC
 import { planImport, applyImport, undoLastImport, lastImport } from "../lib/upsell-import.server.js";
 import { MAX_IMPORT_BYTES } from "../lib/upsell-csv.js";
 import { numericId } from "../lib/upsell-recs.js";
+import { syncSnapshotStatuses } from "../lib/product-sync.server.js";
+import { isSellable, unsellableReason } from "../lib/sellable.js";
 
 const PAGE_SIZE = 25;
 const SETTINGS_KEYS = ["enabled", "mode", "no_match", "fill_with_default", "sold_out", "max_visible", "max_per_trigger"];
@@ -36,13 +38,13 @@ async function context(request) {
 }
 
 export const loader = async ({ request }) => {
-  const { shopId, themeId } = await context(request);
+  const { admin, shopId, themeId } = await context(request);
   const url = new URL(request.url);
   const query = url.searchParams.get("q") || "";
   const page = Math.max(0, Number(url.searchParams.get("page")) || 0);
 
   const [config, currency, list, last] = await Promise.all([
-    loadConfig(shopId, themeId),
+    loadConfig(shopId, themeId).then((c) => syncSnapshotStatuses(admin, shopId, themeId, c)),
     getShopCurrency(shopId),
     listRules(shopId, themeId, { query, page, pageSize: PAGE_SIZE }),
     lastImport(shopId, themeId),
@@ -357,9 +359,9 @@ function ruleWarnings(rule, catalog, cap) {
   const out = [];
   const trigger = catalog[rule.triggerProductId];
   if (!trigger) out.push({ tone: "critical", text: "Trigger product missing" });
-  else if (trigger.status !== "ACTIVE") out.push({ tone: "warning", text: "Trigger product not active" });
-  const inactive = rule.recommendedIds.filter((id) => !catalog[id] || catalog[id].status !== "ACTIVE").length;
-  if (inactive) out.push({ tone: "warning", text: `${inactive} not active` });
+  else if (!isSellable(trigger)) out.push({ tone: "warning", text: "Trigger product not live" });
+  const inactive = rule.recommendedIds.filter((id) => !catalog[id] || !isSellable(catalog[id])).length;
+  if (inactive) out.push({ tone: "warning", text: `${inactive} hidden in cart (not live)` });
   if (rule.recommendedIds.length > cap) out.push({ tone: "warning", text: `Over the limit of ${cap}` });
   return out;
 }
@@ -765,7 +767,7 @@ function settingsFrom(upsells) {
   return out;
 }
 function defaultsFrom(upsells) {
-  return (upsells.products || []).map((p) => ({ id: numericId(p.product_id), title: p.title, image: p.image_url, price: p.price }));
+  return (upsells.products || []).map((p) => ({ id: numericId(p.product_id), title: p.title, image: p.image_url, price: p.price, hidden: unsellableReason(p) }));
 }
 
 export default function Upsells() {

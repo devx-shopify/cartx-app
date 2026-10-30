@@ -1,4 +1,5 @@
 import { numericId } from "../lib/upsell-recs.js";
+import { unsellableReason } from "../lib/sellable.js";
 
 export const productGid = (id) => `gid://shopify/Product/${numericId(id)}`;
 
@@ -10,6 +11,8 @@ export function mergeSelection(previous, selection) {
     title: p.title,
     image: p.images?.[0]?.originalSrc || "",
     price: p.variants?.[0]?.price,
+    // The picker gives the status only; Online Store is checked on save/load.
+    hidden: unsellableReason({ status: p.status }),
   }));
   const pickedIds = new Set(picked.map((p) => p.id));
   const kept = previous.filter((p) => pickedIds.has(p.id));
@@ -76,7 +79,10 @@ export function OrderedProducts({ items, onChange, renderMeta, emptyText, onAdd,
           </div>
           <Thumb src={p.image} alt={p.title} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <s-text fontWeight="medium">{p.title}</s-text>
+            <s-stack direction="inline" gap="small-200" alignItems="center">
+              <s-text fontWeight="medium">{p.title}</s-text>
+              {p.hidden ? <s-badge tone="warning">{p.hidden}: hidden in cart</s-badge> : null}
+            </s-stack>
             {renderMeta ? <div>{renderMeta(p)}</div> : null}
           </div>
           <s-stack direction="inline" gap="extra-small">
