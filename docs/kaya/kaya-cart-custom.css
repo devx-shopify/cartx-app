@@ -1,0 +1,755 @@
+/* Kaya cart drawer - cartx Custom CSS
+   Source design: Figma "Kaya" cart (file nSYH0a84mREw7hkZwpywL9), mobile
+   frames "Cart" (empty), "Cart 2" (full cart) and "Cart 3" (fixed footer),
+   360px wide.
+   Colours, texts, milestone dots, coupon entry and upsell layout come from
+   Customize Cart settings (kaya-cart-settings.json). This file holds what
+   settings don't cover: the Montserrat/Poppins type scale, the two-line
+   header with a cart icon, amounts above the milestone track, all cart lines
+   in one card, the mint freebies block, recommendation cards, the coupon
+   pill, the footer layout and the trust row.
+   This is the same text as advanced.custom_css in the settings JSON. Icons
+   are small inline SVG data URIs, so nothing needs to be uploaded. */
+
+#cartmax-root .cartmax-drawer {
+  --ky-ink: #262626;
+  --ky-ink-2: #1E1F24;
+  --ky-grey: #62636C;
+  --ky-teal: #00A08C;
+  --ky-line: #D8D9E0;
+  --ky-divider: #E9E9E9;
+  --ky-card-border: #F3F3F5;
+  --ky-compare: #BDB3B3;
+  --ky-red: #D13415;
+  --ky-poppins: 'Poppins', var(--cartmax-font-family, sans-serif);
+  --cartmax-img-size: 80px;
+  color: var(--ky-ink);
+}
+
+/* ---------- Header: cart icon, "My Cart" over "2 Products" ---------- */
+#cartmax-root .cartmax-header {
+  height: 64px;
+  min-height: 64px;
+  padding: 0 4px 0 16px;
+  border-bottom: 0;
+}
+#cartmax-root .cartmax-title {
+  display: grid;
+  grid-template-columns: 21px auto;
+  column-gap: 12px;
+  align-items: center;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
+  letter-spacing: -0.1px;
+  color: var(--ky-ink);
+  text-transform: none;
+}
+#cartmax-root .cartmax-title::before {
+  content: "";
+  grid-row: 1 / 3;
+  grid-column: 1;
+  width: 21px;
+  height: 20px;
+  background: url("data:image/svg+xml,%3Csvg width='21' height='20' viewBox='0 0 21 20' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 1H4L5 11H17L19 4H8' stroke-width='1.5' stroke='%23262626'/%3E%3Cpath d='M8 17C8 18.1046 7.10457 19 6 19C4.89543 19 4 18.1046 4 17C4 15.8954 4.89543 15 6 15C7.10457 15 8 15.8954 8 17Z' stroke-width='1.5' stroke='%23262626'/%3E%3Cpath d='M18 17C18 18.1046 17.1046 19 16 19C14.8954 19 14 18.1046 14 17C14 15.8954 14.8954 15 16 15C17.1046 15 18 15.8954 18 17Z' stroke-width='1.5' stroke='%23262626'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+#cartmax-root .cartmax-header-count,
+#cartmax-root .cartmax-title:not(:has(.cartmax-header-count))::after {
+  grid-row: 2;
+  grid-column: 2;
+  display: block;
+  width: auto;
+  min-width: 0;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  white-space: nowrap;
+  background: none;
+  border-radius: 0;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  letter-spacing: -0.1px;
+  color: var(--ky-ink);
+}
+#cartmax-root .cartmax-header-count::after { content: " Products"; }
+/* Empty cart: cartx hides the count at 0, the design shows "0 Products" */
+#cartmax-root .cartmax-title:not(:has(.cartmax-header-count))::after { content: "0 Products"; }
+#cartmax-root .cartmax-close {
+  width: 44px;
+  height: 44px;
+  padding: 12px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--ky-ink);
+}
+#cartmax-root .cartmax-close svg { width: 20px; height: 20px; }
+
+/* ---------- Body order: progress, cart card, freebies, recommended, coupon ---------- */
+#cartmax-root .cartmax-body { padding: 0; gap: 0; }
+#cartmax-root .cartmax-body > .cartmax-line-freebie { order: 1; }
+#cartmax-root .cartmax-body > .cartmax-upsells { order: 2; }
+#cartmax-root .cartmax-body > .cartmax-coupons { order: 3; }
+#cartmax-root .cartmax-body > .cartmax-claims { order: 4; }
+
+/* ---------- Milestone bar: amounts above a thin track, rewards below ---------- */
+#cartmax-root .cartmax-progress {
+  padding: 0;
+  margin: 0;
+  background: none;
+  border: 0;
+  overflow: visible;
+}
+#cartmax-root .cartmax-progress-msg-wrap { display: none; }
+/* Dots sit at x 84 / 180 / 276 of the 360px frame: a 288px track that
+   starts 12px off the left edge, with even spacing. */
+#cartmax-root .cartmax-progress-track {
+  width: 288px;
+  height: 3px;
+  margin: 46px 0 80px -12px;
+  border-radius: 0;
+}
+#cartmax-root .cartmax-progress-fill { border-radius: 0; }
+#cartmax-root .cartmax-milestone-dot,
+#cartmax-root .cartmax-milestone--active .cartmax-milestone-dot,
+#cartmax-root .cartmax-milestone--next .cartmax-milestone-dot {
+  width: 24px;
+  height: 24px;
+  box-shadow: none;
+}
+#cartmax-root .cartmax-milestone-label,
+#cartmax-root .cartmax-milestone--active .cartmax-milestone-label,
+#cartmax-root .cartmax-milestone--next .cartmax-milestone-label {
+  top: 30px;
+  max-width: 96px;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--ky-ink);
+}
+/* Only reached dots are teal; the next one keeps the locked look */
+#cartmax-root .cartmax-milestone--next .cartmax-milestone-dot {
+  background: #FFFFFF;
+  border: 1px solid var(--ky-line);
+}
+#cartmax-root .cartmax-milestone-dot { border-width: 1px; }
+#cartmax-root .cartmax-milestone--active .cartmax-milestone-dot { border-width: 0; }
+/* The milestone amount (tier sub-label) is lifted above the track */
+#cartmax-root .cartmax-milestone-sub-label,
+#cartmax-root .cartmax-milestone--active .cartmax-milestone-sub-label,
+#cartmax-root .cartmax-milestone--next .cartmax-milestone-sub-label {
+  position: absolute;
+  top: -58px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: var(--ky-ink-2);
+}
+
+/* ---------- Cart lines: one rounded, shadowed card ---------- */
+#cartmax-root .cartmax-line-item:not(.cartmax-line-freebie) {
+  position: relative;
+  margin: 0 16px;
+  padding: 12px;
+  gap: 12px;
+  background: #FFFFFF;
+  border: 1px solid var(--ky-card-border);
+  border-top: 0;
+  border-bottom: 0;
+  border-radius: 0;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.05);
+  clip-path: inset(0 -12px);
+}
+/* first line in the card */
+#cartmax-root .cartmax-line-item:not(.cartmax-line-freebie):not(.cartmax-line-item:not(.cartmax-line-freebie) ~ *) {
+  border-top: 1px solid var(--ky-card-border);
+  border-radius: 16px 16px 0 0;
+  clip-path: inset(-12px -12px 0 -12px);
+}
+/* last line in the card */
+#cartmax-root .cartmax-line-item:not(.cartmax-line-freebie):not(:has(~ .cartmax-line-item:not(.cartmax-line-freebie))) {
+  border-bottom: 1px solid var(--ky-card-border);
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+  clip-path: inset(0 -12px -12px -12px);
+  margin-bottom: 24px;
+}
+/* only line */
+#cartmax-root .cartmax-line-item:not(.cartmax-line-freebie):not(.cartmax-line-item:not(.cartmax-line-freebie) ~ *):not(:has(~ .cartmax-line-item:not(.cartmax-line-freebie))) {
+  clip-path: none;
+}
+/* divider between lines */
+#cartmax-root .cartmax-line-item:not(.cartmax-line-freebie):has(~ .cartmax-line-item:not(.cartmax-line-freebie))::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  height: 1px;
+  background: var(--ky-divider);
+}
+#cartmax-root .cartmax-line-image,
+#cartmax-root .cartmax-line-image img {
+  width: 80px;
+  height: 80px;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+  object-fit: contain;
+}
+#cartmax-root .cartmax-line-title {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.6px;
+  color: var(--ky-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  -webkit-line-clamp: unset;
+}
+#cartmax-root .cartmax-line-price {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 2px;
+}
+#cartmax-root .cartmax-line-item:not(.cartmax-line-freebie) .cartmax-line-price > span:first-child {
+  font-size: 14px;
+  line-height: 21px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  color: rgba(38, 38, 38, 0.75);
+}
+#cartmax-root .cartmax-line-price-original {
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 400;
+  color: var(--ky-compare);
+  text-decoration: line-through;
+}
+#cartmax-root .cartmax-line-savings-badge,
+#cartmax-root .cartmax-line-discounts { display: none; }
+#cartmax-root .cartmax-line-actions { margin-top: 8px; justify-content: flex-start; }
+#cartmax-root .cartmax-qty-controls {
+  width: 76px;
+  height: 32px;
+  margin-left: 0;
+  padding: 0;
+  justify-content: space-between;
+  background: #FFFFFF;
+  border: 0.93px solid #8B8B8B;
+  border-radius: 7.42px;
+}
+#cartmax-root .cartmax-qty-btn {
+  width: 24px;
+  height: 30px;
+  color: var(--ky-ink);
+  background: none;
+}
+#cartmax-root .cartmax-qty-value {
+  border: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ky-ink);
+}
+/* Remove: the "text" remove style, drawn as the grey bin beside the stepper */
+#cartmax-root .cartmax-line-remove-text {
+  position: absolute;
+  right: 13px;
+  bottom: 18px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 0;
+  color: transparent;
+  border: 0;
+  background: url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M17.5 3.75H13.0875C13.0436 3.00415 12.7829 2.28733 12.3375 1.6875C11.8 1.025 11 0.625 10 0.625C9 0.625 8.2 1.025 7.6625 1.6875C7.2164 2.28698 6.95567 3.004 6.9125 3.75H2.5C2.33424 3.75 2.17527 3.81585 2.05806 3.93306C1.94085 4.05027 1.875 4.20924 1.875 4.375C1.875 4.54076 1.94085 4.69973 2.05806 4.81694C2.17527 4.93415 2.33424 5 2.5 5H4.0625V17.5C4.0625 17.85 4.3375 18.125 4.6875 18.125H15.3125C15.4783 18.125 15.6372 18.0592 15.7544 17.9419C15.8717 17.8247 15.9375 17.6658 15.9375 17.5V5H17.5C17.6658 5 17.8247 4.93415 17.9419 4.81694C18.0592 4.69973 18.125 4.54076 18.125 4.375C18.125 4.20924 18.0592 4.05027 17.9419 3.93306C17.8247 3.81585 17.6658 3.75 17.5 3.75ZM8.6375 2.475C8.925 2.1125 9.3625 1.875 10 1.875C10.6375 1.875 11.0625 2.1125 11.3625 2.475C11.6125 2.775 11.7375 3.225 11.8125 3.75H8.1875C8.25 3.225 8.4 2.775 8.6375 2.475ZM14.6875 16.875H5.3125V5H14.6875V16.875Z' fill='%23AFAFAF'/%3E%3Cpath d='M8.1875 6.5625C8.02174 6.5625 7.86277 6.62835 7.74556 6.74556C7.62835 6.86277 7.5625 7.02174 7.5625 7.1875V14.6875C7.5625 14.8533 7.62835 15.0122 7.74556 15.1294C7.86277 15.2467 8.02174 15.3125 8.1875 15.3125C8.35326 15.3125 8.51223 15.2467 8.62944 15.1294C8.74665 15.0122 8.8125 14.8533 8.8125 14.6875V7.1875C8.8125 7.02174 8.74665 6.86277 8.62944 6.74556C8.51223 6.62835 8.35326 6.5625 8.1875 6.5625ZM11.8125 6.5625C11.6467 6.5625 11.4878 6.62835 11.3706 6.74556C11.2533 6.86277 11.1875 7.02174 11.1875 7.1875V14.6875C11.1875 14.8533 11.2533 15.0122 11.3706 15.1294C11.4878 15.2467 11.6467 15.3125 11.8125 15.3125C11.9783 15.3125 12.1372 15.2467 12.2544 15.1294C12.3717 15.0122 12.4375 14.8533 12.4375 14.6875V7.1875C12.4375 7.02174 12.3717 6.86277 12.2544 6.74556C12.1372 6.62835 11.9783 6.5625 11.8125 6.5625Z' fill='%23AFAFAF'/%3E%3C/svg%3E") center / 20px 20px no-repeat;
+}
+
+/* ---------- Freebies For you: free gift lines in a mint block ---------- */
+#cartmax-root .cartmax-line-freebie {
+  position: relative;
+  margin: 0 16px;
+  padding: 8px 16px;
+  gap: 8px;
+  border: 0;
+  border-radius: 0;
+  background: #F0FFFD;
+}
+/* first gift line carries the block heading */
+#cartmax-root .cartmax-line-freebie:not(.cartmax-line-freebie ~ .cartmax-line-freebie) {
+  padding-top: 81px;
+  border-radius: 16px 16px 0 0;
+  background: linear-gradient(180deg, #DCFFFB 0%, #F0FFFD 100%);
+}
+#cartmax-root .cartmax-line-freebie:not(.cartmax-line-freebie ~ .cartmax-line-freebie)::before {
+  content: "Freebies For you";
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  height: 24px;
+  padding: 0 0 0 30px;
+  font-size: 14px;
+  line-height: 24px;
+  font-weight: 600;
+  color: var(--ky-ink-2);
+  background: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 22C11.6 22 11.2167 21.925 10.85 21.775C10.4833 21.625 10.1583 21.4083 9.875 21.125C9.39167 20.6417 8.975 20.325 8.625 20.175C8.275 20.025 7.75 19.95 7.05 19.95C6.21667 19.95 5.50833 19.6583 4.925 19.075C4.34167 18.4917 4.05 17.7833 4.05 16.95C4.05 16.25 3.975 15.725 3.825 15.375C3.675 15.025 3.35833 14.6083 2.875 14.125C2.59167 13.8417 2.375 13.5167 2.225 13.15C2.075 12.7833 2 12.4 2 12C2 11.6 2.075 11.2167 2.225 10.85C2.375 10.4833 2.59167 10.1583 2.875 9.875C3.35833 9.39167 3.675 8.975 3.825 8.625C3.975 8.275 4.05 7.75 4.05 7.05C4.05 6.21667 4.34167 5.50833 4.925 4.925C5.50833 4.34167 6.21667 4.05 7.05 4.05C7.75 4.05 8.275 3.975 8.625 3.825C8.975 3.675 9.39167 3.35833 9.875 2.875C10.1583 2.59167 10.4833 2.375 10.85 2.225C11.2167 2.075 11.6 2 12 2C12.4 2 12.7833 2.075 13.15 2.225C13.5167 2.375 13.8417 2.59167 14.125 2.875C14.6083 3.35833 15.025 3.675 15.375 3.825C15.725 3.975 16.25 4.05 16.95 4.05C17.7833 4.05 18.4917 4.34167 19.075 4.925C19.6583 5.50833 19.95 6.21667 19.95 7.05C19.95 7.75 20.025 8.275 20.175 8.625C20.325 8.975 20.6417 9.39167 21.125 9.875C21.4083 10.1583 21.625 10.4833 21.775 10.85C21.925 11.2167 22 11.6 22 12C22 12.4 21.925 12.7833 21.775 13.15C21.625 13.5167 21.4083 13.8417 21.125 14.125C20.6417 14.6083 20.325 15.025 20.175 15.375C20.025 15.725 19.95 16.25 19.95 16.95C19.95 17.7833 19.6583 18.4917 19.075 19.075C18.4917 19.6583 17.7833 19.95 16.95 19.95C16.25 19.95 15.725 20.025 15.375 20.175C15.025 20.325 14.6083 20.6417 14.125 21.125C13.8417 21.4083 13.5167 21.625 13.15 21.775C12.7833 21.925 12.4 22 12 22ZM14.5 16C14.9167 16 15.2708 15.8542 15.5625 15.5625C15.8542 15.2708 16 14.9167 16 14.5C16 14.0833 15.8542 13.7292 15.5625 13.4375C15.2708 13.1458 14.9167 13 14.5 13C14.0833 13 13.7292 13.1458 13.4375 13.4375C13.1458 13.7292 13 14.0833 13 14.5C13 14.9167 13.1458 15.2708 13.4375 15.5625C13.7292 15.8542 14.0833 16 14.5 16ZM9.45 15.95L15.95 9.45L14.55 8.05L8.05 14.55L9.45 15.95ZM10.5625 10.5625C10.8542 10.2708 11 9.91667 11 9.5C11 9.08333 10.8542 8.72917 10.5625 8.4375C10.2708 8.14583 9.91667 8 9.5 8C9.08333 8 8.72917 8.14583 8.4375 8.4375C8.14583 8.72917 8 9.08333 8 9.5C8 9.91667 8.14583 10.2708 8.4375 10.5625C8.72917 10.8542 9.08333 11 9.5 11C9.91667 11 10.2708 10.8542 10.5625 10.5625Z' fill='%23000000'/%3E%3C/svg%3E") left center / 24px 24px no-repeat;
+}
+#cartmax-root .cartmax-line-freebie:not(.cartmax-line-freebie ~ .cartmax-line-freebie)::after {
+  content: "";
+  position: absolute;
+  top: 56px;
+  left: 16px;
+  right: 16px;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.15);
+}
+/* last gift line closes the block */
+#cartmax-root .cartmax-line-freebie:not(:has(~ .cartmax-line-freebie)) {
+  padding-bottom: 16px;
+  margin-bottom: 24px;
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+  background: linear-gradient(180deg, #F0FFFD 0%, #FFFFFF 100%);
+}
+#cartmax-root .cartmax-line-freebie:not(.cartmax-line-freebie ~ .cartmax-line-freebie):not(:has(~ .cartmax-line-freebie)) {
+  background: linear-gradient(180deg, #DCFFFB 0%, #FFFFFF 100%);
+}
+#cartmax-root .cartmax-line-freebie .cartmax-line-image,
+#cartmax-root .cartmax-line-freebie .cartmax-line-image img {
+  width: 64px;
+  height: 64px;
+  border-radius: 6px;
+  background: #FFFFFF;
+}
+#cartmax-root .cartmax-line-freebie .cartmax-line-title {
+  font-weight: 400;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+#cartmax-root .cartmax-line-freebie .cartmax-line-price { margin-top: 4px; gap: 4px; align-items: center; }
+#cartmax-root .cartmax-line-freebie .cartmax-line-price-original {
+  line-height: 20px;
+  color: var(--ky-grey);
+}
+#cartmax-root .cartmax-gift-badge {
+  display: inline-block;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--ky-teal);
+  color: #FFFFFF;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* ---------- Recommended For you ---------- */
+#cartmax-root .cartmax-upsells {
+  padding: 24px 0 36px 20px;
+  margin: 0;
+  background: none;
+  border: 0;
+}
+#cartmax-root .cartmax-upsells-heading {
+  margin: 0 0 12px;
+  padding: 0;
+  font-family: var(--ky-poppins);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.1px;
+  color: var(--ky-ink-2);
+  text-transform: none;
+}
+#cartmax-root .cartmax-upsells-scroll {
+  gap: 20px;
+  padding: 0 20px 8px 0;
+}
+#cartmax-root .cartmax-upsell-card {
+  flex: 0 0 240px;
+  width: 240px;
+  min-height: 84px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+#cartmax-root .cartmax-upsell-media {
+  position: relative;
+  flex: 0 0 84px;
+  width: 84px;
+  height: 84px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+#cartmax-root .cartmax-upsell-img {
+  width: 84px;
+  height: 84px;
+  object-fit: contain;
+}
+#cartmax-root .cartmax-upsell-add {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  left: auto;
+  top: auto;
+  width: 32px;
+  height: 32px;
+  min-width: 0;
+  padding: 0;
+  font-size: 0;
+  color: transparent;
+  border: 1px solid #8B8B8B;
+  border-radius: 6px;
+  background: #FFFFFF url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M9.1665 11.8334C9.1665 11.2811 8.71879 10.8334 8.1665 10.8334H4.99984C4.5396 10.8334 4.1665 10.4603 4.1665 10.0001C4.1665 9.53984 4.5396 9.16675 4.99984 9.16675H8.1665C8.71879 9.16675 9.1665 8.71903 9.1665 8.16675V5.00008C9.1665 4.53984 9.5396 4.16675 9.99984 4.16675C10.4601 4.16675 10.8332 4.53984 10.8332 5.00008V8.16675C10.8332 8.71903 11.2809 9.16675 11.8332 9.16675H14.9998C15.4601 9.16675 15.8332 9.53984 15.8332 10.0001C15.8332 10.4603 15.4601 10.8334 14.9998 10.8334H11.8332C11.2809 10.8334 10.8332 11.2811 10.8332 11.8334V15.0001C10.8332 15.4603 10.4601 15.8334 9.99984 15.8334C9.5396 15.8334 9.1665 15.4603 9.1665 15.0001V11.8334Z' fill='%23000000'/%3E%3C/svg%3E") center / 20px 20px no-repeat;
+  box-shadow: none;
+}
+#cartmax-root .cartmax-upsell-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+  align-items: flex-start;
+}
+#cartmax-root .cartmax-upsell-title {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  letter-spacing: 0.6px;
+  color: var(--ky-ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+  min-height: 0;
+}
+#cartmax-root .cartmax-upsell-price {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+  font-family: var(--ky-poppins);
+  font-size: 14px;
+  line-height: 20px;
+}
+#cartmax-root .cartmax-upsell-compare {
+  order: 1;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--ky-ink);
+  text-decoration: line-through;
+}
+#cartmax-root .cartmax-upsell-sale {
+  order: 2;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ky-ink-2);
+}
+#cartmax-root .cartmax-upsell-discount {
+  order: 3;
+  padding: 0;
+  background: none;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--ky-red);
+}
+
+/* ---------- Coupon: one pill with the applied code ---------- */
+#cartmax-root .cartmax-coupons {
+  padding: 0 16px 16px;
+  margin: 0;
+  background: none;
+  border: 0;
+}
+#cartmax-root .cartmax-discount-cards { display: none; }
+#cartmax-root .cartmax-coupon-link {
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 12px;
+  gap: 8px;
+  border: 1px solid var(--ky-line);
+  border-radius: 999px;
+  background: #FFFFFF;
+  font-family: var(--ky-poppins);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--ky-ink-2);
+}
+#cartmax-root .cartmax-coupon-link-icon {
+  width: 24px;
+  height: 24px;
+  background: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M21.4 14.25L14.25 21.4C14.05 21.6 13.825 21.75 13.575 21.85C13.325 21.95 13.075 22 12.825 22C12.575 22 12.325 21.95 12.075 21.85C11.825 21.75 11.6 21.6 11.4 21.4L2.575 12.575C2.39167 12.3917 2.25 12.1792 2.15 11.9375C2.05 11.6958 2 11.4417 2 11.175V4C2 3.45 2.19583 2.97917 2.5875 2.5875C2.97917 2.19583 3.45 2 4 2H11.175C11.4417 2 11.7 2.05417 11.95 2.1625C12.2 2.27083 12.4167 2.41667 12.6 2.6L21.4 11.425C21.6 11.625 21.7458 11.85 21.8375 12.1C21.9292 12.35 21.975 12.6 21.975 12.85C21.975 13.1 21.9292 13.3458 21.8375 13.5875C21.7458 13.8292 21.6 14.05 21.4 14.25ZM6.5 8C6.91667 8 7.27083 7.85417 7.5625 7.5625C7.85417 7.27083 8 6.91667 8 6.5C8 6.08333 7.85417 5.72917 7.5625 5.4375C7.27083 5.14583 6.91667 5 6.5 5C6.08333 5 5.72917 5.14583 5.4375 5.4375C5.14583 5.72917 5 6.08333 5 6.5C5 6.91667 5.14583 7.27083 5.4375 7.5625C5.72917 7.85417 6.08333 8 6.5 8Z' fill='%2300A08C'/%3E%3C/svg%3E") center / 24px 24px no-repeat;
+}
+#cartmax-root .cartmax-coupon-link-icon svg { display: none; }
+#cartmax-root .cartmax-coupon-link-chevron svg { color: #515151; width: 14px; height: 14px; }
+
+/* Applied: tag | "₹200 saved with 'FLAT200'" / "View all coupons >" | Remove */
+#cartmax-root .cartmax-discount-block:has(.cartmax-applied-card) {
+  display: grid;
+  grid-template-columns: 24px auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 4px;
+  padding: 10px 8px 10px 12px;
+  border: 1px solid var(--ky-line);
+  border-radius: 999px;
+  background: #FFFFFF;
+}
+#cartmax-root .cartmax-discount-block:has(.cartmax-applied-card)::before {
+  content: "";
+  grid-column: 1;
+  grid-row: 1 / 3;
+  width: 24px;
+  height: 24px;
+  background: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M21.4 14.25L14.25 21.4C14.05 21.6 13.825 21.75 13.575 21.85C13.325 21.95 13.075 22 12.825 22C12.575 22 12.325 21.95 12.075 21.85C11.825 21.75 11.6 21.6 11.4 21.4L2.575 12.575C2.39167 12.3917 2.25 12.1792 2.15 11.9375C2.05 11.6958 2 11.4417 2 11.175V4C2 3.45 2.19583 2.97917 2.5875 2.5875C2.97917 2.19583 3.45 2 4 2H11.175C11.4417 2 11.7 2.05417 11.95 2.1625C12.2 2.27083 12.4167 2.41667 12.6 2.6L21.4 11.425C21.6 11.625 21.7458 11.85 21.8375 12.1C21.9292 12.35 21.975 12.6 21.975 12.85C21.975 13.1 21.9292 13.3458 21.8375 13.5875C21.7458 13.8292 21.6 14.05 21.4 14.25ZM6.5 8C6.91667 8 7.27083 7.85417 7.5625 7.5625C7.85417 7.27083 8 6.91667 8 6.5C8 6.08333 7.85417 5.72917 7.5625 5.4375C7.27083 5.14583 6.91667 5 6.5 5C6.08333 5 5.72917 5.14583 5.4375 5.4375C5.14583 5.72917 5 6.08333 5 6.5C5 6.91667 5.14583 7.27083 5.4375 7.5625C5.72917 7.85417 6.08333 8 6.5 8Z' fill='%2300A08C'/%3E%3C/svg%3E") center / 24px 24px no-repeat;
+}
+#cartmax-root .cartmax-discount-block:has(.cartmax-applied-card) .cartmax-applied-cards,
+#cartmax-root .cartmax-discount-block:has(.cartmax-applied-card) .cartmax-applied-card,
+#cartmax-root .cartmax-discount-block:has(.cartmax-applied-card) .cartmax-discount-card--applied,
+#cartmax-root .cartmax-discount-block:has(.cartmax-applied-card) .cartmax-discount-card-info {
+  display: contents;
+}
+#cartmax-root .cartmax-discount-block:has(.cartmax-applied-card) .cartmax-coupon-link {
+  grid-column: 2 / 4;
+  grid-row: 2;
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  justify-content: flex-start;
+  gap: 6px;
+}
+#cartmax-root .cartmax-discount-block:has(.cartmax-applied-card) .cartmax-coupon-link-icon,
+#cartmax-root .cartmax-discount-block:has(.cartmax-applied-card) .cartmax-coupon-link-subtitle,
+#cartmax-root .cartmax-discount-block:has(.cartmax-applied-card) .cartmax-discount-card-accent,
+#cartmax-root .cartmax-discount-block:has(.cartmax-applied-card) .cartmax-discount-card-savings,
+#cartmax-root .cartmax-applied-saved svg {
+  display: none;
+}
+#cartmax-root .cartmax-discount-block:has(.cartmax-applied-card) .cartmax-coupon-link-label {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--ky-grey);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  flex: 0 0 auto;
+}
+#cartmax-root .cartmax-discount-block:has(.cartmax-applied-card) .cartmax-coupon-link-chevron {
+  width: 5px;
+  height: 10px;
+  background: url("data:image/svg+xml,%3Csvg width='5' height='10' viewBox='0 0 5 10' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0.25 9.40369V0.596191L4.65375 4.99994L0.25 9.40369Z' fill='%23515151'/%3E%3C/svg%3E") center / 5px 10px no-repeat;
+}
+#cartmax-root .cartmax-discount-block:has(.cartmax-applied-card) .cartmax-coupon-link-chevron svg { display: none; }
+#cartmax-root .cartmax-applied-saved {
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+  padding: 0;
+  background: none;
+  font-family: var(--ky-poppins);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: var(--ky-ink-2);
+  white-space: nowrap;
+}
+#cartmax-root .cartmax-discount-block:has(.cartmax-applied-card) .cartmax-discount-card-code {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: start;
+  font-family: var(--ky-poppins);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: var(--ky-ink-2);
+  text-transform: uppercase;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#cartmax-root .cartmax-discount-block:has(.cartmax-applied-card) .cartmax-discount-card-code::before { content: "\2018"; }
+#cartmax-root .cartmax-discount-block:has(.cartmax-applied-card) .cartmax-discount-card-code::after { content: "\2019"; }
+#cartmax-root .cartmax-discount-card-btn--remove {
+  grid-column: 4;
+  align-self: center;
+  grid-row: 1 / 3;
+  padding: 8px 12px;
+  border: 1px solid #000000;
+  border-radius: 99px;
+  background: #FFFFFF;
+  color: #000000;
+  font-family: var(--ky-poppins);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  text-transform: none;
+}
+
+/* ---------- Footer: savings strip, Total, black checkout, trust row ---------- */
+#cartmax-root .cartmax-footer {
+  padding: 0 0 12px;
+  border-top: 0;
+  box-shadow: none;
+}
+#cartmax-root .cartmax-footer-savings {
+  height: 24px;
+  margin: 0;
+  padding: 0 16px;
+  border-radius: 0;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  justify-content: center;
+}
+#cartmax-root .cartmax-footer-savings-amount { font-weight: 500; }
+#cartmax-root .cartmax-footer-checkout {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 16px 0;
+}
+#cartmax-root .cartmax-footer-price {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+#cartmax-root .cartmax-footer-price-amount {
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--ky-ink-2);
+}
+#cartmax-root .cartmax-footer-price-amount::before {
+  content: "Total:";
+  margin-right: 8px;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--ky-grey);
+}
+#cartmax-root .cartmax-price-breakup-link {
+  padding: 0;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--ky-grey);
+  text-decoration: underline;
+  text-transform: none;
+}
+#cartmax-root .cartmax-checkout-btn {
+  width: 100%;
+  height: 48px;
+  padding: 12px;
+  gap: 8px;
+  justify-content: center;
+  border-radius: 10px;
+  background: #000000;
+  color: #FFFFFF;
+}
+#cartmax-root .cartmax-checkout-label {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  text-transform: none;
+}
+#cartmax-root .cartmax-checkout-btn::after {
+  content: "";
+  flex: 0 0 8px;
+  width: 8px;
+  height: 12px;
+  margin-left: 4px;
+  background: url("data:image/svg+xml,%3Csvg width='8' height='12' viewBox='0 0 8 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M5.44619 5.99994L0.846191 1.39994L1.89994 0.346191L7.55369 5.99994L1.89994 11.6537L0.846191 10.5999L5.44619 5.99994Z' fill='white'/%3E%3C/svg%3E") center / 8px 12px no-repeat;
+}
+#cartmax-root .cartmax-footer-trust {
+  justify-content: center;
+  gap: 16px;
+  margin-top: 12px;
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  color: #001C00;
+}
+#cartmax-root .cartmax-footer-trust > svg { display: none; }
+#cartmax-root .cartmax-footer-trust > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+}
+#cartmax-root .cartmax-footer-trust > span::before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  margin-right: -10px;
+  background: url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M7.50016 13.0462V8.28723L3.3335 5.8744V10.5181C3.3335 10.5522 3.34205 10.5842 3.35916 10.6142C3.37627 10.6441 3.40188 10.6697 3.436 10.6911L7.50016 13.0462ZM8.50016 13.0462L12.5643 10.6911C12.5984 10.6697 12.6241 10.6441 12.6412 10.6142C12.6583 10.5842 12.6668 10.5522 12.6668 10.5181V5.8744L8.50016 8.28723V13.0462ZM7.39766 14.1372L2.93616 11.5692C2.74639 11.4599 2.5985 11.3138 2.4925 11.1309C2.3865 10.9479 2.3335 10.747 2.3335 10.5282V5.4719C2.3335 5.25312 2.3865 5.05223 2.4925 4.86923C2.5985 4.68634 2.74639 4.54023 2.93616 4.4309L7.39766 1.8629C7.58733 1.75345 7.78816 1.69873 8.00016 1.69873C8.21216 1.69873 8.413 1.75345 8.60266 1.8629L13.0642 4.4309C13.2539 4.54023 13.4018 4.68634 13.5078 4.86923C13.6138 5.05223 13.6668 5.25312 13.6668 5.4719V10.5282C13.6668 10.747 13.6138 10.9479 13.5078 11.1309C13.4018 11.3138 13.2539 11.4599 13.0642 11.5692L8.60266 14.1372C8.413 14.2467 8.21216 14.3014 8.00016 14.3014C7.78816 14.3014 7.58733 14.2467 7.39766 14.1372ZM10.5707 5.9334L12.1168 5.04623L8.10266 2.7244C8.06855 2.70306 8.03438 2.6924 8.00016 2.6924C7.96594 2.6924 7.93177 2.70306 7.89766 2.7244L6.45016 3.55773L10.5707 5.9334ZM8.00016 7.42573L9.55016 6.52823L5.4335 4.14873L3.8835 5.04623L8.00016 7.42573Z' fill='%231E1F24'/%3E%3C/svg%3E") center / 16px 16px no-repeat;
+}
+#cartmax-root .cartmax-footer-trust > span::after {
+  content: "Secure Checkout";
+  padding-left: 22px;
+  background: url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M7.16033 9.83338H8.83967L8.46283 7.72822C8.67217 7.63844 8.84072 7.49766 8.9685 7.30588C9.09628 7.11399 9.16017 6.90094 9.16017 6.66672C9.16017 6.34705 9.04672 6.07377 8.81983 5.84688C8.59294 5.61999 8.31967 5.50655 8 5.50655C7.68033 5.50655 7.40706 5.61999 7.18017 5.84688C6.95328 6.07377 6.83983 6.34705 6.83983 6.66672C6.83983 6.90094 6.90372 7.11399 7.0315 7.30588C7.15928 7.49766 7.32783 7.63844 7.53717 7.72822L7.16033 9.83338ZM8 14.3206C6.55811 13.9273 5.36433 13.0786 4.41867 11.7744C3.47289 10.4702 3 9.01205 3 7.40005V3.56422L8 1.69238L13 3.56422V7.40005C13 9.01205 12.5271 10.4702 11.5813 11.7744C10.6357 13.0786 9.44189 13.9273 8 14.3206ZM8 13.2667C9.15556 12.9001 10.1111 12.1667 10.8667 11.0667C11.6222 9.96672 12 8.7445 12 7.40005V4.25005L8 2.75638L4 4.25005V7.40005C4 8.7445 4.37778 9.96672 5.13333 11.0667C5.88889 12.1667 6.84444 12.9001 8 13.2667Z' fill='%231E1F24'/%3E%3C/svg%3E") left center / 16px 16px no-repeat;
+}
+
+/* ---------- Empty cart ---------- */
+#cartmax-root .cartmax-empty-icon { display: none; }
+#cartmax-root .cartmax-empty-text {
+  font-family: var(--ky-poppins);
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+  color: var(--ky-ink-2);
+}
+#cartmax-root .cartmax-empty-subtitle {
+  font-family: var(--ky-poppins);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--ky-grey);
+  white-space: pre-line;
+}
+#cartmax-root .cartmax-empty-btn {
+  font-family: var(--cartmax-font-family, sans-serif);
+  height: 48px;
+  padding: 12px 24px;
+  border-radius: 10px;
+  background: #000000;
+  color: #FFFFFF;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  text-transform: none;
+}
