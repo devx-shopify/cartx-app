@@ -25,7 +25,7 @@ This doc compares the FREED cart design (Figma "FREED / CartX", 17 screens, 600 
 |---|---|---|
 | Announcement bar | ✅ | Colours are settings |
 | Header "CART (2)", centred, close | ✅ | Alignment and "(2)" are settings |
-| Milestone card: gradient, sticker, track, gift icons, labels, top message | ✅ | Card, gradient and colours are settings; the sticker is embedded in the CSS |
+| Milestone card: gradient, track, gift icons, labels, top message | ✅ | Card, gradient and colours are settings |
 | Milestone icons | ✅ | Two shared icons (not reached / reached), as decided |
 | "Pick one free gift" cards with "~~₹999~~ Free" | ✅ | Prices show for offers saved after the release |
 | Free gift line (pink, FREE, gift icon) | ✅ | |
@@ -50,7 +50,7 @@ From `freed-cart-settings.json` plus the Promotions, Coupons and Upsells setup i
 
 - **Header:** "CART (2)" in Anton, centred, close on the right.
 - **Milestone card:**
-  - lime gradient card with the "SPECIAL OFFER" sticker
+  - lime gradient card (the "SPECIAL OFFER" sticker was removed from Figma on 29 Oct 2026)
   - thin pink track
   - gift-icon dots that turn pink with a blue check
   - "Spend ₹999 / Free Delivery" labels
@@ -83,7 +83,6 @@ From `freed-cart-settings.json` plus the Promotions, Coupons and Upsells setup i
 |---|---|---|---|
 | Footer total vs price breakup | ₹1988 in the footer, ₹799 in the breakup | Both show the real cart total after discounts | Mock-up values; not a gap |
 | Gift prices on older offers | "~~₹999~~ Free" | Title only, until the offer is saved again or the product is edited in Shopify | Re-save the offer once after setup |
-| "SPECIAL OFFER" sticker | Image | Embedded in the Custom CSS | Could move to the corner-badge setting once it's uploaded to FREED's Shopify Files |
 
 ## 4. Not possible yet (⛔)
 
@@ -113,9 +112,8 @@ From `freed-cart-settings.json` plus the Promotions, Coupons and Upsells setup i
 
 | # | Question | Why it matters |
 |---|---|---|
-| 1 | Is the "SPECIAL OFFER" sticker always on, or only during campaigns? | It's in the Custom CSS (or the corner-badge setting) |
-| 2 | Pincode checker: which logistics provider? | §4.1 |
-| 3 | Judge.me: installed, and metafield sync on? | §4.2 |
+| 1 | Pincode checker: which logistics provider? | §4.1 |
+| 2 | Judge.me: installed, and metafield sync on? | §4.2 |
 
 **Content**
 
@@ -124,7 +122,7 @@ From `freed-cart-settings.json` plus the Promotions, Coupons and Upsells setup i
 - Gift products for the picker.
 - Upsell products: best sellers and any product-to-product recommendations (CSV is fine).
 - Shipping rules for the price breakup. The current text is a placeholder.
-- Final artwork, if different from Figma: the sticker and the empty-cart illustration.
+- Final artwork, if different from Figma: the empty-cart illustration.
 
 ## 6. Plan
 

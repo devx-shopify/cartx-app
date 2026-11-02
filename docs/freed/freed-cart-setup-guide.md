@@ -9,7 +9,6 @@ How to set up the FREED cart design (Figma "FREED / CartX") on FREED's store usi
 | `freed-cart-settings.json` | Customize Cart import file: colours, fonts, text, layout, coupon and milestone options, progress bar icons, and the FREED Custom CSS |
 | `freed-cart-custom.css` | The same Custom CSS as a separate file, for review and edits |
 | `assets/icons/coupon-starburst.svg`, `coupon-starburst-locked.svg` | Coupon badge starburst from Figma (its outline is already in the Custom CSS) |
-| `assets/special-offer-sticker.png` | "SPECIAL OFFER" sticker, full size, for reference only. A small copy is already embedded in the Custom CSS. |
 | `assets/milestones/gift-icon.svg` | Milestone icon, not yet reached (dark gift, from Figma) |
 | `assets/milestones/gift-icon-reached.svg` | Milestone icon, reached (white gift on the pink dot, from Figma) |
 | `assets/milestones/tick-badge.svg` | Blue tick on a reached milestone (already inside the Custom CSS) |
@@ -38,7 +37,6 @@ In cartx → **Customize Cart → Advanced → Backup & restore** → **Export s
 
 Nothing needs uploading to Shopify Files:
 
-- The "SPECIAL OFFER" sticker is embedded in the Custom CSS, so the import brings it in.
 - The empty-cart illustration is in the import file too.
 
 ## 4. Prepare and import the settings file
@@ -63,7 +61,7 @@ That's the whole drawer: the import carries the colours, fonts, text, layout, mi
 | Announcement bar | "Free Shipping on All Orders ₹399 & Above" *(placeholder)*, black with white text |
 | Sections | Progress bar, claim gifts, offer cards, coupons, upsells on; bottom ribbon off |
 | Payment icons | On (GPay, PhonePe, Paytm); full-width checkout button on a lime bar |
-| Custom CSS | FREED's type scale and spacing, the "SPECIAL OFFER" sticker, blue tick on reached milestones, gift icon on the gift line, starburst coupon badges, card shapes, mobile sizes |
+| Custom CSS | FREED's type scale and spacing, blue tick on reached milestones, gift icon on the gift line, starburst coupon badges, card shapes, mobile sizes |
 
 ## 5. Set up the milestones (progress bar)
 
@@ -149,7 +147,7 @@ Open the test theme preview and check each Figma screen at desktop width and on 
 
 | # | Check | Expected |
 |---|---|---|
-| 1 | Add one product | Drawer opens. "CART (1)", announcement bar, milestone card with sticker, cart item, "You may also like", coupons, lime checkout bar. |
+| 1 | Add one product | Drawer opens. "CART (1)", announcement bar, milestone card, cart item, "You may also like", coupons, lime checkout bar. |
 | 2 | Cross ₹999 | First milestone turns pink with a blue check, and confetti plays |
 | 3 | Gift picker | "Pick one free gift" cards with "~~₹X~~ Free". Add one: a pink gift line appears with FREE and no quantity buttons. |
 | 4 | Coupon | Apply a code: pink card with REMOVE and "You saved ₹X with this coupon". Remove clears it. A coupon with a higher minimum shows "Add ₹X more". |
