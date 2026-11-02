@@ -1,531 +1,630 @@
-/* Just Herbs cart drawer — cartx Custom CSS
-   Source design: Figma "Just Herbs" (section "Cart", node 19:19924), mobile.
-   Colours, block backgrounds, item cards, the coupon row, sublines, labels
-   and milestone spacing come from Customize Cart settings
-   (justherbs-cart-settings.json). This file holds what settings don't cover:
-   the type scale, the milestone band, button shapes, the ticket-shaped
-   applied coupon and the gift sticker.
-   Embedded in justherbs-cart-settings.json (advanced.custom_css). Icons are
-   written as GIFT_BADGE / COUPON_TICKET / DELIVERY_TRUCK here; the JSON has
-   them embedded. */
+/* Just Herbs cart drawer (v2) - cartx Custom CSS
+   Source design: Figma "Just Herbs" cart, frames "Cart Freebie" 1-3
+   (nodes 347:44578, 376:24, 347:44873), 390px mobile.
+   Colours, milestone icons, texts, upsell and coupon layout come from
+   Customize Cart settings (justherbs-cart-settings.json). This file holds
+   what settings don't cover: Figtree type scale, header bag icon, the
+   milestone band, divider line items, recommendation cards, the coupon row,
+   the footer layout and the trust row.
+   This is the same text as advanced.custom_css in the settings JSON. Icons
+   are small inline SVG data URIs, so nothing needs to be uploaded. */
 
 #cartmax-root .cartmax-drawer {
   --jh-ink: #1A1A1A;
+  --jh-ink-2: #1E1F24;
+  --jh-grey: #62636C;
+  --jh-muted: #666666;
   --jh-green: #358C58;
-  --jh-green-dark: #084121;
-  --jh-mint: #EBF3EE;
-  --jh-pink: #F9105E;
-  --jh-line: rgba(0, 19, 37, 0.08);
-}
-
-/* Header: "Cart" + red count badge */
-#cartmax-root .cartmax-header {
-  min-height: 60px;
-  padding-top: 8px;
-  padding-bottom: 8px;
-  border-bottom: 0;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.059);
-  position: relative;
-  z-index: 1;
-}
-#cartmax-root .cartmax-title {
-  gap: 4px;
-  font-size: 24px;
-  font-weight: 500;
-  line-height: 24px;
-}
-#cartmax-root .cartmax-header-count {
-  width: 20px;
-  height: 20px;
-  background: #D92727;
-  color: #F1F1F1;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 14px;
-}
-#cartmax-root .cartmax-close {
-  background: none;
+  --jh-green-text: #3A7E55;
+  --jh-mint: #E3F5E8;
+  --jh-brown: #B57363;
+  --jh-brown-dark: #915344;
+  --jh-cocoa: #79473B;
+  --jh-red: #CC3434;
+  --jh-red-bg: #FFEBEB;
+  --jh-line: rgba(0, 0, 0, 0.1);
+  font-family: "Figtree", sans-serif;
   color: var(--jh-ink);
 }
 
-/* Milestone band (track, label colours and spacing: settings) */
-#cartmax-root .cartmax-progress {
-  padding-top: 6px;
-  padding-bottom: 4px;
-  border-bottom: 0;
-  background: var(--jh-mint);
+/* ---------- Header: bag icon + "Cart" + brown count badge ---------- */
+#cartmax-root .cartmax-header {
+  min-height: 64px;
+  padding: 10px 10px 10px 16px;
+  border-bottom: 0.5px solid var(--jh-line);
 }
+
+#cartmax-root .cartmax-title {
+  gap: 8px;
+  font: 500 24px/32px "Figtree", sans-serif;
+  color: var(--jh-ink);
+}
+
+#cartmax-root .cartmax-title::before {
+  content: "";
+  width: 24px;
+  height: 24px;
+  margin-right: -4px;
+  flex-shrink: 0;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.5 7.5h13l-.9 13H6.4z'/%3E%3Cpath d='M9 10V6.5a3 3 0 0 1 6 0V10'/%3E%3C/svg%3E") center / 24px no-repeat;
+}
+
+#cartmax-root .cartmax-header-count {
+  width: 24px;
+  height: 24px;
+  padding: 2px;
+  background: var(--jh-brown);
+  color: #FFFFFF;
+  font: 500 16px/24px "Figtree", sans-serif;
+}
+
+#cartmax-root .cartmax-close {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  color: #000000;
+}
+
+/* ---------- Milestone band ---------- */
+#cartmax-root .cartmax-progress,
+#cartmax-root .cartmax-progress.cartmax-progress--edges {
+  padding: 16px 0;
+  border-bottom: 0;
+  border-radius: 0 0 24px 24px;
+  background: linear-gradient(180deg, #FFFFFF 0%, var(--jh-mint) 100%);
+}
+
+#cartmax-root .cartmax-progress .cartmax-progress-msg-wrap,
+#cartmax-root .cartmax-progress--edges .cartmax-progress-msg-wrap {
+  margin: 0 0 24px;
+  padding: 0 16px;
+}
+
 #cartmax-root .cartmax-progress-msg {
+  display: block;
+  margin: 0;
   padding: 0;
   border: 0;
   background: none;
+  font: 400 14px/18px "Figtree", sans-serif;
   color: #1C1B17;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 19px;
-  letter-spacing: 0;
+  text-align: center;
 }
-#cartmax-root .cartmax-progress-track {
-  height: 10px;
-  margin-top: 30px;
-  margin-bottom: 52px;
-  border: 0.5px solid #8F8F8F;
-  border-radius: 10px;
-}
-#cartmax-root .cartmax-progress-fill { border-radius: 10px; }
-#cartmax-root .cartmax-milestone .cartmax-milestone-dot {
-  width: 34px;
-  height: 40px;
-  margin-top: -18px;
-  border: 0;
+
+/* Milestones sit at the centres of three equal columns (64, 195, 326 px on
+   a 390 px drawer): the track runs from 64 px to 326 px and a stub on the
+   left fills the first 64 px. */
+#cartmax-root .cartmax-progress .cartmax-progress-track,
+#cartmax-root .cartmax-progress--edges .cartmax-progress-track {
+  height: 6px;
+  margin: 0 16.4% 56px 16.4% !important;
   border-radius: 0;
+  background: #D9D9D9;
+  overflow: visible;
+}
+
+#cartmax-root .cartmax-progress-track::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 100%;
+  width: 24.4%; /* 16.4% of the band, measured against the 67.2% track */
+  height: 100%;
+  background: #D9D9D9;
+}
+
+#cartmax-root .cartmax-progress-track:has(.cartmax-milestone--active)::before {
+  background: #68C083;
+}
+
+#cartmax-root .cartmax-progress-fill {
+  border-radius: 0;
+  background: linear-gradient(90deg, #68C083 0%, #358C50 100%);
+}
+
+#cartmax-root .cartmax-milestone-dot,
+#cartmax-root .cartmax-milestone--custom .cartmax-milestone-dot {
+  width: 32px;
+  height: 32px;
+  border: 0;
   background: transparent;
   box-shadow: none;
 }
-#cartmax-root .cartmax-milestone-label {
-  top: 22px;
-  max-width: 90px;
-  letter-spacing: 0;
-}
-/* The next milestone's label uses the primary colour; Figma keeps all labels dark */
-#cartmax-root .cartmax-milestone--next .cartmax-milestone-label { color: #1C1B17; }
-#cartmax-root .cartmax-milestone .cartmax-milestone-label-main {
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 10px;
-}
-#cartmax-root .cartmax-milestone .cartmax-milestone-sub-label {
-  margin-top: 2px;
-  color: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 13px;
-  letter-spacing: 0;
-}
 
-/* Cart items (cards: settings) */
-#cartmax-root .cartmax-line-item {
-  gap: 12px;
-  padding: 10px;
-  border-color: var(--jh-line);
-  border-radius: 8px;
-}
-#cartmax-root .cartmax-line-image {
-  width: 60px;
-  height: 60px;
-  border: 1px solid #909090;
-  border-radius: 4px;
-}
-#cartmax-root .cartmax-line-details { gap: 4px; }
-#cartmax-root .cartmax-line-title {
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 21px;
-}
-#cartmax-root .cartmax-line-price {
-  gap: 6px;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 16px;
-}
-#cartmax-root .cartmax-line-price-original {
-  font-size: 12px;
-  font-weight: 400;
-}
-#cartmax-root .cartmax-line-savings-badge {
-  color: #CC3434;
-  font-size: 11px;
-}
-#cartmax-root .cartmax-variant-pill {
-  padding: 4px 8px;
-  border: 1px solid var(--jh-line);
-  border-radius: 8px;
-  color: #666666;
-  font-size: 12px;
-  line-height: 18px;
-}
-#cartmax-root .cartmax-qty-controls {
-  height: 32px;
-  border: 0;
-}
-#cartmax-root .cartmax-qty-btn {
+#cartmax-root .cartmax-milestone-custom-icon svg {
+  display: block;
   width: 32px;
   height: 32px;
+}
+
+/* Threshold ("On ₹499+") above the reward ("Extra 10% Off") */
+#cartmax-root .cartmax-milestone-label {
+  top: 43px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 130px;
+  max-width: 130px;
+  letter-spacing: 0;
+}
+
+#cartmax-root .cartmax-milestone-label-main,
+#cartmax-root .cartmax-milestone--active .cartmax-milestone-label-main,
+#cartmax-root .cartmax-milestone--next .cartmax-milestone-label-main {
+  font: 600 12px/14px "Figtree", sans-serif;
+  color: #1C1B17;
+}
+
+#cartmax-root .cartmax-milestone-sub-label {
+  margin: 0;
+  font: 400 12px/14px "Figtree", sans-serif;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+/* ---------- Line items: divider rows ---------- */
+#cartmax-root .cartmax-line-item {
+  gap: 12px;
+  margin: 0 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--jh-line);
+}
+
+#cartmax-root .cartmax-line-image,
+#cartmax-root .cartmax-line-image img,
+#cartmax-root .cartmax-line-image-placeholder {
+  width: 104px;
+  height: 104px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+#cartmax-root .cartmax-line-image img {
+  object-fit: cover;
+}
+
+#cartmax-root .cartmax-line-details {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-content: start;
+  column-gap: 8px;
+  row-gap: 0;
+  min-width: 0;
+}
+
+#cartmax-root .cartmax-line-details .cartmax-line-title-row,
+#cartmax-root .cartmax-line-details .cartmax-line-actions {
+  display: contents;
+}
+
+#cartmax-root .cartmax-line-title {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  white-space: normal;
+  overflow: visible;
+  font: 500 14px/18px "Figtree", sans-serif;
+  letter-spacing: 0.1px;
   color: var(--jh-ink);
 }
-#cartmax-root .cartmax-qty-value {
+
+#cartmax-root .cartmax-variant-pill--label {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  justify-self: start;
+  margin-top: 4px;
+  padding: 0;
   border: 0;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 32px;
-}
-#cartmax-root .cartmax-line-discount-tag {
-  border-color: rgba(40, 110, 68, 0.2);
-  background: var(--jh-mint);
-  color: var(--jh-green-dark);
+  background: none;
+  font: 400 12px/16px "Figtree", sans-serif;
+  color: var(--jh-muted);
 }
 
-/* Free gift line: mint card, gift sticker, "Free Gift" (text: settings) */
-#cartmax-root .cartmax-line-item.cartmax-line-freebie {
-  overflow: visible;
-  content-visibility: visible;
-  border-color: rgba(40, 110, 68, 0.12);
+#cartmax-root .cartmax-line-price {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+  font: 600 14px/18px "Figtree", sans-serif;
+  color: var(--jh-ink);
+}
+
+#cartmax-root .cartmax-line-price-original {
+  font: 400 13px/18px "Figtree", sans-serif;
+  color: #999999;
+  text-decoration: line-through;
+}
+
+#cartmax-root .cartmax-line-savings-badge {
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: var(--jh-red-bg);
+  font: 600 12px/12px "Figtree", sans-serif;
+  color: var(--jh-red);
+}
+
+#cartmax-root .cartmax-line-discounts {
+  grid-column: 1 / -1;
+  grid-row: 5;
+}
+
+#cartmax-root .cartmax-qty-controls {
+  grid-column: 1;
+  grid-row: 4;
+  justify-self: start;
+  height: 36px;
+  margin: 8px 0 0;
+  overflow: hidden;
+  border: 1px solid var(--jh-line);
+  border-radius: 8px;
+  background: #FFFFFF;
+  box-shadow: 0 0 1px rgba(0, 0, 0, 0.02);
+}
+
+#cartmax-root .cartmax-qty-btn {
+  width: 36px;
+  height: 34px;
+  border: 0;
+  background: #FFFFFF;
+  color: var(--jh-ink);
+}
+
+#cartmax-root .cartmax-qty-value {
+  width: 24px;
+  border: 0;
+  font: 500 16px/20px "Figtree", sans-serif;
+  color: var(--jh-ink);
+}
+
+#cartmax-root .cartmax-line-remove-text {
+  grid-column: 2;
+  grid-row: 4;
+  align-self: center;
+  margin-top: 8px;
+  font: 500 12px/16px "Figtree", sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+/* Free gift line: name and a green "Free Gift" pill, centred on the image */
+#cartmax-root .cartmax-line-freebie .cartmax-line-details {
+  align-content: center;
+}
+
+#cartmax-root .cartmax-gift-badge {
+  padding: 4px 10px;
+  border-radius: 4px;
   background: var(--jh-mint);
-}
-#cartmax-root .cartmax-line-item.cartmax-line-freebie::before {
-  content: "";
-  position: absolute;
-  left: -8px;
-  top: -10px;
-  width: 33px;
-  height: 33px;
-  background: url("GIFT_BADGE") center / contain no-repeat;
-  pointer-events: none;
-}
-#cartmax-root .cartmax-line-freebie .cartmax-line-image {
-  width: 46px;
-  height: 46px;
-}
-#cartmax-root .cartmax-line-freebie .cartmax-gift-badge {
-  padding: 0;
-  background: none;
-  color: #2D784B;
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 16px;
+  font: 600 12px/16px "Figtree", sans-serif;
   letter-spacing: 0;
   text-transform: none;
+  color: #2B6A3F;
 }
 
-/* Coupons: "Coupons / Apply now and save extra! ›" row (text: settings) */
-#cartmax-root .cartmax-coupons { padding: 12px 16px 0; }
-#cartmax-root .cartmax-discount-block {
+/* ---------- Recommended For you ---------- */
+#cartmax-root .cartmax-upsells {
+  padding: 16px;
+  border-top: 0;
+  background: #FFFFFF;
+}
+
+#cartmax-root .cartmax-upsells-heading {
+  justify-content: flex-start !important;
+  margin: 0 0 8px;
+  font: 600 18px/26px "Figtree", sans-serif;
+  color: var(--jh-ink);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+#cartmax-root .cartmax-upsells-scroll {
+  gap: 8px;
+}
+
+#cartmax-root .cartmax-upsells--vertical .cartmax-upsell-card {
+  flex: 0 0 146px;
+  width: 146px;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--jh-line);
+  border-radius: 12px;
+  background: #FFFFFF;
+}
+
+#cartmax-root .cartmax-upsells--vertical .cartmax-upsell-img,
+#cartmax-root .cartmax-upsells--vertical .cartmax-upsell-img-placeholder {
+  width: 120px;
+  height: 120px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+#cartmax-root .cartmax-upsells--vertical .cartmax-upsell-info {
+  position: relative;
+  gap: 8px;
+  padding: 0;
+}
+
+#cartmax-root .cartmax-upsell-title {
+  font: 500 12px/15px "Figtree", sans-serif;
+  color: #1B1B1B;
+  white-space: normal;
+}
+
+#cartmax-root .cartmax-upsell-price {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 4px;
+  padding-right: 36px;
+}
+
+#cartmax-root .cartmax-upsell-discount {
+  grid-row: 1;
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: var(--jh-red-bg);
+  font: 600 12px/12px "Figtree", sans-serif;
+  color: var(--jh-red);
+}
+
+#cartmax-root .cartmax-upsell-sale {
+  grid-row: 2;
+  font: 600 14px/18px "Figtree", sans-serif;
+  color: var(--jh-ink);
+}
+
+#cartmax-root .cartmax-upsell-compare {
+  grid-row: 2;
+  font: 400 13px/18px "Figtree", sans-serif;
+  color: #999999;
+}
+
+/* "+" button: 32 px brown circle, bottom-right of the card */
+#cartmax-root .cartmax-upsell-add,
+#cartmax-root .cartmax-add-btn-colored .cartmax-upsell-add:not(:disabled) {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border: 0;
+  border-radius: 50%;
+  background: var(--jh-cocoa);
+  color: #FFFFFF;
+  font: 400 22px/32px "Figtree", sans-serif;
+  text-align: center;
 }
+
+/* ---------- Coupons row ---------- */
+#cartmax-root .cartmax-coupons {
+  padding: 12px 16px;
+  border-top: 0;
+  background: #FFFFFF;
+}
+
+#cartmax-root .cartmax-coupons .cartmax-discount-block {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+
+/* The design shows only the "Coupons" row; the coupon list opens from it */
+#cartmax-root .cartmax-coupons .cartmax-discount-cards {
+  display: none;
+}
+
 #cartmax-root .cartmax-coupon-link {
-  min-height: 57px;
   gap: 12px;
+  min-height: 0;
   padding: 8px;
-  border-color: var(--jh-line);
+  border: 1px solid rgba(0, 19, 37, 0.08);
   border-radius: 8px;
+  background: #FFFFFF;
 }
+
 #cartmax-root .cartmax-coupon-link-icon {
   width: 24px;
   height: 24px;
-  background: url("COUPON_TICKET") center / 24px no-repeat;
+  align-self: flex-start;
+  margin-top: 2px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 6.5h18v3.6a2 2 0 0 0 0 3.8v3.6H3v-3.6a2 2 0 0 0 0-3.8z' fill='none' stroke='%23358C58' stroke-width='1.8' stroke-linejoin='round'/%3E%3Cpath d='M12 9l.9 1.9 2 .2-1.5 1.4.4 2-1.8-1-1.8 1 .4-2-1.5-1.4 2-.2z' fill='%23358C58'/%3E%3C/svg%3E") center / 24px no-repeat;
 }
-#cartmax-root .cartmax-coupon-link-icon svg { display: none; }
+
+#cartmax-root .cartmax-coupon-link-icon svg {
+  display: none;
+}
+
 #cartmax-root .cartmax-coupon-link-label {
+  font: 700 14px/21px "Figtree", sans-serif;
   color: var(--jh-green);
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 21px;
-}
-#cartmax-root .cartmax-coupons .cartmax-discount-cards { display: none; }
-
-/* Applied coupon: ticket card with notches */
-#cartmax-root .cartmax-applied-cards { gap: 2px; margin-top: 8px; }
-#cartmax-root .cartmax-discount-card.cartmax-discount-card--applied {
-  position: relative;
-  height: auto;
-  min-height: 52px;
-  padding: 8px 16px;
-  border: 0;
-  border-radius: 8px;
-  background: linear-gradient(90deg, #F8F8EE 0%, #AAD9B2 100%);
-}
-#cartmax-root .cartmax-discount-card--applied::before,
-#cartmax-root .cartmax-discount-card--applied::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  width: 20px;
-  height: 20px;
-  margin-top: -10px;
-  border-radius: 50%;
-  background: #FFFFFF;
-}
-#cartmax-root .cartmax-discount-card--applied::before { left: -10px; }
-#cartmax-root .cartmax-discount-card--applied::after { right: -10px; }
-#cartmax-root .cartmax-discount-card--applied .cartmax-discount-card-accent { display: none; }
-#cartmax-root .cartmax-discount-card--applied .cartmax-discount-card-info {
-  padding: 0;
-  background: none;
-}
-#cartmax-root .cartmax-discount-card-btn.cartmax-discount-card-btn--remove {
-  color: var(--jh-green-dark);
-  font-size: 14px;
-  text-transform: none;
-}
-#cartmax-root .cartmax-applied-saved {
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 20px;
 }
 
-/* Coupon cards (Offers & Coupons view) */
-#cartmax-root .cartmax-discount-card-code,
-#cartmax-root .cartmax-offers-card-code {
+#cartmax-root .cartmax-coupon-link-subtitle {
+  font: 400 12px/18px "Figtree", sans-serif;
   color: var(--jh-ink);
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 20px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-}
-#cartmax-root .cartmax-discount-card-savings,
-#cartmax-root .cartmax-offers-card-savings {
-  color: #1A4D00;
-  font-size: 11px;
-  line-height: 16px;
-}
-#cartmax-root .cartmax-offers-card {
-  height: auto;
-  min-height: 56px;
-  gap: 4px;
-  padding: 8px 12px;
-  border: 1px solid #9F9FA9;
-  border-radius: 6px;
-}
-#cartmax-root .cartmax-offers-card-accent {
-  width: 44px;
-  height: auto;
-  padding: 0;
-  background: none;
-}
-#cartmax-root .cartmax-offers-card-accent span {
-  color: var(--jh-green-dark);
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 16px;
-  letter-spacing: 0;
-  text-align: center;
-  white-space: normal;
-  writing-mode: horizontal-tb;
-  transform: none;
-}
-#cartmax-root .cartmax-offers-card--locked .cartmax-offers-card-accent span { color: #8E8E8E; }
-#cartmax-root .cartmax-offers-card-info {
-  align-self: stretch;
-  justify-content: center;
-  gap: 4px;
-  padding: 0 8px;
-  border-radius: 3px;
-  background: #FAFAFA;
-}
-#cartmax-root .cartmax-offers-card-locked-msg {
-  font-size: 11px;
-  line-height: 14px;
 }
 
-/* Green buttons: ADD, Apply (8/3/8/3 corners, hard shadow) */
-#cartmax-root .cartmax-offers-card-btn,
-#cartmax-root .cartmax-upsell-add,
-#cartmax-root .cartmax-upsell-add:hover:not(:disabled) {
-  border: 1px solid var(--jh-green-dark);
-  border-radius: 8px 3px 8px 3px;
-  background: var(--jh-green);
-  box-shadow: 1px 1px 0 var(--jh-green-dark);
-  color: #FFFFFF;
-  font-size: 13px;
-  font-weight: 500;
-  text-transform: none;
-}
-#cartmax-root .cartmax-offers-card-btn {
-  width: 67px;
-  height: 40px;
-  margin: 0;
+#cartmax-root .cartmax-coupon-link-chevron {
+  color: var(--jh-ink);
 }
 
-/* Offers & Coupons view */
-#cartmax-root .cartmax-offers-panel-header {
-  position: relative;
-  justify-content: center;
-  min-height: 60px;
-  border-bottom: 0;
-}
-#cartmax-root .cartmax-offers-back {
-  position: absolute;
-  left: 24px;
-  background: none;
-  color: #18181B;
-}
-#cartmax-root .cartmax-offers-title {
-  font-size: 18px;
-  font-weight: 500;
-  line-height: 24px;
-}
-#cartmax-root .cartmax-offers-body { gap: 12px; padding-top: 12px; }
-#cartmax-root .cartmax-offers-label {
-  color: #18181B;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 24px;
-  letter-spacing: 0;
-  text-transform: none;
-}
-#cartmax-root .cartmax-offers-input-row {
-  gap: 16px;
-  padding: 8px 8px 8px 20px;
-  border-color: #D4D4D8;
-}
-#cartmax-root .cartmax-offers-input-btn {
-  padding: 12px 16px;
-  border: 0;
-  border-radius: 8px 3px 8px 3px;
-  background: none;
-  color: var(--jh-green-dark);
-  font-size: 13px;
-  font-weight: 500;
-  text-transform: none;
+/* ---------- Footer ---------- */
+#cartmax-root .cartmax-footer {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.16);
 }
 
-/* Recommendations: "Special price" block (background, sublines: settings) */
-#cartmax-root .cartmax-upsells {
-  margin: 12px 16px;
-  padding: 8px 12px 12px;
-  border: 1px solid rgba(40, 110, 68, 0.08);
-  border-radius: 12px;
-}
-#cartmax-root .cartmax-upsells-heading {
-  margin-bottom: 4px;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 21px;
-}
-#cartmax-root .cartmax-upsells-subheading {
-  width: fit-content;
-  margin: 0 auto 12px;
-  padding-left: 22px;
-  background: url("DELIVERY_TRUCK") left center / 16px no-repeat;
-  color: #555555;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 16px;
-}
-#cartmax-root .cartmax-upsells-scroll {
-  gap: 8px;
-  margin-left: -12px;
-  margin-right: -12px;
-  padding-left: 12px;
-  padding-right: 12px;
-  scroll-padding-left: 12px;
-}
-#cartmax-root .cartmax-upsell-card {
-  position: relative;
-  width: 282px;
-  gap: 10px;
-  padding: 4px 8px;
-  border: 0;
-  border-radius: 8px;
-}
-#cartmax-root .cartmax-upsell-img,
-#cartmax-root .cartmax-upsell-img-placeholder {
-  width: 64px;
-  height: 64px;
-  border-radius: 8px;
-}
-#cartmax-root .cartmax-upsell-info {
-  gap: 3px;
-  padding-right: 62px;
-}
-#cartmax-root .cartmax-upsell-title {
-  color: #1B1B1B;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 15px;
-}
-#cartmax-root .cartmax-upsell-price { gap: 4px; }
-#cartmax-root .cartmax-upsell-sale {
-  padding: 2px 6px;
-  border: 1px solid #FFFFFF;
-  border-radius: 50px;
-  background: var(--jh-pink);
-  box-shadow: 1px 1px 0 var(--jh-pink);
-  color: #F1F1F1;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 14px;
-}
-#cartmax-root .cartmax-upsell-compare { font-size: 11px; }
-#cartmax-root .cartmax-upsell-discount {
-  color: #CC3434;
-  font-size: 11px;
-  font-weight: 400;
-}
-#cartmax-root .cartmax-upsell-add,
-#cartmax-root .cartmax-upsell-add:hover:not(:disabled) {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  width: 54px;
-  height: 34px;
-  margin: -17px 0 0;
-  padding: 0;
-}
-
-/* Savings strip */
-#cartmax-root .cartmax-footer { box-shadow: none; }
 #cartmax-root .cartmax-footer-savings {
   gap: 4px;
-  padding: 2px 16px;
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 20px;
-  box-shadow: 8px 0 10px rgba(0, 0, 0, 0.1);
+  padding: 4px 16px;
+  font: 400 12px/16px "Figtree", sans-serif;
+  color: var(--jh-green-text);
 }
-#cartmax-root .cartmax-footer-savings-amount { font-size: 13px; font-weight: 600; }
 
-/* Checkout bar (full width, subline, colours: settings) */
-#cartmax-root .cartmax-footer-checkout { padding-top: 8px; padding-bottom: 16px; }
-#cartmax-root .cartmax-footer-price { gap: 0; }
-#cartmax-root .cartmax-footer-price-amount {
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 30px;
+#cartmax-root .cartmax-footer-savings::before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 .8l1.6 1.2 2-.1.6 1.9 1.7 1.1-.6 1.9.6 1.9-1.7 1.1-.6 1.9-2-.1L8 15.2l-1.6-1.2-2 .1-.6-1.9-1.7-1.1.6-1.9-.6-1.9 1.7-1.1.6-1.9 2 .1z' fill='%23358C58'/%3E%3Cpath d='M5.6 10.4l4.8-4.8' stroke='white' stroke-width='1.2' stroke-linecap='round'/%3E%3Ccircle cx='6' cy='6' r='1' fill='white'/%3E%3Ccircle cx='10' cy='10' r='1' fill='white'/%3E%3C/svg%3E") center / 16px no-repeat;
 }
-#cartmax-root .cartmax-price-breakup-link {
-  color: var(--jh-ink);
-  font-size: 12px;
-  line-height: 18px;
-  letter-spacing: 0;
-  text-transform: none;
+
+#cartmax-root .cartmax-footer-savings-amount {
+  font-weight: 500;
+  color: var(--jh-green-text);
 }
-#cartmax-root .cartmax-checkout-btn,
-#cartmax-root .cartmax-checkout-btn:hover {
+
+#cartmax-root .cartmax-footer-checkout {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: 12px 16px 8px;
+  background: #FFFFFF;
+}
+
+/* "Total: ₹699" on the left, "View Price Breakup" on the right */
+#cartmax-root .cartmax-footer-price {
+  flex-direction: row;
   justify-content: space-between;
-  height: 48px;
-  padding: 7px 20px;
-  border-radius: 6px;
-  letter-spacing: 0;
-  text-transform: none;
-}
-#cartmax-root .cartmax-checkout-label {
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 16px;
-  letter-spacing: 0;
-  text-transform: none;
+  align-items: center;
+  padding: 0 4px;
 }
 
-/* Price breakup */
-#cartmax-root .cartmax-pb-backdrop { background: rgba(0, 0, 0, 0.25); }
-#cartmax-root .cartmax-price-breakup-header {
-  min-height: 56px;
-  font-size: 18px;
-  font-weight: 700;
-  line-height: 26px;
+#cartmax-root .cartmax-footer-price-amount {
+  font: 700 18px/24px "Figtree", sans-serif;
+  letter-spacing: 0.5px;
+  color: var(--jh-ink-2);
 }
-#cartmax-root .cartmax-price-breakup-close { background: none; }
-#cartmax-root .cartmax-pb-label { font-weight: 500; line-height: 20px; }
-#cartmax-root .cartmax-pb-shipping-note {
-  padding: 16px;
-  color: #52525C;
-  font-size: 14px;
-  line-height: 20px;
+
+#cartmax-root .cartmax-footer-price-amount::before {
+  content: "Total:";
+  margin-right: 8px;
+  font: 400 16px/24px "Figtree", sans-serif;
+  letter-spacing: 0;
+  color: var(--jh-grey);
 }
-#cartmax-root .cartmax-price-breakup-total {
-  border: 1px solid #E4E4E7;
-  font-weight: 700;
+
+#cartmax-root .cartmax-price-breakup-link {
+  padding: 0;
+  font: 500 12px/16px "Figtree", sans-serif;
+  text-decoration: underline;
+  text-transform: none;
+  color: var(--jh-grey);
+}
+
+#cartmax-root .cartmax-checkout-btn {
+  width: 100%;
+  height: 52px;
+  gap: 8px;
+  padding: 9px 12px 9px 16px;
+  justify-content: space-between;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 12px;
+  background: #000000;
+  color: #FFFFFF;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+#cartmax-root .cartmax-checkout-btn::after {
+  content: "";
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 5l5 5-5 5'/%3E%3C/svg%3E") center / 20px no-repeat;
+}
+
+#cartmax-root .cartmax-checkout-label {
+  font: 600 16px/20px "Figtree", sans-serif;
+  letter-spacing: -0.1px;
+}
+
+#cartmax-root .cartmax-checkout-subtext {
+  font: 400 10px/14px "Figtree", sans-serif;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+#cartmax-root .cartmax-payment-methods {
+  margin-left: auto;
+}
+
+/* Trust row: "Easy 7-Day Returns" (text from settings) · "Secure Checkout" */
+#cartmax-root .cartmax-footer-trust {
+  gap: 16px;
+  padding: 0 16px 12px;
+  background: #FFFFFF;
+  font: 500 11px/14px "Figtree", sans-serif;
+  color: #001C00;
+}
+
+#cartmax-root .cartmax-footer-trust svg {
+  display: none;
+}
+
+#cartmax-root .cartmax-footer-trust span,
+#cartmax-root .cartmax-footer-trust::after {
+  display: inline-flex;
+  align-items: center;
+  padding-left: 20px;
+  background-position: left center;
+  background-size: 16px;
+  background-repeat: no-repeat;
+}
+
+#cartmax-root .cartmax-footer-trust span {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%231E1F24' stroke-width='1.2' stroke-linejoin='round'%3E%3Cpath d='M8 1.5l5.5 3v7L8 14.5l-5.5-3v-7z'/%3E%3Cpath d='M2.5 4.5L8 7.5l5.5-3M8 7.5v7'/%3E%3C/svg%3E");
+}
+
+#cartmax-root .cartmax-footer-trust::after {
+  content: "Secure Checkout";
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%231E1F24' stroke-width='1.2' stroke-linejoin='round'%3E%3Cpath d='M8 1.5l5 2v4c0 3.2-2.2 5.7-5 7-2.8-1.3-5-3.8-5-7v-4z'/%3E%3Ccircle cx='8' cy='7' r='1.2'/%3E%3Cpath d='M8 8.2v2.3'/%3E%3C/svg%3E");
+}
+
+/* ---------- Empty cart ---------- */
+#cartmax-root .cartmax-empty {
+  flex: 1 0 auto;
+  justify-content: center;
+  gap: 24px;
+  padding: 120px 16px;
+}
+
+#cartmax-root .cartmax-empty-icon {
+  display: none;
+}
+
+#cartmax-root .cartmax-empty-text-group {
+  gap: 8px;
+}
+
+#cartmax-root .cartmax-empty-text {
+  font: 600 20px/28px "Figtree", sans-serif;
+  letter-spacing: -0.1px;
+  color: var(--jh-ink-2);
+}
+
+#cartmax-root .cartmax-empty-subtitle {
+  font: 400 16px/24px "Figtree", sans-serif;
+  letter-spacing: -0.1px;
+  color: var(--jh-grey);
+}
+
+#cartmax-root .cartmax-empty-btn,
+#cartmax-root .cartmax-empty-btn:hover {
+  height: 48px;
+  min-width: 68px;
+  padding: 5px 32px;
+  border-radius: 10px;
+  background: radial-gradient(var(--jh-brown) 0%, var(--jh-brown-dark) 100%);
+  color: #FFFFFF;
+  font: 600 16px/24px "Figtree", sans-serif;
+  text-transform: none;
+  letter-spacing: 0;
 }
