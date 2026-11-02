@@ -28,7 +28,7 @@ This doc compares the FREED cart design (Figma "FREED / CartX", 17 screens, 600 
 | Milestone card: gradient, track, gift icons, labels, top message | ✅ | Card, gradient and colours are settings |
 | Milestone icons | ✅ | Two shared icons (not reached / reached), as decided |
 | "Pick one free gift" cards with "~~₹999~~ Free" | ✅ | Prices show for offers saved after the release |
-| Free gift line (pink, FREE, gift icon) | ✅ | |
+| Free gift line (pink, "Free", gift icon) | 🟡 | No crossed-out price before "Free", see §3 |
 | Cart items: size pill above the name, REMOVE link, "01", "50%" | ✅ | All settings |
 | "You may also like" with ADD over the image and "50%" | ✅ | Settings |
 | Star rating and review count on recommendations | ⛔ | Needs Judge.me data, see §4 |
@@ -56,7 +56,7 @@ From `freed-cart-settings.json` plus the Promotions, Coupons and Upsells setup i
   - "Spend ₹999 / Free Delivery" labels
   - the next promotion's Top message
 - **"Pick one free gift" cards:** "~~₹999~~ Free" and lime ADD / REMOVE.
-- **Free gift line:** pink, FREE, gift icon, no quantity controls.
+- **Free gift line:** pink card, green "Free", gift icon, no quantity controls (auto-added and picked gifts alike).
 - **Cart items:**
   - dashed size pill above the name, REMOVE text link
   - quantity "01"
@@ -82,6 +82,7 @@ From `freed-cart-settings.json` plus the Promotions, Coupons and Upsells setup i
 | Item | Design | cartx | Note |
 |---|---|---|---|
 | Footer total vs price breakup | ₹1988 in the footer, ₹799 in the breakup | Both show the real cart total after discounts | Mock-up values; not a gap |
+| Free gift line price | "~~₹1999~~ Free" | "Free" only; the drawer shows no original price on gift lines | Small drawer change (show the original price on gift lines) |
 | Gift prices on older offers | "~~₹999~~ Free" | Title only, until the offer is saved again or the product is edited in Shopify | Re-save the offer once after setup |
 
 ## 4. Not possible yet (⛔)

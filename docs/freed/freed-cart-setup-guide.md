@@ -118,7 +118,7 @@ Go to **Promotions → Create → Offer**:
 
 Use an **Offer** with "Show offer card only". (A Claim Gift also works now: its button text is set to "Add" by the import.)
 
-The drawer shows these as the "Pick one free gift" cards with "~~₹999~~ Free". The price is stored when the offer is saved, so save the offer once after creating it. The chosen gift appears as a pink gift line with "FREE" and no quantity controls.
+The drawer shows these as the "Pick one free gift" cards with "~~₹999~~ Free". The price is stored when the offer is saved, so save the offer once after creating it. The chosen gift appears as a pink gift line with a green "Free" and the gift icon, and no quantity controls.
 
 ## 7. Coupons
 
@@ -149,7 +149,7 @@ Open the test theme preview and check each Figma screen at desktop width and on 
 |---|---|---|
 | 1 | Add one product | Drawer opens. "CART (1)", announcement bar, milestone card, cart item, "You may also like", coupons, lime checkout bar. |
 | 2 | Cross ₹999 | First milestone turns pink with a blue check, and confetti plays |
-| 3 | Gift picker | "Pick one free gift" cards with "~~₹X~~ Free". Add one: a pink gift line appears with FREE and no quantity buttons. |
+| 3 | Gift picker | "Pick one free gift" cards with "~~₹X~~ Free". Add one: a pink gift line appears with "Free", the gift icon on the right, and no quantity buttons. |
 | 4 | Coupon | Apply a code: pink card with REMOVE and "You saved ₹X with this coupon". Remove clears it. A coupon with a higher minimum shows "Add ₹X more". |
 | 5 | Apply Coupon › | The Offers & Coupons view slides in with the code field. Back returns to the cart. |
 | 6 | View Price Breakup | Bottom sheet with Total MRP, Discount on MRP, Coupon Discount, Shipping Fee with info icon and the shipping-rules box, Total |

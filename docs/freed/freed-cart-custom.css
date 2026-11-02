@@ -166,7 +166,22 @@
   height: 90px;
   border-radius: 4px;
 }
-#cartmax-root .cartmax-line-details { gap: 4px; }
+/* Figma: size + REMOVE on top; name and price on the left; the quantity sits
+   on the right, bottom-aligned with the price (one 90px row, not a 4th row). */
+#cartmax-root .cartmax-line-details {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px;
+  align-items: center;
+}
+#cartmax-root .cartmax-line-details > * { grid-column: 1; }
+#cartmax-root .cartmax-line-top-row { grid-column: 1 / -1; margin-bottom: 0; }
+#cartmax-root .cartmax-line-actions {
+  grid-column: 2;
+  grid-row: 2 / span 2;
+  align-self: end;
+  margin-top: 0;
+}
 #cartmax-root .cartmax-line-title {
   color: var(--fr-ink);
   font-size: 16px;
@@ -187,7 +202,8 @@
   letter-spacing: 2px;
 }
 #cartmax-root .cartmax-variant-pill {
-  padding: 4px 8px;
+  padding: 3px 8px;
+  text-transform: uppercase;
   border: 1px dashed #E4E4E7;
   border-radius: 99px;
   color: var(--fr-muted);
@@ -205,19 +221,20 @@
 }
 #cartmax-root .cartmax-qty-btn:disabled { color: #9F9FA9; opacity: 1; }
 #cartmax-root .cartmax-qty-value {
-  width: 32px;
+  width: 30px;
   border: 0;
   color: var(--fr-ink);
-  font: 600 14px/32px "Montserrat", sans-serif;
+  font: 600 14px/20px "Montserrat", sans-serif;
 }
 
-/* Free gift line (highlight: settings) */
-#cartmax-root .cartmax-line-item.cartmax-line-freebie {
+/* Free gift line: auto-added and picked gifts (highlight: settings) */
+#cartmax-root .cartmax-line-item.cartmax-line-gift--highlight {
   padding: 8px 56px 8px 8px;
+  border-color: var(--fr-pink);
   border-radius: 8px;
   background: rgba(242, 56, 167, 0.1);
 }
-#cartmax-root .cartmax-line-item.cartmax-line-freebie::after {
+#cartmax-root .cartmax-line-item.cartmax-line-gift--highlight::after {
   content: "";
   position: absolute;
   right: 24px;
@@ -227,11 +244,14 @@
   margin-top: -12px;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23F238A7' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='8' width='18' height='4' rx='1'/%3E%3Cpath d='M12 8v13'/%3E%3Cpath d='M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7'/%3E%3Cpath d='M7.5 8a2.5 2.5 0 0 1 0-5C9.5 3 12 8 12 8s2.5-5 4.5-5a2.5 2.5 0 0 1 0 5'/%3E%3C/svg%3E") center / contain no-repeat;
 }
-#cartmax-root .cartmax-line-freebie .cartmax-gift-badge {
+#cartmax-root .cartmax-line-gift--highlight .cartmax-gift-badge {
   padding: 0;
+  border-radius: 0;
   background: none;
   color: var(--cartmax-success);
   font: 700 16px/24px "Roboto", sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 /* "You may also like" */
