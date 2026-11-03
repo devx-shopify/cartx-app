@@ -119,7 +119,8 @@
     "special_offer_products": [],
     "special_offer_max": 6,
     "special_offer_show_on_empty": false,
-    "special_offer_card_style": "compact"
+    "special_offer_card_style": "compact",
+    "savings_include_compare": true
   },
   "sections": {
     "show_coupons": true,

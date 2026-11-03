@@ -415,6 +415,7 @@
   border: 0;
   background: none;
   box-shadow: none;
+  overflow: visible; /* the drawer clips cards; the + button must not be cut off */
 }
 #cartmax-root .cartmax-upsell-media {
   position: relative;
@@ -431,10 +432,13 @@
   height: 84px;
   object-fit: contain;
 }
+/* Figma: 32px button inside the 84px image, 4px from its right and bottom */
 #cartmax-root .cartmax-upsell-add {
   position: absolute;
-  right: -4px;
-  bottom: -4px;
+  right: 4px;
+  bottom: 4px;
+  margin: 0;
+  transform: none; /* the drawer centres an over-image button with translateX(-50%) */
   left: auto;
   top: auto;
   width: 32px;
