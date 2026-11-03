@@ -252,6 +252,7 @@ function SectionToggles({ sections, onToggle }) {
     { key: "show_offer_cards", label: "Free gift offer cards" },
     { key: "show_coupons", label: "Discount codes" },
     { key: "show_upsells", label: "Upsell products" },
+    { key: "show_special_offer", label: "Special Offer" },
     { key: "show_ribbon", label: "Announcement ribbon" },
   ];
   return (
@@ -288,6 +289,7 @@ const SECTION_LABELS = {
   offer_cards: "Free gift offer cards",
   line_items: "Cart items",
   coupons: "Discount codes",
+  special_offer: "Special Offer",
   upsells: "Upsell products",
 };
 const BODY_SECTIONS = Object.keys(SECTION_LABELS);
@@ -296,7 +298,12 @@ const BODY_SECTIONS = Object.keys(SECTION_LABELS);
 // Mirrors normalizeSectionOrder in the drawer.
 function bodyOrder(order) {
   const out = (order || []).filter((k, i, arr) => SECTION_LABELS[k] && arr.indexOf(k) === i);
-  BODY_SECTIONS.forEach((k) => { if (!out.includes(k)) out.push(k); });
+  BODY_SECTIONS.forEach((k) => {
+    if (out.includes(k)) return;
+    // Saved orders from before Special Offer existed: slot it in above Upsells.
+    const at = k === "special_offer" ? out.indexOf("upsells") : -1;
+    if (at >= 0) out.splice(at, 0, k); else out.push(k);
+  });
   return out;
 }
 
@@ -356,6 +363,39 @@ function OptionalColorField({ label, value, fallback, onChange }) {
 }
 
 // Rarely used settings, folded away so each section stays short.
+// Upload a small .svg as text, with a preview and Replace / Remove.
+function pickSvgFile(onLoad) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".svg,image/svg+xml";
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => onLoad(String(ev.target.result || ""));
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+function SvgUploadField({ value, onChange }) {
+  if (value) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{
+          width: 56, height: 56, borderRadius: 8, border: "1px solid #d4d6d8",
+          background: "#f9f9f9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+        }} dangerouslySetInnerHTML={{ __html: value }} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <s-button size="slim" onClick={() => pickSvgFile(onChange)}>Replace</s-button>
+          <s-button size="slim" tone="critical" onClick={() => onChange("")}>Remove</s-button>
+        </div>
+      </div>
+    );
+  }
+  return <s-button onClick={() => pickSvgFile(onChange)}>Upload SVG</s-button>;
+}
+
 function MoreOptions({ children }) {
   const [open, setOpen] = useState(false);
   return (
@@ -914,6 +954,19 @@ function DesignTab({ s, update }) {
             value={s.layout.header_count_style || "badge"}
             onChange={(v) => update("layout.header_count_style", v)}
           />
+          <s-checkbox
+            label="Show a Clear All button"
+            details="Removes every item from the cart, free gifts included. The button text is under Buttons & labels."
+            checked={s.layout.show_clear_all || undefined}
+            onChange={(e) => update("layout.show_clear_all", e.target.checked)}
+          />
+          {s.layout.show_clear_all ? (
+            <s-checkbox
+              label="Ask before clearing the cart"
+              checked={s.layout.clear_all_confirm !== false || undefined}
+              onChange={(e) => update("layout.clear_all_confirm", e.target.checked)}
+            />
+          ) : null}
           <SegmentedControl
             label="Position"
             options={[
@@ -951,6 +1004,21 @@ function DesignTab({ s, update }) {
 
       <CollapsibleSection heading="Cart items" description="How items in the cart are displayed.">
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <div>
+            <SegmentedControl
+              label="Price decimals"
+              options={[
+                { value: "store", label: "Store format" },
+                { value: "hide_zero", label: "Hide .00" },
+                { value: "hide", label: "Always hide" },
+              ]}
+              value={s.layout.price_decimals || "store"}
+              onChange={(v) => update("layout.price_decimals", v)}
+            />
+            <s-text color="subdued">
+              Every price in the drawer. Hide .00 shows ₹1,111 but keeps ₹1,111.50; Always hide rounds to whole amounts. Display only, checkout charges the exact amount.
+            </s-text>
+          </div>
           <SegmentedControl
             label="Image style"
             options={[
@@ -1069,6 +1137,12 @@ function DesignTab({ s, update }) {
               onChange={(v) => update("layout.variant_style", v)}
             />
             <s-checkbox
+              label="Show option names"
+              details='e.g. "Color: Red / Size: M" instead of "Red / M".'
+              checked={s.layout.variant_show_option_names || undefined}
+              onChange={(e) => update("layout.variant_show_option_names", e.target.checked)}
+            />
+            <s-checkbox
               label="Show quantities as 01, 02…"
               checked={s.layout.qty_zero_pad || undefined}
               onChange={(e) => update("layout.qty_zero_pad", e.target.checked)}
@@ -1079,6 +1153,47 @@ function DesignTab({ s, update }) {
               checked={s.layout.gift_show_price || undefined}
               onChange={(e) => update("layout.gift_show_price", e.target.checked)}
             />
+            <s-checkbox
+              label="Show the original price on free gift lines"
+              details='e.g. "~~₹999~~ FREE" on free gift lines in the cart. Gifts the shopper pays for always show their price.'
+              checked={s.layout.gift_line_show_price || undefined}
+              onChange={(e) => update("layout.gift_line_show_price", e.target.checked)}
+            />
+            <SegmentedControl
+              label="Free gift lines"
+              options={[
+                { value: "inline", label: "In the item list" },
+                { value: "section", label: "Own Freebies section" },
+              ]}
+              value={s.layout.gift_lines_placement || "inline"}
+              onChange={(v) => update("layout.gift_lines_placement", v)}
+            />
+            {s.layout.gift_lines_placement === "section" ? (
+              <>
+                <s-checkbox
+                  label="Gift icon next to the Freebies heading"
+                  checked={s.layout.freebies_show_icon !== false || undefined}
+                  onChange={(e) => update("layout.freebies_show_icon", e.target.checked)}
+                />
+                <s-checkbox
+                  label="Show gifts still to unlock"
+                  details='Adds an "1/3 Unlocked" counter and a row per locked gift with "₹302 more to Unlock". Uses the gift offers on the progress bar.'
+                  checked={s.layout.freebies_show_locked || undefined}
+                  onChange={(e) => update("layout.freebies_show_locked", e.target.checked)}
+                />
+                {s.layout.freebies_show_locked ? (
+                  <SegmentedControl
+                    label="Locked gifts shown"
+                    options={[
+                      { value: "all", label: "All" },
+                      { value: "next", label: "Next one only" },
+                    ]}
+                    value={s.layout.freebies_locked_scope || "all"}
+                    onChange={(v) => update("layout.freebies_locked_scope", v)}
+                  />
+                ) : null}
+              </>
+            ) : null}
             <s-checkbox
               label="Show icon on the discount badge"
               checked={s.layout.line_discount_show_icon !== false || undefined}
@@ -1145,6 +1260,12 @@ function ContentTab({ s, update }) {
           <FieldLabel>Cart items</FieldLabel>
           <TextFields s={s} update={update} fields={[
             ["free_badge", "Free gift badge", "FREE"],
+            ["clear_all", "Clear All button", "Clear All"],
+            ["freebies_heading", "Freebies heading", "Freebies For you"],
+            ["freebies_counter", "Freebies counter", "{count}/{total} Unlocked"],
+            ["freebies_locked", "Locked gift (spend)", "{amount} more to Unlock"],
+            ["freebies_locked_qty", "Locked gift (items)", "{count} more items to Unlock"],
+            ["clear_all_confirm", "Clear All confirmation", "Remove all items from your cart?"],
             ["line_remove", "Remove text", "Remove", 'Used when the remove button is set to "Remove" text.'],
             ["line_discount_format", "Discount badge", "{pct}% off", "{pct} is the percentage. Also used on upsell cards."],
             ["out_of_stock", "Out of stock", "Out of stock", "Variant list and gift errors."],
@@ -1343,6 +1464,30 @@ function ContentTab({ s, update }) {
 }
 
 function FeaturesTab({ s, update, onTestConfetti }) {
+  const shopify = useAppBridge();
+  // Special Offer pickers: store handles (the drawer fetches live data) plus
+  // title/image so the admin list and preview can show the selection.
+  const pickSpecialCollection = async () => {
+    const sel = await shopify.resourcePicker({ type: "collection", multiple: false, action: "select" });
+    const c = sel && sel[0];
+    if (c) update("layout.special_offer_collection", { handle: c.handle || "", title: c.title || "" });
+  };
+  const pickSpecialProducts = async () => {
+    const current = (s.layout.special_offer_products || []).map((p) => ({ id: p.id }));
+    const sel = await shopify.resourcePicker({ type: "product", multiple: 50, action: "select", selectionIds: current });
+    if (!sel) return;
+    update("layout.special_offer_products", sel.map((p) => {
+      const v = (p.variants || [])[0] || {};
+      return {
+        id: p.id,
+        handle: p.handle || "",
+        title: p.title || "",
+        image: p.images?.[0]?.originalSrc || p.images?.[0]?.url || "",
+        price: v.price != null ? String(v.price) : "",
+        compare_at_price: v.compareAtPrice != null ? String(v.compareAtPrice) : "",
+      };
+    }));
+  };
   const ab = s.announcement_bar || {};
   const pb = s.progress_bar || {};
   return (
@@ -1398,6 +1543,22 @@ function FeaturesTab({ s, update, onTestConfetti }) {
             checked={s.sections.coupon_panel_input || undefined}
             onChange={(e) => update("sections.coupon_panel_input", e.target.checked)}
           />
+          <SegmentedControl
+            label="Coupon card icon"
+            options={[
+              { value: "default", label: "Default" },
+              { value: "custom", label: "Custom SVG" },
+              { value: "none", label: "None" },
+            ]}
+            value={s.layout.coupon_icon || "default"}
+            onChange={(v) => update("layout.coupon_icon", v)}
+          />
+          {s.layout.coupon_icon === "custom" ? (
+            <SvgUploadField value={s.layout.coupon_icon_svg || ""} onChange={(v) => update("layout.coupon_icon_svg", v)} />
+          ) : null}
+          <div style={{ fontSize: 12, color: "#6d7175", marginTop: -8, lineHeight: 1.4 }}>
+            Shown in the coloured strip of a coupon card when the coupon has no Accent label. The Accent label wins when it is set.
+          </div>
         </div>
       </CollapsibleSection>
 
@@ -1688,6 +1849,77 @@ function FeaturesTab({ s, update, onTestConfetti }) {
             checked={s.layout.upsells_show_discount || undefined}
             onChange={(e) => update("layout.upsells_show_discount", e.target.checked)}
           />
+        </div>
+      </CollapsibleSection>
+      <CollapsibleSection heading="Special Offer" description="Showcase products from a discounted collection or a hand-picked list. Display only: the discount itself is a cartx promotion or a Shopify discount.">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <s-checkbox
+            label="Show Special Offer"
+            checked={!!s.sections.show_special_offer}
+            onChange={(e) => update("sections.show_special_offer", e.target.checked)}
+          />
+          <s-text-field
+            label="Heading"
+            value={s.layout.special_offer_heading}
+            onInput={(e) => update("layout.special_offer_heading", e.target.value)}
+            placeholder="Special Price"
+          />
+          <SegmentedControl
+            label="Products from"
+            options={[
+              { value: "collection", label: "A collection" },
+              { value: "products", label: "Hand-picked products" },
+            ]}
+            value={s.layout.special_offer_source || "collection"}
+            onChange={(v) => update("layout.special_offer_source", v)}
+          />
+          {(s.layout.special_offer_source || "collection") === "collection" ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <s-text>{s.layout.special_offer_collection?.title || "No collection selected"}</s-text>
+              <s-button onClick={pickSpecialCollection}>
+                {s.layout.special_offer_collection?.handle ? "Change collection" : "Select collection"}
+              </s-button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {(s.layout.special_offer_products || []).map((p) => (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {p.image ? <img src={p.image} alt="" width="32" height="32" style={{ objectFit: "cover", borderRadius: 4 }} /> : null}
+                  <s-text>{p.title || p.handle}</s-text>
+                </div>
+              ))}
+              <div>
+                <s-button onClick={pickSpecialProducts}>
+                  {(s.layout.special_offer_products || []).length ? "Change products" : "Select products"}
+                </s-button>
+              </div>
+            </div>
+          )}
+          <s-number-field
+            label="Products to show (max)"
+            value={String(s.layout.special_offer_max ?? 6)}
+            min="1"
+            max="20"
+            onChange={(e) => {
+              const n = parseInt(e.target.value, 10);
+              if (n >= 1 && n <= 20) update("layout.special_offer_max", n);
+            }}
+          />
+          <SegmentedControl
+            label="Card style"
+            options={[
+              { value: "compact", label: "Compact" },
+              { value: "standard", label: "Same as Upsells" },
+            ]}
+            value={s.layout.special_offer_card_style || "compact"}
+            onChange={(v) => update("layout.special_offer_card_style", v)}
+          />
+          <s-checkbox
+            label="Show on the empty cart"
+            checked={!!s.layout.special_offer_show_on_empty}
+            onChange={(e) => update("layout.special_offer_show_on_empty", e.target.checked)}
+          />
+          <s-text color="subdued">Products already in the cart or out of stock are skipped. Prices are the products' own price and compare-at price. Move the row with Section order (above or below Upsells).</s-text>
         </div>
       </CollapsibleSection>
 

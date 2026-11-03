@@ -2,6 +2,8 @@
 // cartx — Shared Helpers
 // =============================================================
 
+import { formatAmount } from '../../lib/money-format.js';
+
 // ── Internal fetch (bypasses cart interceptor) ──────────────
 
 // cartx must not react to its OWN cart calls. That used to be done with a
@@ -153,20 +155,22 @@ export function simulateCouponRemove(cart, code) {
 
 // ── Money formatting ────────────────────────────────────────
 
+// Price display mode from layout.price_decimals; set by the drawer config.
+var _priceDecimals = 'store';
+export function setPriceDecimals(mode) {
+  _priceDecimals = mode === 'hide_zero' || mode === 'hide' ? mode : 'store';
+}
+
+// The store's money format: the app embed's data-money-format (shop.money_format)
+// first, then the theme's window.Shopify.money_format if it sets one.
+export function storeMoneyFormat() {
+  var el = typeof document !== 'undefined' && document.getElementById('cartmax-root');
+  return (el && el.dataset && el.dataset.moneyFormat)
+    || (typeof window !== 'undefined' && window.Shopify && window.Shopify.money_format) || '';
+}
+
 export function formatMoney(cents, currency) {
-  var amount = (cents / 100).toFixed(2);
-  var fmt = window.Shopify && window.Shopify.money_format;
-  if (fmt) {
-    return fmt
-      .replace(/\{\{\s*amount\s*\}\}/, amount)
-      .replace(/\{\{\s*amount_no_decimals\s*\}\}/, Math.round(cents / 100))
-      .replace(/\{\{\s*amount_with_comma_separator\s*\}\}/, amount.replace('.', ','));
-  }
-  var symbols = {
-    USD: '$', EUR: '\u20AC', GBP: '\u00A3', INR: '\u20B9',
-    CAD: 'CA$', AUD: 'A$', JPY: '\u00A5', CNY: '\u00A5',
-  };
-  return (symbols[currency] || currency + ' ') + amount;
+  return formatAmount((Number(cents) || 0) / 100, storeMoneyFormat(), _priceDecimals, currency);
 }
 
 // ── Image URL resize ────────────────────────────────────────
@@ -373,7 +377,7 @@ function setOrClear(style, name, value) {
 // ── Drawer layout helpers (pure, unit-tested) ───────────────
 
 // Body sections the merchant can reorder. Today's order is the fallback.
-export var BODY_SECTIONS = ['progress_bar', 'claim_gifts', 'offer_cards', 'line_items', 'coupons', 'upsells'];
+export var BODY_SECTIONS = ['progress_bar', 'claim_gifts', 'offer_cards', 'line_items', 'coupons', 'special_offer', 'upsells'];
 
 // The merchant's order, keeping only known body sections (each once), with any
 // missing ones appended in the default order. 'ribbon' is stored in the same
@@ -384,7 +388,11 @@ export function normalizeSectionOrder(order) {
     if (BODY_SECTIONS.indexOf(key) !== -1 && out.indexOf(key) === -1) out.push(key);
   });
   BODY_SECTIONS.forEach(function (key) {
-    if (out.indexOf(key) === -1) out.push(key);
+    if (out.indexOf(key) !== -1) return;
+    // Orders saved before Special Offer existed get it just above the upsells.
+    var at = key === 'special_offer' ? out.indexOf('upsells') : -1;
+    if (at === -1) out.push(key);
+    else out.splice(at, 0, key);
   });
   return out;
 }
@@ -413,6 +421,45 @@ export function mapProgress(pct, n, spacing) {
 }
 
 // Fill {name} placeholders. Unknown placeholders are left as they are.
+// Gift milestones for the Freebies section: how many of the bar's gift tiers
+// are reached, and the locked ones still ahead (cheapest first). A tier counts
+// when its offer is an auto-add gift; the row uses that offer's first gift.
+// `total`/`qty` are the cart's qualifying spend (major units) and item count;
+// scope 'next' keeps only the nearest locked gift.
+export function buildFreebieTiers(bar, offers, total, qty, scope) {
+  var result = { total: 0, unlocked: 0, locked: [] };
+  if (!bar || !bar.tiers || !bar.tiers.length) return result;
+  var giftOffers = {};
+  (offers || []).forEach(function (o) {
+    if (o && o.reward && o.reward.type === 'auto_add_gift') giftOffers[o.id] = o;
+  });
+  var locked = [];
+  bar.tiers.forEach(function (t) {
+    // Offers sharing a threshold merge into one tier; look through its sources.
+    var ids = (t.sources && t.sources.length)
+      ? t.sources.map(function (s) { return s.promotion_id || s.id; })
+      : [t.promotion_id || t.id];
+    var offer = null;
+    for (var i = 0; i < ids.length && !offer; i++) offer = giftOffers[ids[i]] || null;
+    if (!offer) return;
+    result.total++;
+    if (t.state === 'active') { result.unlocked++; return; }
+    var gift = (offer.reward.gift_variant_data || [])[0] || {};
+    var byQty = t.trigger_type === 'quantity';
+    locked.push({
+      id: t.id,
+      title: gift.title || t.label || '',
+      image: gift.image || '',
+      by: byQty ? 'quantity' : 'price',
+      threshold: t.threshold,
+      remaining: Math.max(0, t.threshold - (byQty ? qty : total)),
+    });
+  });
+  locked.sort(function (a, b) { return a.threshold - b.threshold; });
+  result.locked = scope === 'next' ? locked.slice(0, 1) : locked;
+  return result;
+}
+
 export function fillTemplate(template, values) {
   return String(template || '').replace(/\{(\w+)\}/g, function (match, key) {
     return Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : match;
@@ -501,13 +548,7 @@ export function normalizeVariantId(id) {
 }
 
 export function formatMoneyTemplate(moneyFormat, amount) {
-  var amountStr = amount.toFixed(2);
-  var formatted = moneyFormat
-    ? moneyFormat.replace(/\{\{\s*amount\s*\}\}/, amountStr)
-        .replace(/\{\{\s*amount_no_decimals\s*\}\}/, String(Math.round(amount)))
-        .replace(/\{\{\s*amount_with_comma_separator\s*\}\}/, amountStr.replace('.', ','))
-    : '$' + amountStr;
-  return formatted;
+  return formatAmount(amount, moneyFormat || storeMoneyFormat(), _priceDecimals);
 }
 
 // ── Gift-line detection / quantity-selector policy ──────────
@@ -557,6 +598,56 @@ export function giftChargedAmount(item) {
   return n > 0 ? n : 0;
 }
 
+// Splits a merchant message on **double asterisks** into plain and bold parts:
+// "Add **₹363 more** to get a gift" → [{text:'Add ',bold:false},
+// {text:'₹363 more',bold:true}, {text:' to get a gift',bold:false}].
+// Rendered as text nodes and <strong>, never as HTML, so it is safe. An
+// unpaired ** is left as typed.
+export function boldParts(text) {
+  var s = text == null ? '' : String(text);
+  var parts = s.split('**');
+  if (parts.length < 3) return [{ text: s, bold: false }];
+  var out = [];
+  for (var i = 0; i < parts.length; i++) {
+    var last = i === parts.length - 1;
+    // An odd number of ** leaves the last part unclosed: keep it plain, with its **.
+    if (last && i % 2 === 1) {
+      out.push({ text: '**' + parts[i], bold: false });
+    } else if (parts[i]) {
+      out.push({ text: parts[i], bold: i % 2 === 1 });
+    }
+  }
+  return out;
+}
+
+// Variant text for a cart line: "Black / M", or "Color: Black / Size: M" when
+// the store shows option names. Names come from the line's options_with_values;
+// values from variant_title, because a variant swap updates variant_title
+// straight away while options_with_values catches up on the next cart read.
+// If the two don't line up (or the product has no real options) the plain
+// variant_title is used.
+export function variantText(item, showNames) {
+  if (!item || !item.variant_title) return '';
+  var title = String(item.variant_title);
+  if (!showNames) return title;
+  var opts = Array.isArray(item.options_with_values) ? item.options_with_values : [];
+  var values = title.split(' / ');
+  if (!opts.length || opts.length !== values.length) return title;
+  return opts.map(function (o, i) {
+    var name = o && o.name ? String(o.name) : '';
+    return name && name !== 'Title' ? name + ': ' + values[i] : values[i];
+  }).join(' / ');
+}
+
+// The struck "was" price shown before the FREE badge on a free gift line, when
+// the store turns it on. 0 = show nothing (setting off, or no real price to
+// strike — e.g. a $0 gift product).
+export function giftOriginalPrice(item, show) {
+  if (!show || !item) return 0;
+  var n = Number(item.original_line_price || 0);
+  return n > 0 ? n : 0;
+}
+
 // ── Focus trap for accessibility ────────────────────────────
 
 var FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -576,6 +667,68 @@ export function trapFocus(container) {
     }
   }
   container.addEventListener('keydown', handler);
-  first.focus();
+  // Start on Close so header buttons like Clear All aren't one Enter away.
+  (container.querySelector('.cartmax-close') || first).focus();
   return function () { container.removeEventListener('keydown', handler); };
+}
+
+// ── Special Offer showcase (pure, unit-tested) ──────────────
+// Every source is normalised to one card shape; prices in major units.
+//   { product_id, handle, title, image_url, price, compare_at_price, variant_id, available }
+
+function firstAvailable(variants, isAvailable) {
+  for (var i = 0; i < variants.length; i++) if (isAvailable(variants[i])) return variants[i];
+  return null;
+}
+
+function cardFrom(id, handle, title, image, v, available) {
+  var price = v ? Number(v.price) : 0;
+  var compare = v && v.compare ? Number(v.compare) : 0;
+  return {
+    product_id: String(id || '').split('/').pop(),
+    handle: handle || '',
+    title: title || '',
+    image_url: image || '',
+    price: price,
+    compare_at_price: compare > price ? compare : null,
+    variant_id: v ? String(v.id).split('/').pop() : null,
+    available: !!available && !!v,
+  };
+}
+
+// /products/<handle>.js — prices in cents, in the shopper's currency.
+export function showcaseFromAjax(p) {
+  if (!p || !p.id) return null;
+  var vs = p.variants || [];
+  var v = firstAvailable(vs, function (x) { return x.available; }) || vs[0];
+  var image = p.featured_image || (p.images && p.images[0]) || '';
+  return cardFrom(p.id, p.handle, p.title, image, v && {
+    id: v.id, price: (Number(v.price) || 0) / 100, compare: (Number(v.compare_at_price) || 0) / 100,
+  }, p.available);
+}
+
+// Storefront API Product node — prices are decimal strings.
+export function showcaseFromStorefront(n) {
+  if (!n || !n.id) return null;
+  var vs = (n.variants && n.variants.nodes) || [];
+  var v = firstAvailable(vs, function (x) { return x.availableForSale; }) || vs[0];
+  return cardFrom(n.id, n.handle, n.title, n.featuredImage && n.featuredImage.url, v && {
+    id: v.id, price: v.price && v.price.amount, compare: v.compareAtPrice && v.compareAtPrice.amount,
+  }, n.availableForSale);
+}
+
+// Cards to show: in stock, not already in the cart, each product once, capped.
+export function pickSpecialProducts(products, cartItems, max) {
+  var inCart = {};
+  (cartItems || []).forEach(function (it) { if (it && it.product_id != null) inCart[String(it.product_id)] = true; });
+  var seen = {};
+  var out = [];
+  var limit = Math.max(1, Number(max) || 6);
+  (products || []).forEach(function (p) {
+    if (!p || !p.available || !p.variant_id || out.length >= limit) return;
+    if (inCart[p.product_id] || seen[p.product_id]) return;
+    seen[p.product_id] = true;
+    out.push(p);
+  });
+  return out;
 }

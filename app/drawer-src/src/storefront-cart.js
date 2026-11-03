@@ -114,6 +114,32 @@ export async function fetchProductAvailability(productIds) {
   return out;
 }
 
+// ── Special Offer showcase products ───────────────────────
+// Raw Product nodes for a collection (by handle) or a hand-picked list of
+// handles, in the shopper's country so prices match the market.
+var SHOWCASE_FIELDS = 'id handle title availableForSale featuredImage { url } '
+  + 'variants(first: 50) { nodes { id availableForSale price { amount } compareAtPrice { amount } } }';
+
+export async function fetchShowcaseNodes(opts) {
+  var o = opts || {};
+  var country = (window.Shopify && window.Shopify.country) || '';
+  var ctx = /^[A-Z]{2}$/.test(country) ? ' @inContext(country: ' + country + ')' : '';
+  if (o.collection) {
+    var data = await sfFetch(
+      'query cartxShowcaseCollection($h: String!, $n: Int!)' + ctx
+        + ' { collection(handle: $h) { products(first: $n) { nodes { ' + SHOWCASE_FIELDS + ' } } } }',
+      { h: o.collection, n: Math.min(50, Number(o.first) || 12) }
+    );
+    return (data && data.collection && data.collection.products && data.collection.products.nodes) || [];
+  }
+  var handles = (o.handles || []).filter(function (h) { return typeof h === 'string' && h && h.length < 256; }).slice(0, 50);
+  if (handles.length === 0) return [];
+  // JSON string quoting is valid GraphQL string syntax.
+  var q = handles.map(function (h, i) { return 'p' + i + ': product(handle: ' + JSON.stringify(h) + ') { ' + SHOWCASE_FIELDS + ' }'; }).join(' ');
+  var res = await sfFetch('query cartxShowcaseProducts' + ctx + ' { ' + q + ' }', {});
+  return handles.map(function (h, i) { return res && res['p' + i]; }).filter(Boolean);
+}
+
 // ── Cart fragment (enriched: render the drawer without a refetch) ──
 var CART_FRAGMENT = `
   fragment Cart on Cart {
