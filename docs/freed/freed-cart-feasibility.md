@@ -8,6 +8,8 @@ This doc compares the FREED cart design (Figma "FREED / CartX", 17 screens, 600 
 
 **Status (29 Oct 2026):** the cartx drawer design options are **released** (release PR #38, deployed 29 Oct). Every design feature planned for FREED is now a Customize Cart setting. The import file (`freed-cart-settings.json`) uses them, and the Custom CSS keeps only FREED's type scale, spacing, artwork and card shapes. Both pass the released settings validation and were rendered with the released drawer. They still need QA on FREED's test theme.
 
+**Update (3 Nov 2026):** the import file now also uses two settings from the **next cartx release** (branch `feat/drawer-design-options`, in testing, not live yet): the crossed-out original price on free gift lines, and **Price decimals → Always hide** so drawer prices never show decimals, as in the Figma and the theme (₹1,111, not ₹1111.00). Test them on the dev preview first (setup guide §10). Don't import this file on FREED until that release is deployed; the previous kit for the current release is in git at commit `96cc936`.
+
 **Key**
 
 | | Meaning |
@@ -15,6 +17,7 @@ This doc compares the FREED cart design (Figma "FREED / CartX", 17 screens, 600 
 | ✅ | Ready: settings plus the FREED Custom CSS |
 | 🟡 | Close: works, with a small difference from the design |
 | ⛔ | Not possible yet: needs a third-party data source plus development |
+| 🧪 | Built in the next cartx release, in testing (not live yet) |
 | ❓ | Client decision or input needed |
 
 ---
@@ -28,7 +31,8 @@ This doc compares the FREED cart design (Figma "FREED / CartX", 17 screens, 600 
 | Milestone card: gradient, track, gift icons, labels, top message | ✅ | Card, gradient and colours are settings |
 | Milestone icons | ✅ | Two shared icons (not reached / reached), as decided |
 | "Pick one free gift" cards with "~~₹999~~ Free" | ✅ | Prices show for offers saved after the release |
-| Free gift line (pink, "Free", gift icon) | 🟡 | No crossed-out price before "Free", see §3 |
+| Free gift line (pink, "~~₹1999~~ Free", gift icon) | 🧪 | Cart items → Show the original price on free gift lines (§3a) |
+| Prices without ".00", with thousands comma (₹1,111) | 🧪 | Design → Cart items → Price decimals: Always hide (§3a) |
 | Cart items: size pill above the name, REMOVE link, "01", "50%" | ✅ | All settings |
 | "You may also like" with ADD over the image and "50%" | ✅ | Settings |
 | Star rating and review count on recommendations | ⛔ | Needs Judge.me data, see §4 |
@@ -82,8 +86,16 @@ From `freed-cart-settings.json` plus the Promotions, Coupons and Upsells setup i
 | Item | Design | cartx | Note |
 |---|---|---|---|
 | Footer total vs price breakup | ₹1988 in the footer, ₹799 in the breakup | Both show the real cart total after discounts | Mock-up values; not a gap |
-| Free gift line price | "~~₹1999~~ Free" | "Free" only; the drawer shows no original price on gift lines | Small drawer change (show the original price on gift lines) |
 | Gift prices on older offers | "~~₹999~~ Free" | Title only, until the offer is saved again or the product is edited in Shopify | Re-save the offer once after setup |
+
+## 3a. In testing (🧪, next cartx release)
+
+| Feature | Setting (Customize Cart) | Kit value | Before this release |
+|---|---|---|---|
+| Original price on free gift lines | Features → Cart items → Show the original price on free gift lines | On | "Free" only |
+| Price decimals | Design → Cart items → Price decimals: Store format / Hide .00 / Always hide | Always hide | ₹1111.00: the drawer ignored the store's money format and added ".00" with no comma |
+
+Also in this release, for every store: prices follow the store's real Shopify money format with the thousands separator, and the "Add ₹X more" milestone message uses the same format. Price decimals is display only; checkout charges the exact amount.
 
 ## 4. Not possible yet (⛔)
 
@@ -129,11 +141,12 @@ From `freed-cart-settings.json` plus the Promotions, Coupons and Upsells setup i
 
 1. **Now:** test theme, import, promotions, coupons, upsells, QA against Figma (setup guide). Share the preview with the client.
 2. **After client inputs:** Judge.me reviews (M), then the pincode checker (M–L).
-3. **Go live** after sign-off (setup guide §10).
+3. **Go live** after sign-off and after the next cartx release is deployed (setup guide §11).
 
 ## 7. Summary
 
 - Every FREED design feature except pincode and Judge.me is now built into cartx and set by the import file.
+- The struck gift-line price and the no-".00" prices are in the next cartx release, in testing (§3a).
 - The Custom CSS holds only FREED's type scale, spacing, artwork and card shapes.
 - The coupon badges use the real Figma starburst.
 - Remaining work needs client inputs: logistics provider (pincode) and Judge.me metafields (reviews).

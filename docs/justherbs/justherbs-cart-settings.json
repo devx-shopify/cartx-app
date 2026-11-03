@@ -107,7 +107,19 @@
     "gift_line_style": "plain",
     "gift_show_price": false,
     "upsells_btn_position": "below",
-    "image_ratio": "square"
+    "image_ratio": "square",
+    "variant_show_option_names": true,
+    "coupon_icon": "default",
+    "special_offer_heading": "Special Price",
+    "special_offer_source": "collection",
+    "special_offer_collection": {
+      "handle": "",
+      "title": ""
+    },
+    "special_offer_products": [],
+    "special_offer_max": 6,
+    "special_offer_show_on_empty": false,
+    "special_offer_card_style": "compact"
   },
   "sections": {
     "show_coupons": true,
@@ -122,13 +134,15 @@
       "claim_gifts",
       "offer_cards",
       "line_items",
+      "special_offer",
       "upsells",
       "coupons",
       "ribbon"
     ],
     "show_locked_coupons": true,
     "coupon_panel_input": true,
-    "coupon_applied_style": "chip"
+    "coupon_applied_style": "chip",
+    "show_special_offer": true
   },
   "behavior": {
     "auto_open_on_add": true,

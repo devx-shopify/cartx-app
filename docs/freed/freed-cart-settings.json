@@ -64,7 +64,8 @@
     "price_breakup_title": "Price Break Up",
     "pb_discount_mrp": "Discount On MRP",
     "shipping_note": "Prepaid Orders\n₹79–₹398.99 → Shipping ₹49\n₹399 & above → Free Shipping 🎉\n\nCash on Delivery (COD)\n₹399–₹698.99 → Shipping ₹99\n₹699–₹1,990 → Shipping ₹49",
-    "free_badge": "Free"
+    "free_badge": "Free",
+    "gift_paid_badge": "Free"
   },
   "layout": {
     "drawer_width": 600,
@@ -105,7 +106,9 @@
     "content_padding": 32,
     "content_padding_mobile": 16,
     "checkout_full_width": true,
-    "image_ratio": "square"
+    "image_ratio": "square",
+    "gift_line_show_price": true,
+    "price_decimals": "hide"
   },
   "sections": {
     "show_coupons": true,

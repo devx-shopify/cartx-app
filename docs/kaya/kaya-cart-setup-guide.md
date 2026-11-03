@@ -1,6 +1,6 @@
 # Kaya cart drawer: cartx setup guide
 
-How to set up the Kaya cart design (Figma "Kaya", frames "Cart" 1–3, 360 px mobile) on the client's store with cartx. It's settings plus one import file, with no code changes. The import is built for the current released cartx drawer (`main`, PR #40), so the store's cartx must be on that release. What cartx can't do yet is listed in `kaya-cart-feasibility.md`.
+How to set up the Kaya cart design (Figma "Kaya", frames "Cart" 1–3, 360 px mobile) on the client's store with cartx. It's settings plus one import file, with no code changes. The import is built for the **next cartx release** (branch `feat/drawer-design-options`, in testing, not live yet): it turns on Clear All, the Freebies section and the struck gift price. Test it on the dev preview first (§9). Don't import it on a store until that release is deployed; the previous kit for the current release is in git at commit `7925597`. What cartx can't do yet is listed in `kaya-cart-feasibility.md`.
 
 **Files in `docs/kaya/`**
 
@@ -9,7 +9,7 @@ How to set up the Kaya cart design (Figma "Kaya", frames "Cart" 1–3, 360 px mo
 | `kaya-cart-settings.json` | Customize Cart import file: colours, Montserrat and Poppins fonts, texts, cart lines, freebies block, coupon pill, recommendation cards, milestone colours, and the Custom CSS |
 | `kaya-cart-custom.css` | The same Custom CSS as a separate file, for review. Its icons are inline SVG, so nothing needs uploading |
 | `kaya-cart-feasibility.md` / `.docx` | What ships, what differs, what needs development, client questions |
-| `assets/icons/*.svg` | The Figma icons embedded in the Custom CSS (cart, close, line bin, freebies, "+", coupon tag and chevron, checkout chevron, trust icons), for reference. `clear-all-trash.svg` is for the future Clear All button |
+| `assets/icons/*.svg` | The Figma icons embedded in the Custom CSS (cart, close, line bin, freebies, "+", coupon tag and chevron, checkout chevron, trust icons), for reference. `clear-all-trash.svg` is the Clear All icon reference (the drawer uses its own bin icon) |
 
 **Values marked *(placeholder)*** come from the Figma mock-up. Replace them with the client's real offers, products and copy.
 
@@ -21,7 +21,7 @@ cartx saves its settings **per theme**, and the import replaces all drawer setti
 
 1. **Online Store → Themes**: on the live theme, **⋯ → Duplicate**, and rename the copy `Kaya – cartx test`.
 2. Live theme: **Customize → App embeds**. Make sure **cartx** is **off**.
-3. Test theme: **Customize → App embeds** → turn **cartx** on → **Save**.
+3. Test theme: **Customize → App embeds** → turn on **cartx Drawer** and **cartx Promotions** → **Save**.
 4. In cartx, select **`Kaya – cartx test`** with the theme switcher, and check it's selected before every step below.
 5. Test with the test theme's **Preview** link.
 
@@ -33,7 +33,7 @@ cartx → **Customize Cart → Advanced → Backup & restore → Export settings
 
 1. **Customize Cart → Advanced → Backup & restore → Import settings** → choose `kaya-cart-settings.json`.
 2. The toast says "Settings imported — save to apply". Click **Save**.
-3. **Money format:** the design shows `₹1,890`. Prices follow the store's money format (Shopify **Settings → General → Store currency → Change currency formatting**). With `{{amount_no_decimals}}` prices show as `₹1890`; use `{{amount_no_decimals_with_comma_separator}}` only if that matches the rest of the store. Agree this with the client before changing it, since it changes prices across the theme.
+3. **Money format:** the design shows `₹1,890`. The drawer follows the store's money format (Shopify **Settings → General → Store currency → Change currency formatting**) and adds the thousands comma itself, so `₹{{amount_no_decimals}}` shows `₹1,890`. If the store format has decimals (`₹{{amount}}`), set **Customize Cart → Design → Cart items → Price decimals → Hide .00** so whole amounts show without `.00`.
 
 **What the import sets**
 
@@ -41,10 +41,10 @@ cartx → **Customize Cart → Advanced → Backup & restore → Export settings
 |---|---|
 | Fonts | Montserrat (body) and Poppins (titles, coupon and empty text) from Google Fonts |
 | Colours | Text `#262626`, secondary `#62636C`, border `#D8D9E0`, teal accent `#00A08C`, red `#D13415`, savings strip `#CCF3EB` / `#044F62`, freebies block `#DCFFFB` |
-| Drawer | 360 px on desktop, full width on mobile |
-| Header | "My Cart" with "2 Products" below and a cart icon (Custom CSS); "0 Products" on an empty cart |
+| Drawer | 420 px on desktop, full width on mobile |
+| Header | "My Cart" with "2 Products" below and a cart icon (Custom CSS); "0 Products" on an empty cart; mint "Clear All" pill that asks before clearing |
 | Cart items | All lines in one rounded card with dividers, 80 px images, compare-at price, stepper, grey bin; variant hidden |
-| Freebies | Gift lines below the cart card in a mint block headed "Freebies For you", with a teal "Free" pill |
+| Freebies | Gift lines in their own mint "Freebies For you" section: struck original price + teal "Free" pill, "1/3 Unlocked" counter, locked rows "₹X more to Unlock" |
 | Milestones | Thin `#D8D9E0` track, `#00A08C` fill and reached dots, white locked dots with a grey ring, amounts above the track, no progress message |
 | Coupons | Pill row "View all coupons ›" opening Offers & Coupons; applied code reads "₹200 saved with 'CODE'" with "Remove" |
 | Recommendations | "Recommended For you", horizontal 240 px cards, "+" on the image, compare-at price and "52%", also on the empty cart |
@@ -55,7 +55,7 @@ cartx → **Customize Cart → Advanced → Backup & restore → Export settings
 **Text you may need to change**
 - Savings wording ("on this product" vs "on this order", client question): Content → savings label
 - "Easy 7-Day Returns": Content → checkout trust message
-- **"Secure Checkout"** (the second trust item), **"Freebies For you"** and the **"Products"** word in the header are in the Custom CSS; change them there in both the CSS and the JSON
+- **"Freebies For you"**, the counter and the locked-row text are text settings (Customize Cart → Content). **"Secure Checkout"** (the second trust item) and the **"Products"** word in the header are in the Custom CSS; change them there in both the CSS and the JSON
 - "Shop Products" link: Content → continue shopping URL
 
 ## 4. Milestones
@@ -79,7 +79,7 @@ The bar shows the progress-bar tiers. Each tier's **sub label** is the amount sh
 
 Under **Settings → Progress bar**, drag the tiers into the order ₹499, ₹699, ₹999.
 
-Gifts in the cart appear in the "Freebies For you" block with the "Free" pill. The "1/3 Unlocked" counter and the locked rows ("₹302 more to Unlock") need development (feasibility §4 #2).
+Gifts in the cart appear in their own "Freebies For you" section with the struck original price and the "Free" pill, the "1/3 Unlocked" counter, and a locked row ("₹302 more to Unlock") for every gift not reached yet. The import sets this up (**Customize Cart → Features → Cart items**: Free gift lines **Own section**, Show locked gifts **on**, **All tiers**). The counter counts the gift offers on the milestone bar, so each tier needs its gift offer.
 
 ## 5. Coupons
 
@@ -102,17 +102,19 @@ cartx → **Upsells**:
 
 ## 7. QA on the test theme
 
-Check on a phone (or a 360 px window) against the three Figma screens in `.buildspace/artifacts/kaya-cart/screenshots/`.
+Check on a phone (or a 360 px window), and on desktop at the 420 px drawer, against the three Figma screens in `.buildspace/artifacts/kaya-cart/screenshots/`.
 
 | # | Check | Expected |
 |---|---|---|
-| 1 | Add one product | Cart icon, "My Cart" over "1 Products" (known wording gap), milestone bar with amounts above, the cart card, "Recommended For you", coupon pill, savings strip, "Total:", black Check out, trust row |
+| 1 | Add one product | Cart icon, "My Cart" over "1 Products" (known wording gap), mint "Clear All" pill, milestone bar with amounts above, the cart card, "Recommended For you", coupon pill, savings strip, "Total:", black Check out, trust row |
 | 2 | Add a second product | "2 Products"; both lines in one card with a divider |
-| 3 | Cross ₹499 | First dot turns teal with a check; the gift appears in the mint "Freebies For you" block with "Free" |
+| 3 | Cross ₹499 | First dot turns teal with a check; the gift appears in the mint "Freebies For you" section as ~~₹440~~ "Free"; the counter reads "1/3 Unlocked" and the ₹699 and ₹999 gifts show as locked rows with "₹X more to Unlock" |
+| 3a | Change quantity around a threshold | Counter, locked rows and their amounts update; crossing ₹699 moves that gift from locked to the cart |
 | 4 | Quantity and bin | Stepper updates the line; the bin removes it |
 | 5 | View all coupons › | Offers & Coupons with the code field and "All Coupons"; apply FLAT200; the pill reads "₹200 saved with 'FLAT200'"; Remove clears it |
 | 6 | View Price Breakup | Price breakup sheet |
 | 7 | Recommendation "+" | Adds the product |
+| 7a | Clear All | Asks to confirm; OK empties the cart, gifts included, and shows the empty cart; Cancel keeps everything |
 | 8 | Empty the cart | "0 Products", "Cart is Empty", two-line text, "Shop Products", recommendations |
 | 9 | Checkout | Goes to checkout with discounts applied |
 | 10 | Live theme | Still shows the theme's own cart (embed off) |
@@ -121,6 +123,31 @@ Check on a phone (or a 360 px window) against the three Figma screens in `.build
 
 1. Select the **live** theme in cartx, export its backup, then import the final settings exported from the test theme (so QA tweaks come along).
 2. Recreate or check the milestones, offers, coupons and recommendations for the live theme. These are saved per theme.
-3. Turn the cartx embed **on** in the live theme; check one add-to-cart and the checkout.
+3. Turn the cartx embed **on** in the live theme; check one add-to-cart and the checkout. Turn on **both** cartx app embeds: **cartx Drawer** and **cartx Promotions**. Without Promotions the gift and claim-gift discounts never apply: gifts stay at full price and show no struck price.
 
 **Roll back:** turn the cartx embed off on the live theme. The theme's own cart comes back straight away.
+
+## 9. Test the new features (dev preview, before the release)
+
+Clear All, the Freebies section with counter and locked rows, the struck gift price and the price format fix are built on branch `feat/drawer-design-options` and not released yet. Test them on the dev store first:
+
+1. Run the preview from the feature worktree:
+   ```
+   cd /Users/vishvamjoshi0310/Documents/shopify-projects/cartx-feat
+   npm run dev        # shopify app dev → pick devx-dev
+   ```
+   ⚠️ `automatically_update_urls_on_dev` is on and this is the production app, so while `app dev` runs the app URLs point at the tunnel for every store. Run `shopify app deploy` afterwards to restore them.
+2. On `devx-dev`, import `kaya-cart-settings.json` (§3) on a test theme and set up the three gift milestones (§4).
+3. Check:
+
+| # | Feature | Setting (Customize Cart) | Expected |
+|---|---|---|---|
+| 1 | Clear All | Header → Show Clear All **on**, Ask before clearing **on** | Mint pill in the header; confirm, then empty cart with the empty-cart screen. Turn Ask off: clears straight away |
+| 2 | Freebies section | Features → Cart items → Free gift lines **Own section** | Gift lines move out of the cart list into "Freebies For you" with the "n/N Unlocked" counter |
+| 3 | Locked rows | Show locked gifts **on**, **All tiers** / **Next tier only** | All unreached gifts as "₹X more to Unlock" rows / only the next one; amounts update as the cart changes |
+| 4 | Back to inline | Free gift lines **In the cart list** | Gift lines go back into the normal cart list, no counter |
+| 5 | Struck gift price | Cart items → Show the original price on free gift lines **on** | ~~₹440~~ before "Free"; off shows only "Free" |
+| 6 | Price format | Design → Cart items → Price decimals | Prices with thousands comma (`₹1,890`); Hide .00 drops `.00` on whole amounts |
+| 7 | Admin preview | — | The Customize Cart preview follows each setting above |
+
+When the release is deployed, these features are live for every store, and this kit can be imported on the Kaya store.

@@ -1,6 +1,6 @@
 # FREED cart drawer: cartx setup guide
 
-How to set up the FREED cart design (Figma "FREED / CartX") on FREED's store using cartx. It's settings plus one import file, with no code changes. The import uses the drawer design options released on 29 Oct 2026, so the store's cartx must be on that release. What cartx can't do yet is listed in `freed-cart-feasibility.md`.
+How to set up the FREED cart design (Figma "FREED / CartX") on FREED's store using cartx. It's settings plus one import file, with no code changes. The import is built for the **next cartx release** (branch `feat/drawer-design-options`, in testing, not live yet): it turns on the struck price on free gift lines and **Price decimals → Always hide**. Test it on the dev preview first (§10). Don't import it on FREED until that release is deployed; the previous kit for the current release (29 Oct) is in git at commit `96cc936`. What cartx can't do yet is listed in `freed-cart-feasibility.md`.
 
 **Files in `docs/freed/`**
 
@@ -25,7 +25,7 @@ cartx saves its settings **per theme**, and the import replaces all drawer setti
 
 1. In Shopify admin → **Online Store → Themes**, open the live theme's **⋯** menu → **Duplicate**. Rename the copy to `FREED – cartx test`.
 2. On the **live** theme: **Customize → App embeds**. Make sure the **cartx** embed is **off**. Leave it off until the client signs off.
-3. On the **test** theme: **Customize → App embeds** → turn **cartx** **on** → **Save**.
+3. On the **test** theme: **Customize → App embeds** → turn on **cartx Drawer** and **cartx Promotions** → **Save**.
 4. In the cartx app, use the theme switcher at the top to select **`FREED – cartx test`**. Check that it's selected before every step below. Settings saved while another theme is selected go to that theme.
 5. Test using the test theme's **Preview** link (Themes → ⋯ → Preview). Customers never see it.
 
@@ -53,7 +53,7 @@ That's the whole drawer: the import carries the colours, fonts, text, layout, mi
 | Colours | Text `#18181B`, secondary `#52525C`, borders `#D4D4D8`, pink `#F238A7`, lime `#CFF665` (ADD buttons, checkout bar), checkout `#000000`, savings strip `#333333`; success `#016630`, warning `#E20019`, muted `#52525C` |
 | Drawer | 600 px wide on desktop, 32 px side padding (16 px on mobile), full width on mobile |
 | Header | Centred "CART (2)" |
-| Cart items | Size pill above the name, REMOVE text link, quantity "01", discount "50%" without icon, pink highlighted gift line, gift prices on the gift cards |
+| Cart items | Size pill above the name, REMOVE text link, quantity "01", discount "50%" without icon, pink highlighted gift line with the struck original price ("~~₹1999~~ Free"), gift prices on the gift cards, prices without ".00" (Price decimals: Always hide) |
 | Coupons | "Apply Coupon ›" row, list layout, code field in Offers & Coupons, coupons not yet reachable shown with "Add ₹X more", applied coupon as a card with "You saved ₹X" |
 | Upsells | "You may also like" (empty cart: "Recommended for you"), ADD over the image, discount %, shown on the empty cart; placed before the coupons |
 | Milestone card | Card style with a white-to-lime gradient and lime border, pink fill and reached dots, track `#FBFBFB`, FREED gift icons |
@@ -118,7 +118,7 @@ Go to **Promotions → Create → Offer**:
 
 Use an **Offer** with "Show offer card only". (A Claim Gift also works now: its button text is set to "Add" by the import.)
 
-The drawer shows these as the "Pick one free gift" cards with "~~₹999~~ Free". The price is stored when the offer is saved, so save the offer once after creating it. The chosen gift appears as a pink gift line with a green "Free" and the gift icon, and no quantity controls.
+The drawer shows these as the "Pick one free gift" cards with "~~₹999~~ Free". The price is stored when the offer is saved, so save the offer once after creating it. The chosen gift appears as a pink gift line with the struck original price, a green "Free" and the gift icon, and no quantity controls.
 
 ## 7. Coupons
 
@@ -149,18 +149,43 @@ Open the test theme preview and check each Figma screen at desktop width and on 
 |---|---|---|
 | 1 | Add one product | Drawer opens. "CART (1)", announcement bar, milestone card, cart item, "You may also like", coupons, lime checkout bar. |
 | 2 | Cross ₹999 | First milestone turns pink with a blue check, and confetti plays |
-| 3 | Gift picker | "Pick one free gift" cards with "~~₹X~~ Free". Add one: a pink gift line appears with "Free", the gift icon on the right, and no quantity buttons. |
+| 3 | Gift picker | "Pick one free gift" cards with "~~₹X~~ Free". Add one: a pink gift line appears with "~~₹X~~ Free", the gift icon on the right, and no quantity buttons. |
 | 4 | Coupon | Apply a code: pink card with REMOVE and "You saved ₹X with this coupon". Remove clears it. A coupon with a higher minimum shows "Add ₹X more". |
 | 5 | Apply Coupon › | The Offers & Coupons view slides in with the code field. Back returns to the cart. |
 | 6 | View Price Breakup | Bottom sheet with Total MRP, Discount on MRP, Coupon Discount, Shipping Fee with info icon and the shipping-rules box, Total |
 | 7 | Empty the cart | Cart illustration, "YOUR CART IS EMPTY", "Recommended for you" cards |
 | 8 | Checkout | Goes to checkout with discounts applied |
-| 9 | Live theme | The live store still shows the theme's own cart (cartx embed off) |
+| 9 | Prices | No ".00" anywhere in the drawer (₹1,111): lines, cards, coupon savings, price breakup, footer total, "Add ₹X more" |
+| 10 | Live theme | The live store still shows the theme's own cart (cartx embed off) |
 
-## 10. Go live (after client sign-off)
+## 10. Test the new features (dev preview, before the release)
 
+The struck gift-line price and Price decimals are built on branch `feat/drawer-design-options` and not released yet. Test them on the dev store first:
+
+1. Run the preview from the feature worktree:
+   ```
+   cd /Users/vishvamjoshi0310/Documents/shopify-projects/cartx-feat
+   npm run dev        # shopify app dev → pick devx-dev
+   ```
+   ⚠️ `automatically_update_urls_on_dev` is on and this is the production app, so while `app dev` runs the app URLs point at the tunnel for every store. Run `shopify app deploy` afterwards to restore them.
+2. On `devx-dev`, import `freed-cart-settings.json` (§4) on a test theme and set up the gift offer (§5b, §6).
+3. Check:
+
+| # | Feature | Setting (Customize Cart) | Expected |
+|---|---|---|---|
+| 1 | Gift line price | Features → Cart items → Show the original price on free gift lines **on** | Gift line shows "~~₹1999~~ Free". Turn it off: only "Free" |
+| 2 | Price decimals: Always hide (kit) | Design → Cart items → Price decimals **Always hide** | No decimals anywhere, as in the Figma: ₹1,111, and ₹1,111.50 shows as ₹1,112 |
+| 3 | Price decimals: Store format | Same, **Store format** | Follows the store's Shopify money format exactly, with the thousands comma |
+| 4 | Price decimals: Hide .00 | Same, **Hide .00** | ₹1,111 on whole amounts; a price with paise keeps them (₹1,111.50) |
+| 5 | Milestone message | Any of the above | "Add ₹X more" uses the same format as the drawer prices |
+| 6 | Admin preview | Toggle each setting | The Customize Cart preview follows each change |
+| 7 | Checkout | Any | Checkout charges the exact amount (display only) |
+
+## 11. Go live (after client sign-off and the next cartx release)
+
+0. Check that the next cartx release (`feat/drawer-design-options`) is deployed.
 1. In the cartx app, select the **live** theme. Export its backup, then **Import** the final settings from the test theme. Use Export on the test theme to get that file, so every tweak made during QA comes along.
 2. Recreate or check the promotions, coupons and upsells for the live theme. These settings are saved per theme.
-3. Turn the cartx embed **on** in the live theme. Then check one real add-to-cart and the checkout.
+3. Turn the cartx embed **on** in the live theme. Then check one real add-to-cart and the checkout. Turn on **both** cartx app embeds: **cartx Drawer** and **cartx Promotions**. Without Promotions the gift and claim-gift discounts never apply: gifts stay at full price and show no struck price.
 
 **To roll back:** turn the cartx embed off in the live theme. The theme's own cart comes back straight away.
