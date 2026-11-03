@@ -476,6 +476,11 @@ var _evaluateResolvers = []; // Resolvers waiting for evaluate to settle
 // the auto-add path (applyOptimisticGifts) and the manual claim/offer adds, so
 // every gift shows the instant it's chosen instead of after the /cart/add
 // round-trip. `keyPrefix` distinguishes the source (gift/claim/offer).
+// Offers from the last /evaluate config (gift product data for the Freebies section).
+export function getCachedOffers() {
+  return (_cachedConfig && _cachedConfig.offers) || [];
+}
+
 export function buildPendingGiftLine(variantId, quantity, properties, title, image, keyPrefix) {
   var vid = String(normalizeVariantId(variantId));
   var offerId = properties && properties._offer_id;

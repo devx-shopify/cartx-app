@@ -576,7 +576,7 @@ export default function Settings() {
                 value={allCompleteMessage}
                 onInput={(e) => setAllCompleteMessage(e.target.value)}
                 placeholder="You unlocked all rewards!"
-                details="Shown above the bar when every milestone has been reached."
+                details="Shown above the bar when every milestone has been reached. Use **double asterisks** for bold text."
               />
 
               {lineup.length > 0 && (

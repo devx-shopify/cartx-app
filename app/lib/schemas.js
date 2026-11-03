@@ -325,6 +325,12 @@ export const DrawerConfigSchema = z.object({
     claim_gift_button: z.string().default('Claim gift'),
     claim_limit_reached: z.string().default('Limit reached'),
     free_badge: z.string().default('FREE'),
+    clear_all: z.string().default('Clear All'),
+    freebies_heading: z.string().default('Freebies For you'),
+    freebies_counter: z.string().default('{count}/{total} Unlocked'),
+    freebies_locked: z.string().default('{amount} more to Unlock'),
+    freebies_locked_qty: z.string().default('{count} more items to Unlock'),
+    clear_all_confirm: z.string().default('Remove all items from your cart?'),
     line_remove: z.string().default('Remove'),
     line_discount_format: z.string().default('{pct}% off'),
     coupon_view_all: z.string().default('View All'),
@@ -369,6 +375,9 @@ export const DrawerConfigSchema = z.object({
     show_vendor: z.boolean().default(false),
     show_variant_switcher: z.boolean().default(true),
     show_remove_btn: z.boolean().default(true),
+    // "Clear All" button in the header; asks first unless clear_all_confirm is off.
+    show_clear_all: z.boolean().default(false),
+    clear_all_confirm: z.boolean().default(true),
     empty_icon_url: z.string().default(''),
     empty_icon_size: z.enum(['small', 'medium', 'large']).default('medium'),
     empty_icon_color: z.string().default(''),
@@ -386,11 +395,45 @@ export const DrawerConfigSchema = z.object({
     qty_zero_pad: z.boolean().default(false),
     variant_position: z.enum(['actions', 'above_title']).default('actions'),
     variant_style: z.enum(['switcher', 'label']).default('switcher'),
+    // "Color: Red" instead of "Red" in the variant pill/label.
+    variant_show_option_names: z.boolean().default(false),
     line_discount_show_icon: z.boolean().default(true),
     gift_line_style: z.enum(['plain', 'highlight']).default('plain'),
     gift_show_price: z.boolean().default(false),
+    // Struck "was" price before the FREE badge on free gift lines in the cart.
+    gift_line_show_price: z.boolean().default(false),
+    // 'section' moves free gift lines into their own Freebies block below the items.
+    // Price display: follow the store format, drop ".00" on whole amounts, or always round.
+    price_decimals: z.enum(['store', 'hide_zero', 'hide']).default('store'),
+    gift_lines_placement: z.enum(['inline', 'section']).default('inline'),
+    // Special Offer showcase: products from one collection or a hand-picked list.
+    // Display only — the discount itself is a cartx promotion or a Shopify discount.
+    special_offer_heading: z.string().default('Special Price'),
+    special_offer_source: z.enum(['collection', 'products']).default('collection'),
+    special_offer_collection: z.object({
+      handle: z.string().default(''),
+      title: z.string().default(''),
+    }).default({}),
+    special_offer_products: z.array(z.object({
+      id: z.string(),
+      handle: z.string(),
+      title: z.string().default(''),
+      image: z.string().default(''),
+      price: z.string().default(''),
+      compare_at_price: z.string().default(''),
+    })).max(50).default([]),
+    special_offer_max: z.number().int().min(1).max(20).default(6),
+    special_offer_show_on_empty: z.boolean().default(false),
+    special_offer_card_style: z.enum(['compact', 'standard']).default('compact'),
+    freebies_show_icon: z.boolean().default(true),
+    // Rows for gifts not unlocked yet, with an "n/N Unlocked" counter.
+    freebies_show_locked: z.boolean().default(false),
+    freebies_locked_scope: z.enum(['all', 'next']).default('all'),
     coupon_entry: z.enum(['input', 'link']).default('input'),
     coupon_cards_layout: z.enum(['scroll', 'list']).default('scroll'),
+    // Strip icon on coupon cards without an Accent label.
+    coupon_icon: z.enum(['default', 'none', 'custom']).default('default'),
+    coupon_icon_svg: z.string().default(''),
     upsells_show_discount: z.boolean().default(false),
     upsells_btn_position: z.enum(['below', 'over_image']).default('below'),
     savings_show_icon: z.boolean().default(true),
@@ -409,11 +452,12 @@ export const DrawerConfigSchema = z.object({
     show_ribbon: z.boolean().default(true),
     show_claim_gifts: z.boolean().default(true),
     show_offer_cards: z.boolean().default(true),
+    show_special_offer: z.boolean().default(false),
     show_locked_coupons: z.boolean().default(false),
     coupon_panel_input: z.boolean().default(false),
     coupon_applied_style: z.enum(['chip', 'card']).default('chip'),
     order: z.array(z.string()).default([
-      'progress_bar', 'claim_gifts', 'offer_cards', 'line_items', 'coupons', 'upsells', 'ribbon',
+      'progress_bar', 'claim_gifts', 'offer_cards', 'line_items', 'coupons', 'special_offer', 'upsells', 'ribbon',
     ]),
   }).default({}),
   behavior: z.object({
