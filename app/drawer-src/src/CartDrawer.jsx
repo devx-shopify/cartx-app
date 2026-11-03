@@ -1,6 +1,6 @@
 /* eslint-disable */
 import { h, Component, Fragment } from 'preact';
-import { setPriceDecimals, fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId, hasFreebieMarker, showsQuantitySelector, giftChargedAmount, giftOriginalPrice, variantText, boldParts, normalizeSectionOrder, milestonePositions, mapProgress, fillTemplate, formatQty, discountPercent, splitCoupons, savingsForCode, buildFreebieTiers, showcaseFromAjax, showcaseFromStorefront, pickSpecialProducts } from './helpers';
+import { setPriceDecimals, fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId, hasFreebieMarker, showsQuantitySelector, giftChargedAmount, giftOriginalPrice, variantText, boldParts, normalizeSectionOrder, milestonePositions, mapProgress, fillTemplate, formatQty, discountPercent, compareAtSavings, splitCoupons, savingsForCode, buildFreebieTiers, showcaseFromAjax, showcaseFromStorefront, pickSpecialProducts } from './helpers';
 import { fireConfetti, setConfettiLottieUrl } from './confetti';
 import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLine, ensureCartxAttribute, ensureDrawerAttribute, localGiftDelta, giftIntendedQuantity, dispatchLocalBar, getCachedOffers } from './evaluate';
 import { isGraphqlCartEnabled, isStorefrontReady, fetchProductAvailability, fetchShowcaseNodes } from './storefront-cart';
@@ -883,6 +883,7 @@ export default class CartDrawer extends Component {
       coupon_icon: l.coupon_icon === 'none' || l.coupon_icon === 'custom' ? l.coupon_icon : 'default',
       coupon_icon_svg: typeof l.coupon_icon_svg === 'string' ? l.coupon_icon_svg : '',
       savings_show_icon: l.savings_show_icon !== false,
+      savings_include_compare: l.savings_include_compare === true,
       checkout_full_width: l.checkout_full_width === true,
       image_ratio: l.image_ratio === 'portrait' ? 'portrait' : 'square',
       line_item_style: l.line_item_style === 'card' ? 'card' : 'divided',
@@ -3898,7 +3899,7 @@ export default class CartDrawer extends Component {
                   <div class="cartmax-upsell-title">{p.title}</div>
                   <div class="cartmax-upsell-price">
                     <span class="cartmax-upsell-sale">{formatMoney(Number(p.price) * 100, curr)}</span>
-                    {(u.show_compare_price && p.compare_at_price)
+                    {(u.show_compare_price && Number(p.compare_at_price) > Number(p.price))
                       ? <span class="cartmax-upsell-compare">{formatMoney(Number(p.compare_at_price) * 100, curr)}</span>
                       : null
                     }
@@ -3934,6 +3935,9 @@ export default class CartDrawer extends Component {
     var cart = this.state.cart;
     var curr = this._currency;
     var savings = Number(this.state.savings) || 0;
+    if (this._layout.savings_include_compare) {
+      savings += compareAtSavings(cart && cart.items, this._compareAtCache);
+    }
     var savingsParts = (savings > 0 && this._text.savings_label)
       ? this._text.savings_label.split('{amount}')
       : null;

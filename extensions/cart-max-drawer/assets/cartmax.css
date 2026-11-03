@@ -2558,7 +2558,7 @@ cart-notification-component [role="dialog"] {
 }
 
 /* ADD buttons on gift cards and recommendations */
-.cartmax-add-btn-colored :is(.cartmax-claim-btn--add, .cartmax-upsell-add, .cartmax-offers-input-btn):not(:disabled) {
+.cartmax-add-btn-colored :is(.cartmax-claim-btn--add, .cartmax-upsell-add, .cartmax-offers-input-btn, .cartmax-special-add):not(:disabled) {
   background: var(--cartmax-add-btn-bg);
   color: var(--cartmax-add-btn-text, var(--cartmax-text, #1a1a1a));
   border-color: var(--cartmax-add-btn-bg);

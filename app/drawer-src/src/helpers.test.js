@@ -1,5 +1,6 @@
-import { describe, test, expect } from 'vitest'
+import { describe, test, it, expect } from 'vitest'
 import {
+  compareAtSavings,
   hasFreebieMarker, showsQuantitySelector, giftChargedAmount,
   normalizeSectionOrder, BODY_SECTIONS, fillTemplate, formatQty, discountPercent,
   couponShortfall, splitCoupons, savingsForCode, milestonePositions, mapProgress,
@@ -342,3 +343,23 @@ describe('Special Offer showcase', () => {
     expect(picked.map((x) => x.product_id)).toEqual(['1', '4', '5'])
   })
 })
+
+describe('compareAtSavings', () => {
+  it('adds compare-at above the pre-discount line price, per quantity', () => {
+    const items = [
+      { variant_id: 1, quantity: 2, original_line_price: 37800 }, // 2 x 189, MRP 495
+      { variant_id: 2, quantity: 1, original_line_price: 50000 }, // no compare-at
+      { variant_id: 3, quantity: 1, original_line_price: 44000, line_price: 0 }, // gift, MRP 440 = price
+    ];
+    const cache = { 1: 49500, 3: 44000 };
+    expect(compareAtSavings(items, cache)).toBe(2 * 49500 - 37800);
+  });
+  it('ignores a compare-at below the price and missing inputs', () => {
+    expect(compareAtSavings([{ variant_id: 1, quantity: 1, original_line_price: 50000 }], { 1: 40000 })).toBe(0);
+    expect(compareAtSavings(null, {})).toBe(0);
+    expect(compareAtSavings([], null)).toBe(0);
+  });
+  it('falls back to line_price when original_line_price is missing', () => {
+    expect(compareAtSavings([{ variant_id: '9', quantity: 1, line_price: 10000 }], { 9: 15000 })).toBe(5000);
+  });
+});

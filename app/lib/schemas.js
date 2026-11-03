@@ -437,6 +437,8 @@ export const DrawerConfigSchema = z.object({
     upsells_show_discount: z.boolean().default(false),
     upsells_btn_position: z.enum(['below', 'over_image']).default('below'),
     savings_show_icon: z.boolean().default(true),
+    // Savings ribbon adds compare-at (MRP) savings to the discount savings.
+    savings_include_compare: z.boolean().default(false),
     // Left/right padding of the drawer's blocks, in px. 0 = each block's own.
     content_padding: z.number().min(0).max(48).default(0),
     content_padding_mobile: z.number().min(0).max(48).default(0),

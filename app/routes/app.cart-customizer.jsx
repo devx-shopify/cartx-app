@@ -1441,6 +1441,12 @@ function ContentTab({ s, update }) {
             onChange={(e) => update("layout.savings_show_icon", e.target.checked)}
           />
           <s-checkbox
+            label="Include compare-at savings in the savings ribbon"
+            details="Adds the MRP savings (compare-at price minus price) on cart items to the discount savings, so the ribbon shows even with no discount applied."
+            checked={s.layout.savings_include_compare || undefined}
+            onChange={(e) => update("layout.savings_include_compare", e.target.checked)}
+          />
+          <s-checkbox
             label="Show payment icons"
             details="Displays Google Pay, PhonePe and Paytm icons inside the checkout button."
             checked={s.layout.show_payment_icons !== false || undefined}

@@ -61,6 +61,7 @@ Both font settings fall back to `sans-serif` if the font fails to load.
 | `upsells_btn_position` | Features → Upsells | `below`, `over_image` |
 | `upsells_show_discount` | Features → Upsells | `false` |
 | `show_clear_all`, `clear_all_confirm` | Design → Drawer | `false`; `true` (asks with `text.clear_all_confirm` before emptying the cart) |
+| `savings_include_compare` | Design → Footer | `false` (the savings ribbon adds compare-at (MRP) savings on cart lines to the discount savings; computed in the drawer from the compare-at prices it already fetches, `compareAtSavings` in `helpers.js`) |
 | `gift_line_show_price` | Design → Cart items | `false` (free gift lines show the struck original price, "~~₹999~~ Free"; only when the line is charged ₹0) |
 | `variant_show_option_names` | Design → Cart items | `false` ("Size: M / Colour: Red" instead of "M / Red") |
 | `price_decimals` | Design → Cart items | `store` (the store's money format), `hide_zero` (drop ".00" only), `hide` (always round). Formatting is `formatAmount` in `app/lib/money-format.js`, shared by the server and the drawer |
