@@ -93,7 +93,7 @@ All under `drawer` (Customize Cart), unless noted.
 | `layout.gift_line_style` | `plain` \| `highlight` | `plain` | `highlight` | #20 |
 | `layout.savings_show_icon` / `line_discount_show_icon` | boolean | `true` | `false` | #21 |
 | `layout.variant_position` | `actions` \| `above_title` | `actions` | `above_title` | #22 |
-| `layout.variant_style` | `switcher` \| `label` | `switcher` | `switcher` | #22 |
+| `layout.variant_style` | `switcher` \| `label` | `switcher` | `label` | #22 |
 
 ## 3. Work items
 
@@ -235,7 +235,7 @@ Every item follows the §1 ground rules: the default keeps today's output, there
   - `layout.variant_position`: next to the quantity (today) or above the product name (Figma)
   - `layout.variant_style`: `switcher` (tappable, opens the variant list; today) or `label` (plain text, not tappable)
   - `show_variant_switcher` keeps its meaning: off hides the pill
-- **For FREED:** above the name, and still tappable, so shoppers can change size in the cart. Either value can be changed in Customize Cart.
+- **For FREED:** above the name, as a plain label that can't be tapped (changed from the switcher on 2 Nov 2026: the Figma pill has no chevron, and a one-size list switched nothing). Either value can be changed in Customize Cart (Layout → More options → Variant style).
 
 ### Stays in the FREED Custom CSS
 These are FREED's own styling, and a setting for them wouldn't help other stores:

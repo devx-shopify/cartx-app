@@ -93,7 +93,7 @@
     "remove_style": "text",
     "qty_zero_pad": true,
     "variant_position": "above_title",
-    "variant_style": "switcher",
+    "variant_style": "label",
     "line_discount_show_icon": false,
     "gift_line_style": "highlight",
     "gift_show_price": true,
