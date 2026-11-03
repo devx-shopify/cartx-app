@@ -658,6 +658,15 @@
     var n2 = Number(qty) || 0;
     return zeroPad && n2 >= 0 && n2 < 10 ? "0" + n2 : String(n2);
   }
+  function compareAtSavings(items, compareCache) {
+    if (!items || !compareCache) return 0;
+    return items.reduce(function(sum, item) {
+      var unit = Number(compareCache[String(item.variant_id)]) || 0;
+      var qty = Number(item.quantity) || 0;
+      var original = Number(item.original_line_price != null ? item.original_line_price : item.line_price) || 0;
+      return sum + Math.max(0, unit * qty - original);
+    }, 0);
+  }
   function discountPercent(price, compareAt) {
     var p2 = Number(price) || 0;
     var c2 = Number(compareAt) || 0;
@@ -4101,6 +4110,7 @@
         coupon_icon: l2.coupon_icon === "none" || l2.coupon_icon === "custom" ? l2.coupon_icon : "default",
         coupon_icon_svg: typeof l2.coupon_icon_svg === "string" ? l2.coupon_icon_svg : "",
         savings_show_icon: l2.savings_show_icon !== false,
+        savings_include_compare: l2.savings_include_compare === true,
         checkout_full_width: l2.checkout_full_width === true,
         image_ratio: l2.image_ratio === "portrait" ? "portrait" : "square",
         line_item_style: l2.line_item_style === "card" ? "card" : "divided"
@@ -6552,7 +6562,7 @@
             }
           },
           btnOverImage ? /* @__PURE__ */ k("div", { class: "cartmax-upsell-media" }, img, addBtn) : img,
-          /* @__PURE__ */ k("div", { class: "cartmax-upsell-info" }, /* @__PURE__ */ k("div", { class: "cartmax-upsell-title" }, p2.title), /* @__PURE__ */ k("div", { class: "cartmax-upsell-price" }, /* @__PURE__ */ k("span", { class: "cartmax-upsell-sale" }, formatMoney(Number(p2.price) * 100, curr)), u2.show_compare_price && p2.compare_at_price ? /* @__PURE__ */ k("span", { class: "cartmax-upsell-compare" }, formatMoney(Number(p2.compare_at_price) * 100, curr)) : null, pct > 0 ? /* @__PURE__ */ k("span", { class: "cartmax-upsell-discount" }, fillTemplate(discountTpl, { pct })) : null), btnOverImage ? null : addBtn)
+          /* @__PURE__ */ k("div", { class: "cartmax-upsell-info" }, /* @__PURE__ */ k("div", { class: "cartmax-upsell-title" }, p2.title), /* @__PURE__ */ k("div", { class: "cartmax-upsell-price" }, /* @__PURE__ */ k("span", { class: "cartmax-upsell-sale" }, formatMoney(Number(p2.price) * 100, curr)), u2.show_compare_price && Number(p2.compare_at_price) > Number(p2.price) ? /* @__PURE__ */ k("span", { class: "cartmax-upsell-compare" }, formatMoney(Number(p2.compare_at_price) * 100, curr)) : null, pct > 0 ? /* @__PURE__ */ k("span", { class: "cartmax-upsell-discount" }, fillTemplate(discountTpl, { pct })) : null), btnOverImage ? null : addBtn)
         );
       })));
     }
@@ -6570,6 +6580,9 @@
       var cart = this.state.cart;
       var curr = this._currency;
       var savings = Number(this.state.savings) || 0;
+      if (this._layout.savings_include_compare) {
+        savings += compareAtSavings(cart && cart.items, this._compareAtCache);
+      }
       var savingsParts = savings > 0 && this._text.savings_label ? this._text.savings_label.split("{amount}") : null;
       var trustMsg = this._text.checkout_trust_message || "";
       return /* @__PURE__ */ k("div", { class: "cartmax-footer" }, savingsParts ? /* @__PURE__ */ k("div", { class: "cartmax-footer-savings" }, this._layout.savings_show_icon ? /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-icon" }, /* @__PURE__ */ k(IconSparkle, null)) : null, /* @__PURE__ */ k("span", null, savingsParts[0]), /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-amount" }, formatMoney(savings, curr)), /* @__PURE__ */ k("span", null, savingsParts[1] || ""), this._layout.savings_show_icon ? /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-icon" }, /* @__PURE__ */ k(IconSparkle, null)) : null) : null, /* @__PURE__ */ k("div", { class: "cartmax-footer-checkout" }, /* @__PURE__ */ k("div", { class: "cartmax-footer-price" }, /* @__PURE__ */ k("span", { class: "cartmax-footer-price-amount" + (this.state.cartSyncing ? " cartmax-price-updating" : "") }, formatMoney(cart.total_price, curr)), /* @__PURE__ */ k(

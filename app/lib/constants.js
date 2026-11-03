@@ -191,6 +191,7 @@ export const DEFAULT_CONFIG = {
       upsells_show_discount: false,
       upsells_btn_position: 'below',
       savings_show_icon: true,
+      savings_include_compare: false,
       content_padding: 0,
       content_padding_mobile: 0,
       checkout_full_width: false,
