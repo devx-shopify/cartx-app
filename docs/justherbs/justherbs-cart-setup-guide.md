@@ -46,7 +46,7 @@ cartx → **Customize Cart → Advanced → Backup & restore → Export settings
 | Header | "Cart" with the count badge (brown `#B57363` and bag icon from the Custom CSS) |
 | Cart items | Divider rows, large rounded images, compare-at price, "{pct}% Off" pill, bordered stepper, "REMOVE" as text, variant as a label |
 | Free gift line | "Free Gift" pill, no price |
-| Milestones | Thin `#D9D9D9` track, `#358C50` fill, label colour `#1C1B17`, Figma gift circle icons |
+| Milestones | 6 px `#D9D9D9` track (track thickness Normal), green gradient fill (Custom CSS), label colour `#1C1B17`, Figma gift circle icons |
 | Coupons | "Coupons / Apply now and save extra! ›" row opening Offers & Coupons, code field, "All Coupons", locked coupons with "Add ₹X more", applied code as a chip |
 | Recommendations | "Recommended For you", vertical cards with "+" below, discount %, compare-at price, also on the empty cart |
 | Footer | "You are saving {amount} on this product", "Total:", "View Price Breakup", full-width black Checkout with "Extra 5% OFF on UPI" and payment icons, trust message "Easy 7-Day Returns" |
@@ -66,7 +66,7 @@ cartx → **Customize Cart → Advanced → Backup & restore → Export settings
 
 ## 4. Milestones
 
-The band shows the progress-bar tiers in three equal columns. Each tier's **sub label** is the "On ₹X+" line above and its **label** the reward below. The message above the band is the next tier's **Top message**. The Custom CSS assumes three milestones.
+The band shows the progress-bar tiers spaced evenly along the track, so any number of milestones works (the last one sits at the end). Each tier's **sub label** is the "On ₹X+" line above and its **label** the reward below. The message above the band is the next tier's **Top message**.
 
 **a. Extra 10% Off at ₹499 *(placeholder)*.** cartx milestones show the reward; the discount itself comes from Shopify.
 - Shopify → **Discounts → Create discount → Amount off order**: 10% off, minimum purchase ₹499, automatic.
@@ -82,7 +82,7 @@ The band shows the progress-bar tiers in three equal columns. Each tier's **sub 
 | Add mode | Auto add to cart |
 | Show on progress bar | On |
 | Bar label / sub label | `Get 1 Freebie` / `On ₹599+` |
-| Top message | e.g. `Add ₹96 more to get 1 freebie` |
+| Top message | `Add [[ price ]] more to get 1 freebie`. `[[ price ]]` becomes the amount still needed, with the ₹ sign already included, so don't type ₹ before it |
 
 **c. Get 2 Freebie at ₹799 *(placeholder)*.** The same as (b), with threshold 799, a second gift, and label `Get 2 Freebie` / `On ₹799+`.
 
@@ -97,7 +97,7 @@ Create the codes in Shopify (**Discounts**) first. Then for each code, cartx →
 | Field | Value |
 |---|---|
 | Shopify discount | The client's code *(placeholder)* |
-| Accent label | e.g. `20% OFF` |
+| Accent label | e.g. `20% OFF`. Always fill it in: without it the coupon card shows a blank coloured strip (a coupon icon setting is planned) |
 | Savings text | e.g. `You can save ₹130 on this order` |
 | Min. cart total / quantity | As per the code's minimum |
 

@@ -67,16 +67,14 @@
 }
 
 /* ---------- Milestone band ---------- */
-#cartmax-root .cartmax-progress,
-#cartmax-root .cartmax-progress.cartmax-progress--edges {
-  padding: 16px 0;
+#cartmax-root .cartmax-progress {
+  padding-bottom: 16px;
   border-bottom: 0;
   border-radius: 0 0 24px 24px;
   background: linear-gradient(180deg, #FFFFFF 0%, var(--jh-mint) 100%);
 }
 
-#cartmax-root .cartmax-progress .cartmax-progress-msg-wrap,
-#cartmax-root .cartmax-progress--edges .cartmax-progress-msg-wrap {
+#cartmax-root .cartmax-progress .cartmax-progress-msg-wrap {
   margin: 0 0 24px;
   padding: 0 16px;
 }
@@ -92,32 +90,7 @@
   text-align: center;
 }
 
-/* Milestones sit at the centres of three equal columns (64, 195, 326 px on
-   a 390 px drawer): the track runs from 64 px to 326 px and a stub on the
-   left fills the first 64 px. */
-#cartmax-root .cartmax-progress .cartmax-progress-track,
-#cartmax-root .cartmax-progress--edges .cartmax-progress-track {
-  height: 6px;
-  margin: 0 16.4% 56px 16.4% !important;
-  border-radius: 0;
-  background: #D9D9D9;
-  overflow: visible;
-}
-
-#cartmax-root .cartmax-progress-track::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: 100%;
-  width: 24.4%; /* 16.4% of the band, measured against the 67.2% track */
-  height: 100%;
-  background: #D9D9D9;
-}
-
-#cartmax-root .cartmax-progress-track:has(.cartmax-milestone--active)::before {
-  background: #68C083;
-}
-
+/* Figma's green gradient fill (the fill colour setting is a single colour) */
 #cartmax-root .cartmax-progress-fill {
   border-radius: 0;
   background: linear-gradient(90deg, #68C083 0%, #358C50 100%);
@@ -144,8 +117,6 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  width: 130px;
-  max-width: 130px;
   letter-spacing: 0;
 }
 

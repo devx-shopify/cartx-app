@@ -37,6 +37,7 @@ The design is mobile only. On desktop the drawer uses the same look at 390 px wi
 | "Recommended For you" cards with pill, price and round "+" | ✅ | Also shown on the empty cart |
 | "+" colour: brown on most cards, green on one | 🟡 / ❓ | One colour for all cards (§3) |
 | "Coupons ›" single row | ✅ | Opens Offers & Coupons |
+| Coupon icon on the cards in Offers & Coupons | 🔧 | The strip shows only the coupon's Accent label, blank without one (§4 #4) |
 | Savings strip | ✅ / ❓ | Wording question (§5) |
 | "Total: ₹699" and "View Price Breakup" | ✅ | |
 | Black Checkout button: "Extra 5% OFF on UPI", payment icons, chevron | ✅ | |
@@ -45,7 +46,7 @@ The design is mobile only. On desktop the drawer uses the same look at 390 px wi
 | Count badge "2" on the empty cart | 🟡 / ❓ | cartx hides the badge when the cart is empty |
 | Figtree font | ✅ | Loaded from Google Fonts |
 
-Counts: 13 ✅, 5 🟡, 1 area 🔧 (three development items in §4 in total, two of them optional fixes for 🟡 rows).
+Counts: 13 ✅, 5 🟡, 2 areas 🔧 (four development items in §4 in total, two of them optional fixes for 🟡 rows).
 
 ## 2. Ready (✅)
 
@@ -54,7 +55,7 @@ Counts: 13 ✅, 5 🟡, 1 area 🔧 (three development items in §4 in total, tw
   - white to #E3F5E8 gradient with a 24 px rounded bottom
   - 6 px grey #D9D9D9 track with a #68C083 → #358C50 fill
   - 32 px gift circles: green #358C58 with a white ring when reached, grey #D9D9D9 when not
-  - three milestones centred in three equal columns, "On ₹499+" in semibold above "Extra 10% Off"
+  - milestones spaced evenly along the track (any number), "On ₹499+" in semibold above "Extra 10% Off"
 - **Item rows:** divider rows, 104 px image, name 500 14/18, variant in grey, ₹203 / ~~₹350~~ / red "42% Off" pill, 98 × 36 quantity stepper, "REMOVE" on the right.
 - **Free gift row:** image, name and the green "Free Gift" pill, no price or quantity.
 - **Recommended For you:** 146 px cards with a 120 px image, name, red "42% Off" pill, price and MRP, round 32 px brown "+" in the bottom-right corner. Shown on full and empty carts.
@@ -75,8 +76,8 @@ Counts: 13 ✅, 5 🟡, 1 area 🔧 (three development items in §4 in total, tw
 | Trust row | Two items, each with its own icon | cartx has one trust message. "Easy 7-Day Returns" is the setting; "Secure Checkout" and both icons come from the Custom CSS, so changing that text means editing the CSS | None |
 | "Total:" label | "Total:" before the amount | Added by the Custom CSS (the drawer has no total label in this footer) | None |
 | Count badge on the empty cart | Shows "2" | Hidden when the cart is empty | ❓ (likely a design slip) |
-| Milestone spacing | Three equal columns | Matches for three milestones; the Custom CSS assumes three. With a different count the band still works, with milestones spread edge to edge | None |
-| Progress before the first milestone | Fill starts at the left edge | The short track left of the first milestone turns green once that milestone is reached; before that, the message shows the amount needed | None |
+| Milestone spacing | Three equal columns, first milestone a third of the way in | Spaced evenly with the last milestone at the end of the track, for any number of milestones. Chosen for robustness over an exact match | None |
+| Track position | Track inset to line up with the three columns | The drawer's standard track, from the left edge with room for the last label on the right. No Custom CSS positions the track, so it works with any number of milestones | None |
 
 ## 4. Needs cartx development (🔧)
 
@@ -85,8 +86,9 @@ Counts: 13 ✅, 5 🟡, 1 area 🔧 (three development items in §4 in total, tw
 | 1 | Second recommendations block | "Special Price": its own product list, shown above "Recommended For you" as small horizontal cards (64 px image, name, price, "42%" pill, "+" on the right) | M | Which products feed each row |
 | 2 | Option name in the variant line | Show "Color: 03 Honey Dew" by reading the option name from the cart line | S | None |
 | 3 | Bold parts in the milestone message | Make the amount and the reward bold in the progress message | S | None |
+| 4 | Coupon card icon | A Customize Cart setting for the icon in the coupon card strip: a built-in default icon plus a custom one (upload or SVG), shown when the coupon has no Accent label. Today the strip shows only the Accent label text and is blank without it; the icon would also show in the admin preview | S | None |
 
-Until #1 ships, the drawer shows only "Recommended For you".
+Until #1 ships, the drawer shows only "Recommended For you". Until #4 ships, give every coupon an Accent label (e.g. `10% OFF`) so the strip isn't blank.
 
 ## 5. What we need from the client
 
