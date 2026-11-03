@@ -473,6 +473,20 @@ export function formatQty(qty, zeroPad) {
 }
 
 // Whole-percent discount from a compare-at price, or 0 when there is none.
+// Compare-at (MRP) savings on the cart lines, in cents: for each line,
+// compare-at x quantity above the line's pre-discount price. Discounts are
+// counted separately (original_total_price - total_price), so the two add up
+// without double counting. compareCache maps variant id -> compare-at cents.
+export function compareAtSavings(items, compareCache) {
+  if (!items || !compareCache) return 0;
+  return items.reduce(function (sum, item) {
+    var unit = Number(compareCache[String(item.variant_id)]) || 0;
+    var qty = Number(item.quantity) || 0;
+    var original = Number(item.original_line_price != null ? item.original_line_price : item.line_price) || 0;
+    return sum + Math.max(0, unit * qty - original);
+  }, 0);
+}
+
 export function discountPercent(price, compareAt) {
   var p = Number(price) || 0;
   var c = Number(compareAt) || 0;
