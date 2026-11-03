@@ -3,6 +3,8 @@ import {
   hasFreebieMarker, showsQuantitySelector, giftChargedAmount,
   normalizeSectionOrder, BODY_SECTIONS, fillTemplate, formatQty, discountPercent,
   couponShortfall, splitCoupons, savingsForCode, milestonePositions, mapProgress,
+  boldParts, variantText, giftOriginalPrice, buildFreebieTiers,
+  showcaseFromAjax, showcaseFromStorefront, pickSpecialProducts,
 } from './helpers.js'
 
 describe('normalizeSectionOrder', () => {
@@ -15,12 +17,16 @@ describe('normalizeSectionOrder', () => {
       .toEqual(BODY_SECTIONS)
   })
   test('custom order is kept', () => {
-    const order = ['progress_bar', 'claim_gifts', 'offer_cards', 'line_items', 'upsells', 'coupons']
+    const order = ['progress_bar', 'claim_gifts', 'offer_cards', 'line_items', 'upsells', 'special_offer', 'coupons']
     expect(normalizeSectionOrder(order)).toEqual(order)
   })
   test('unknown and duplicate keys dropped, missing keys appended in default order', () => {
     expect(normalizeSectionOrder(['upsells', 'bogus', 'upsells', 'line_items']))
-      .toEqual(['upsells', 'line_items', 'progress_bar', 'claim_gifts', 'offer_cards', 'coupons'])
+      .toEqual(['special_offer', 'upsells', 'line_items', 'progress_bar', 'claim_gifts', 'offer_cards', 'coupons'])
+  })
+  test('an order saved before Special Offer gets it just above the upsells', () => {
+    expect(normalizeSectionOrder(['progress_bar', 'upsells', 'claim_gifts', 'offer_cards', 'line_items', 'coupons']))
+      .toEqual(['progress_bar', 'special_offer', 'upsells', 'claim_gifts', 'offer_cards', 'line_items', 'coupons'])
   })
 })
 
@@ -201,5 +207,138 @@ describe('milestonePositions / mapProgress', () => {
     expect(mapProgress(100, 3, 'edges')).toBe(100)
     expect(mapProgress(50, 3, 'edges')).toBeCloseTo(25) // halfway to the second
     expect(mapProgress(10, 3, 'edges')).toBe(0) // before the first: no room on the track
+  })
+})
+
+describe('boldParts', () => {
+  test('plain text is one plain part', () => {
+    expect(boldParts('Add ₹300 more')).toEqual([{ text: 'Add ₹300 more', bold: false }])
+  })
+  test('**pairs** become bold parts', () => {
+    expect(boldParts('Add **₹300 more** to get **1 freebie**')).toEqual([
+      { text: 'Add ', bold: false },
+      { text: '₹300 more', bold: true },
+      { text: ' to get ', bold: false },
+      { text: '1 freebie', bold: true },
+    ])
+  })
+  test('an unclosed ** stays as typed', () => {
+    expect(boldParts('a **b** c **d')).toEqual([
+      { text: 'a ', bold: false },
+      { text: 'b', bold: true },
+      { text: ' c ', bold: false },
+      { text: '**d', bold: false },
+    ])
+  })
+  test('null and empty are safe', () => {
+    expect(boldParts(null)).toEqual([{ text: '', bold: false }])
+  })
+})
+
+describe('variantText', () => {
+  const item = {
+    variant_title: 'Red / M',
+    options_with_values: [{ name: 'Color', value: 'Red' }, { name: 'Size', value: 'M' }],
+  }
+  test('off: the plain variant title', () => {
+    expect(variantText(item, false)).toBe('Red / M')
+  })
+  test('on: option names before each value', () => {
+    expect(variantText(item, true)).toBe('Color: Red / Size: M')
+  })
+  test('values follow variant_title after a variant swap', () => {
+    expect(variantText({ ...item, variant_title: 'Blue / L' }, true)).toBe('Color: Blue / Size: L')
+  })
+  test('falls back to the title when options do not line up', () => {
+    expect(variantText({ ...item, variant_title: 'Red' }, true)).toBe('Red')
+    expect(variantText({ variant_title: 'Red' }, true)).toBe('Red')
+  })
+  test('skips the placeholder "Title" option name', () => {
+    expect(variantText({ variant_title: 'Default', options_with_values: [{ name: 'Title', value: 'Default' }] }, true)).toBe('Default')
+  })
+  test('no variant title: empty', () => {
+    expect(variantText({}, true)).toBe('')
+  })
+})
+
+describe('giftOriginalPrice', () => {
+  test('off: nothing to strike', () => {
+    expect(giftOriginalPrice({ original_line_price: 199900 }, false)).toBe(0)
+  })
+  test('on: the line price before discount', () => {
+    expect(giftOriginalPrice({ original_line_price: 199900 }, true)).toBe(199900)
+  })
+  test('on, but a zero-price gift: nothing to strike', () => {
+    expect(giftOriginalPrice({ original_line_price: 0 }, true)).toBe(0)
+    expect(giftOriginalPrice(null, true)).toBe(0)
+  })
+})
+
+describe('buildFreebieTiers', () => {
+  const offers = [
+    { id: 'o1', reward: { type: 'auto_add_gift', gift_variant_data: [{ title: 'Lip Balm', image: 'https://cdn/a.jpg' }] } },
+    { id: 'o2', reward: { type: 'auto_add_gift', gift_variant_data: [{ title: 'Pouch', image: 'https://cdn/b.jpg' }] } },
+    { id: 'o3', reward: { type: 'auto_add_gift', gift_variant_data: [{ title: 'Mist' }] } },
+    { id: 'v1', reward: { type: 'volume_discount' } },
+  ];
+  const bar = {
+    tiers: [
+      { id: 'o3', threshold: 1999, trigger_type: 'price', state: 'inactive' },
+      { id: 'o1', threshold: 499, trigger_type: 'price', state: 'active' },
+      { id: 'o2', threshold: 999, trigger_type: 'price', state: 'next' },
+      { id: 'v1', threshold: 3, trigger_type: 'quantity', state: 'inactive' },
+    ],
+  };
+
+  test('counts gift tiers only and lists locked gifts by threshold', () => {
+    const r = buildFreebieTiers(bar, offers, 697, 2, 'all');
+    expect(r.total).toBe(3);
+    expect(r.unlocked).toBe(1);
+    expect(r.locked.map((g) => g.title)).toEqual(['Pouch', 'Mist']);
+    expect(r.locked[0]).toMatchObject({ image: 'https://cdn/b.jpg', by: 'price', remaining: 302 });
+  });
+
+  test('finds a gift offer merged behind another offer at the same threshold', () => {
+    const r = buildFreebieTiers(
+      { tiers: [{ id: 'v1', promotion_id: 'v1', threshold: 999, trigger_type: 'price', state: 'next',
+        sources: [{ id: 'v1', promotion_id: 'v1' }, { id: 'o2', promotion_id: 'o2' }] }] },
+      offers, 697, 2, 'all');
+    expect(r.total).toBe(1);
+    expect(r.locked[0]).toMatchObject({ title: 'Pouch', remaining: 302 });
+  });
+
+  test("'next' keeps only the closest locked gift", () => {
+    expect(buildFreebieTiers(bar, offers, 697, 2, 'next').locked.map((g) => g.title)).toEqual(['Pouch']);
+  });
+
+  test('matches merged tiers by promotion_id and counts quantity tiers in items', () => {
+    const r = buildFreebieTiers(
+      { tiers: [{ id: 'm1', promotion_id: 'o1', threshold: 3, trigger_type: 'quantity', state: 'next', label: 'Gift' }] },
+      offers, 0, 1, 'all',
+    );
+    expect(r.locked[0]).toMatchObject({ title: 'Lip Balm', by: 'quantity', remaining: 2 });
+  });
+
+  test('is empty without a bar', () => {
+    expect(buildFreebieTiers(null, offers, 0, 0, 'all')).toEqual({ total: 0, unlocked: 0, locked: [] });
+  });
+});
+
+describe('Special Offer showcase', () => {
+  test('AJAX product: first available variant, cents to major units, compare only when higher', () => {
+    const c = showcaseFromAjax({ id: 7, handle: 'balm', title: 'Balm', available: true, featured_image: '//cdn/b.jpg',
+      variants: [{ id: 1, available: false, price: 20000, compare_at_price: 35000 }, { id: 2, available: true, price: 20300, compare_at_price: 35000 }] })
+    expect(c).toEqual({ product_id: '7', handle: 'balm', title: 'Balm', image_url: '//cdn/b.jpg', price: 203, compare_at_price: 350, variant_id: '2', available: true })
+    expect(showcaseFromAjax({ id: 8, available: true, variants: [{ id: 3, available: true, price: 500, compare_at_price: 500 }] }).compare_at_price).toBe(null)
+  })
+  test('Storefront node: gids stripped, sold-out product marked unavailable', () => {
+    const c = showcaseFromStorefront({ id: 'gid://shopify/Product/9', handle: 'mist', title: 'Mist', availableForSale: false, featuredImage: { url: 'u' },
+      variants: { nodes: [{ id: 'gid://shopify/ProductVariant/4', availableForSale: false, price: { amount: '299.0' }, compareAtPrice: { amount: '499.0' } }] } })
+    expect(c).toMatchObject({ product_id: '9', variant_id: '4', price: 299, compare_at_price: 499, available: false })
+  })
+  test('pick skips sold-out, in-cart and duplicate products and caps the count', () => {
+    const p = (id, available = true) => ({ product_id: id, variant_id: 'v' + id, available })
+    const picked = pickSpecialProducts([p('1'), p('2', false), p('3'), p('1'), p('4'), p('5')], [{ product_id: 3 }], 3)
+    expect(picked.map((x) => x.product_id)).toEqual(['1', '4', '5'])
   })
 })

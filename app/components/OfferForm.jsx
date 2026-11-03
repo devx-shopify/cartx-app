@@ -814,13 +814,13 @@ export default forwardRef(function OfferForm(
                   label="Top message"
                   value={barTopMessage}
                   onInput={(e) => setBarTopMessage(e.target.value)}
-                  details="Message above the bar. Use [[ price ]] for remaining amount"
+                  details="Message above the bar. Use [[ price ]] for remaining amount, and **double asterisks** for bold text"
                 />
                 <s-text-field
                   label="Ribbon message"
                   value={barRibbonMessage}
                   onInput={(e) => setBarRibbonMessage(e.target.value)}
-                  details="Shown in the bottom ribbon when this is the next milestone"
+                  details="Shown in the bottom ribbon when this is the next milestone. Use **double asterisks** for bold text"
                 />
               </>
             )}

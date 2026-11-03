@@ -138,7 +138,7 @@ function mergeCollisions(entries) {
   return merged
 }
 
-function computeBarState(tiers, currentValue, allCompleteMsg, moneyFormat) {
+function computeBarState(tiers, currentValue, allCompleteMsg, moneyFormat, decimals) {
   const segmentWidth = 100 / tiers.length
   let progress = 0
   let nextFound = false
@@ -163,7 +163,8 @@ function computeBarState(tiers, currentValue, allCompleteMsg, moneyFormat) {
               PRICE: tier._volume_tier_value || remaining,
               QTY: remaining,
             },
-            moneyFormat
+            moneyFormat,
+            decimals
           )
         : null
     } else {
@@ -198,7 +199,7 @@ function computeBarState(tiers, currentValue, allCompleteMsg, moneyFormat) {
   }
 }
 
-function computeTierStates(tiers, currentValue) {
+function computeTierStates(tiers, currentValue, moneyFormat, decimals) {
   let nextFound = false
   let prevThreshold = 0
   return tiers.map((tier) => {
@@ -211,7 +212,7 @@ function computeTierStates(tiers, currentValue) {
       nextFound = true
       const remaining = tier.threshold - currentValue
       topMsg = tier.top_message
-        ? resolveTemplate(tier.top_message, { PRICE: tier._volume_tier_value || remaining, QTY: remaining }, '')
+        ? resolveTemplate(tier.top_message, { PRICE: tier._volume_tier_value || remaining, QTY: remaining }, moneyFormat, decimals)
         : null
     } else {
       state = 'inactive'
@@ -230,6 +231,7 @@ function computeTierStates(tiers, currentValue) {
 
 export function buildBar(config, page, adjustedTotal, adjustedQty, moneyFormat, customer) {
   if (!config.progress_bar.enabled) return null
+  const decimals = config.drawer?.layout?.price_decimals
 
   const entries = collectBarEntries(config, page, customer)
   if (entries.length === 0) return null
@@ -244,11 +246,11 @@ export function buildBar(config, page, adjustedTotal, adjustedQty, moneyFormat, 
   if (priceEntries.length > 0 && qtyEntries.length > 0) {
     const priceMerged = mergeCollisions(priceEntries)
     priceMerged.sort((a, b) => a.threshold - b.threshold)
-    const priceTiers = computeTierStates(priceMerged, adjustedTotal)
+    const priceTiers = computeTierStates(priceMerged, adjustedTotal, moneyFormat, decimals)
 
     const qtyMerged = mergeCollisions(qtyEntries)
     qtyMerged.sort((a, b) => a.threshold - b.threshold)
-    const qtyTiers = computeTierStates(qtyMerged, adjustedQty)
+    const qtyTiers = computeTierStates(qtyMerged, adjustedQty, moneyFormat, decimals)
 
     // States are worked out in amount order above; this is display order only.
     // With no saved order it is price then quantity, each by amount, which is
@@ -297,7 +299,8 @@ export function buildBar(config, page, adjustedTotal, adjustedQty, moneyFormat, 
     merged,
     currentValue,
     config.progress_bar.all_complete_message,
-    moneyFormat
+    moneyFormat,
+    decimals
   )
   if (bar && bar.tiers) {
     bar.tiers = orderTiers(bar.tiers, tierOrder)

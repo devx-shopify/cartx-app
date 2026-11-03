@@ -1,10 +1,11 @@
 /* eslint-disable */
 import { h, Component, Fragment } from 'preact';
-import { fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId, hasFreebieMarker, showsQuantitySelector, giftChargedAmount, normalizeSectionOrder, milestonePositions, mapProgress, fillTemplate, formatQty, discountPercent, splitCoupons, savingsForCode } from './helpers';
+import { setPriceDecimals, fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId, hasFreebieMarker, showsQuantitySelector, giftChargedAmount, giftOriginalPrice, variantText, boldParts, normalizeSectionOrder, milestonePositions, mapProgress, fillTemplate, formatQty, discountPercent, splitCoupons, savingsForCode, buildFreebieTiers, showcaseFromAjax, showcaseFromStorefront, pickSpecialProducts } from './helpers';
 import { fireConfetti, setConfettiLottieUrl } from './confetti';
-import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLine, ensureCartxAttribute, ensureDrawerAttribute, localGiftDelta, giftIntendedQuantity, dispatchLocalBar } from './evaluate';
-import { isGraphqlCartEnabled, isStorefrontReady, fetchProductAvailability } from './storefront-cart';
+import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLine, ensureCartxAttribute, ensureDrawerAttribute, localGiftDelta, giftIntendedQuantity, dispatchLocalBar, getCachedOffers } from './evaluate';
+import { isGraphqlCartEnabled, isStorefrontReady, fetchProductAvailability, fetchShowcaseNodes } from './storefront-cart';
 import { pickRecommendations, selectUpsells } from '../../lib/upsell-recs.js';
+import { adjustedTotal, adjustedQty } from '../../lib/upsell-rank.js';
 import { initStore as gqlInitStore, subscribe as gqlSubscribe, getOptimisticCart as gqlGetCart, changeQuantity as gqlChangeQuantity, removeLine as gqlRemoveLine, addLine as gqlAddLine, applyDiscountCode as gqlApplyCoupon, removeDiscountCode as gqlRemoveCoupon, whenSettled as gqlWhenSettled } from './cart-store';
 import { isAjaxCartStoreEnabled, subscribe as ajaxSubscribe, getOptimisticCart as ajaxGetCart, init as ajaxInit, reconcileFromServer as ajaxReconcile, addLine as ajaxAddLine, changeQuantity as ajaxChangeQty, removeLine as ajaxRemoveLine, whenSettled as ajaxWhenSettled, getState as ajaxGetState, onAddRejected as ajaxOnAddRejected, cartHasDiscounts } from './ajax-cart-store';
 import { tracker } from './tracker';
@@ -236,7 +237,10 @@ export default class CartDrawer extends Component {
       gift_add_button: 'Add', gift_remove_button: 'Remove', gift_adding: 'Adding...',
       gift_unavailable: 'Unavailable', gift_claimed: 'Claimed', gift_free_label: 'Free',
       claim_gift_button: 'Claim gift', claim_limit_reached: 'Limit reached',
-      free_badge: 'FREE', line_remove: 'Remove', line_discount_format: '{pct}% off',
+      free_badge: 'FREE', line_remove: 'Remove',
+      clear_all: 'Clear All', clear_all_confirm: 'Remove all items from your cart?',
+      freebies_heading: 'Freebies For you', freebies_counter: '{count}/{total} Unlocked',
+      freebies_locked: '{amount} more to Unlock', freebies_locked_qty: '{count} more items to Unlock', line_discount_format: '{pct}% off',
       coupon_view_all: 'View All', coupon_apply: 'Apply', coupon_remove: 'Remove',
       coupon_invalid: 'Invalid or inapplicable code', coupon_failed: 'Failed to apply coupon',
       out_of_stock: 'Out of stock', gift_paid_badge: 'GIFT', gift_unavailable_notice: 'A gift product is currently unavailable',
@@ -253,10 +257,12 @@ export default class CartDrawer extends Component {
       shipping_note: '',
     };
     this._layout = {
-      drawer_position: 'right', image_style: 'rounded', qty_style: 'bordered', show_vendor: false, show_variant_switcher: true, show_remove_btn: true, show_payment_icons: true, show_compare_price: true,
+      drawer_position: 'right', image_style: 'rounded', qty_style: 'bordered', show_vendor: false, show_variant_switcher: true, show_remove_btn: true, show_clear_all: false, clear_all_confirm: true, show_payment_icons: true, show_compare_price: true,
       header_align: 'left', header_count_style: 'badge', remove_style: 'icon', qty_zero_pad: false,
-      variant_position: 'actions', variant_style: 'switcher', line_discount_show_icon: true, gift_line_style: 'plain', gift_show_price: false,
+      variant_position: 'actions', variant_style: 'switcher', line_discount_show_icon: true, gift_line_style: 'plain', gift_show_price: false, gift_line_show_price: false, variant_show_option_names: false,
+      gift_lines_placement: 'inline', freebies_show_icon: true, freebies_show_locked: false, freebies_locked_scope: 'all',
       coupon_entry: 'input', coupon_cards_layout: 'scroll', savings_show_icon: true,
+      coupon_icon: 'default', coupon_icon_svg: '',
     };
     this._variantCache = {}; // product_id -> variants[]
     this._compareAtCache = {}; // variant_id (string) -> compare_at_price (cents, per unit)
@@ -842,6 +848,7 @@ export default class CartDrawer extends Component {
     var t = drawer.text || {};
     this._text = Object.assign({}, this._text, t);
     var l = drawer.layout || {};
+    setPriceDecimals(l.price_decimals);
     this._layout = {
       drawer_position: l.drawer_position || 'right',
       image_style: l.image_style || 'rounded',
@@ -849,6 +856,8 @@ export default class CartDrawer extends Component {
       show_vendor: l.show_vendor === true,
       show_variant_switcher: l.show_variant_switcher !== false,
       show_remove_btn: l.show_remove_btn !== false,
+      show_clear_all: l.show_clear_all === true,
+      clear_all_confirm: l.clear_all_confirm !== false,
       show_compare_price: l.show_compare_price !== false,
       empty_icon_url: l.empty_icon_url || '',
       empty_icon_size: l.empty_icon_size || 'medium',
@@ -863,8 +872,16 @@ export default class CartDrawer extends Component {
       line_discount_show_icon: l.line_discount_show_icon !== false,
       gift_line_style: l.gift_line_style === 'highlight' ? 'highlight' : 'plain',
       gift_show_price: l.gift_show_price === true,
+      gift_line_show_price: l.gift_line_show_price === true,
+      gift_lines_placement: l.gift_lines_placement === 'section' ? 'section' : 'inline',
+      freebies_show_icon: l.freebies_show_icon !== false,
+      freebies_show_locked: l.freebies_show_locked === true,
+      freebies_locked_scope: l.freebies_locked_scope === 'next' ? 'next' : 'all',
+      variant_show_option_names: l.variant_show_option_names === true,
       coupon_entry: l.coupon_entry === 'link' ? 'link' : 'input',
       coupon_cards_layout: l.coupon_cards_layout === 'list' ? 'list' : 'scroll',
+      coupon_icon: l.coupon_icon === 'none' || l.coupon_icon === 'custom' ? l.coupon_icon : 'default',
+      coupon_icon_svg: typeof l.coupon_icon_svg === 'string' ? l.coupon_icon_svg : '',
       savings_show_icon: l.savings_show_icon !== false,
       checkout_full_width: l.checkout_full_width === true,
       image_ratio: l.image_ratio === 'portrait' ? 'portrait' : 'square',
@@ -880,6 +897,16 @@ export default class CartDrawer extends Component {
       show_compare_price: l.upsells_show_compare_price !== false,
       show_discount: l.upsells_show_discount === true,
       btn_position: l.upsells_btn_position === 'over_image' ? 'over_image' : 'below',
+    };
+    var soProducts = Array.isArray(l.special_offer_products) ? l.special_offer_products : [];
+    this._special = {
+      heading: l.special_offer_heading || '',
+      source: l.special_offer_source === 'products' ? 'products' : 'collection',
+      collection: (l.special_offer_collection && l.special_offer_collection.handle) || '',
+      handles: soProducts.map(function (p) { return p && p.handle; }).filter(Boolean),
+      max: Math.min(20, Math.max(1, Number(l.special_offer_max) || 6)),
+      show_on_empty: l.special_offer_show_on_empty === true,
+      card_style: l.special_offer_card_style === 'standard' ? 'standard' : 'compact',
     };
     var ab = drawer.announcement_bar || {};
     this._announcement = {
@@ -912,6 +939,7 @@ export default class CartDrawer extends Component {
       show_progress_bar: sec.show_progress_bar !== false,
       show_claim_gifts: sec.show_claim_gifts !== false,
       show_offer_cards: sec.show_offer_cards !== false,
+      show_special_offer: sec.show_special_offer === true,
       show_coupons: sec.show_coupons !== false,
       allow_multiple_coupons: sec.allow_multiple_coupons === true,
       show_upsells: sec.show_upsells !== false,
@@ -1684,6 +1712,45 @@ export default class CartDrawer extends Component {
     this.announce('Removing item...');
   }
 
+  // ── Clear All (layout.show_clear_all) ──────────────────────
+  // Removes every line, gifts included: with nothing left no milestone is
+  // reached, so the gifts would be taken out on the next evaluation anyway.
+  handleClearAll() {
+    var cart = this.state.cart;
+    if (!cart || !cart.items || !cart.items.length) return;
+    if (this._layout.clear_all_confirm
+        && !window.confirm(this._t('clear_all_confirm', 'Remove all items from your cart?'))) return;
+    var keys = cart.items.map(function (i) { return i.key; });
+
+    // The cart stores apply each change to their local cart synchronously,
+    // so removing line by line is safe there.
+    if (this._graphqlCart) { keys.forEach(function (k) { gqlRemoveLine(k); }); return; }
+    if (this._ajaxStore) { keys.forEach(function (k) { ajaxRemoveLine(k); }); return; }
+
+    // Legacy path: handleRemove reads this.state.cart, which doesn't update
+    // between calls, so strip every line here in one state update.
+    var removing = Object.assign({}, this.state.removing);
+    var stripped = cart;
+    for (var i = 0; i < cart.items.length; i++) {
+      var line = cart.items[i];
+      if (line.properties && line.properties._freebie === 'true') {
+        this._pendingGiftRemovals[line.key] = {
+          promotion_id: line.properties._offer_id || null,
+          promotion_type: line.properties._cartmax_claim === 'true' ? 'claim-gift' : 'offer',
+          variant_id: String(line.variant_id),
+        };
+      }
+      this._removingTombstones[line.key] = line;
+      removing[line.key] = true;
+      stripped = this._stripLine(stripped, line.key);
+      this._scheduleTombstoneDrop(line.key);
+      this._bufferAction(line.key, 0);
+    }
+    this.setState({ removing: removing, cart: stripped });
+    updateCartCount(stripped.item_count);
+    this.announce('Clearing cart...');
+  }
+
   // Optimistic local removal: drop one line and recompute cart totals so the
   // footer stays right until the server reconcile lands. Mirrors the totals
   // math in evaluate.js simulateCart().
@@ -1837,7 +1904,7 @@ export default class CartDrawer extends Component {
         {bar.top_message ? (
           <div class="cartmax-progress-msg-wrap">
             <div class="cartmax-progress-msg">
-              <span>{bar.top_message}</span>
+              <span>{this._richText(bar.top_message)}</span>
             </div>
           </div>
         ) : null}
@@ -1898,6 +1965,13 @@ export default class CartDrawer extends Component {
     );
   }
 
+  // Merchant message with **bold** parts (see boldParts).
+  _richText(text) {
+    return boldParts(text).map(function (p, i) {
+      return p.bold ? <strong key={i}>{p.text}</strong> : p.text;
+    });
+  }
+
   // ── Render: Ribbon ────────────────────────────────────────
 
   renderRibbon() {
@@ -1905,7 +1979,7 @@ export default class CartDrawer extends Component {
     if (!result || !result.ribbon_message) return null;
     return (
       <div id="cartmax-ribbon" class="cartmax-ribbon">
-        {result.ribbon_message}
+        {this._richText(result.ribbon_message)}
       </div>
     );
   }
@@ -2164,7 +2238,7 @@ export default class CartDrawer extends Component {
 
     var variantNode = null;
     if (showVariantSwitcher && layout.variant_style === 'label') {
-      variantNode = <span class="cartmax-variant-pill cartmax-variant-pill--label">{item.variant_title}</span>;
+      variantNode = <span class="cartmax-variant-pill cartmax-variant-pill--label">{variantText(item, layout.variant_show_option_names)}</span>;
     } else if (showVariantSwitcher) {
       variantNode = (
         <div class="cartmax-variant-wrap">
@@ -2175,7 +2249,7 @@ export default class CartDrawer extends Component {
             aria-haspopup="listbox"
             aria-expanded={isVariantOpen ? 'true' : 'false'}
           >
-            <span>{item.variant_title}</span>
+            <span>{variantText(item, layout.variant_show_option_names)}</span>
             {isVariantLoading
               ? <span class="cartmax-variant-loading" aria-hidden="true" />
               : <svg class="cartmax-variant-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
@@ -2258,7 +2332,12 @@ export default class CartDrawer extends Component {
                           // the shopper is being charged — show the truth.
                           <span key="giftbadge" class="cartmax-gift-badge">{this._t('gift_paid_badge', 'GIFT')}</span>,
                         ]
-                      : <span class="cartmax-gift-badge">{this._t('free_badge', 'FREE')}</span>))
+                      : [
+                          giftOriginalPrice(item, layout.gift_line_show_price) > 0
+                            ? <span key="fwas" class="cartmax-line-price-original">{formatMoney(item.original_line_price, curr)}</span>
+                            : null,
+                          <span key="free" class="cartmax-gift-badge">{this._t('free_badge', 'FREE')}</span>,
+                        ]))
               : (() => {
                   var compareAtUnit = this._layout.show_compare_price
                     ? this._compareAtCache[String(item.variant_id)]
@@ -3049,6 +3128,64 @@ export default class CartDrawer extends Component {
 
   // One coupon card. `kind` picks the class family: 'discount' in the cart body,
   // 'offers' in the panel, so each keeps its own styling.
+  // Icon in a coupon card's strip when the coupon has no Accent label:
+  // the built-in tag, the store's own SVG, or nothing (setting: layout.coupon_icon).
+  _couponIcon() {
+    var mode = this._layout.coupon_icon;
+    if (mode === 'none') return null;
+    if (mode === 'custom') {
+      var svg = this._layout.coupon_icon_svg;
+      // Same guard as Custom CSS: drop markup that could run script.
+      if (!svg || /<script|javascript:|\son\w+\s*=/i.test(svg)) return null;
+      return <span class="cartmax-coupon-icon" dangerouslySetInnerHTML={{ __html: svg }} />;
+    }
+    return <span class="cartmax-coupon-icon"><IconTag /></span>;
+  }
+
+  // Free gift lines in their own block (layout.gift_lines_placement = 'section'),
+  // optionally with the gifts still to unlock (layout.freebies_show_locked).
+  renderFreebies(giftItems) {
+    var layout = this._layout;
+    var tiers = null;
+    if (layout.freebies_show_locked) {
+      var result = this.state.evalResult;
+      var items = (this.state.cart && this.state.cart.items) || [];
+      tiers = buildFreebieTiers(result && result.bar, getCachedOffers(), adjustedTotal(items), adjustedQty(items), layout.freebies_locked_scope);
+    }
+    var locked = tiers ? tiers.locked : [];
+    if (!giftItems.length && !locked.length) return null;
+    var curr = this._currency;
+    var self = this;
+    return (
+      <div class="cartmax-freebies" key="cartmax-freebies">
+        <div class="cartmax-freebies-header">
+          {layout.freebies_show_icon ? <span class="cartmax-freebies-icon" aria-hidden="true"><IconGift /></span> : null}
+          <span class="cartmax-freebies-title">{this._t('freebies_heading', 'Freebies For you')}</span>
+          {tiers && tiers.total
+            ? <span class="cartmax-freebies-count">{fillTemplate(this._t('freebies_counter', '{count}/{total} Unlocked'), { count: tiers.unlocked, total: tiers.total })}</span>
+            : null}
+        </div>
+        {giftItems.map((item) => this.renderLineItem(item))}
+        {locked.map(function (g) {
+          var msg = g.by === 'quantity'
+            ? fillTemplate(self._t('freebies_locked_qty', '{count} more items to Unlock'), { count: g.remaining })
+            : fillTemplate(self._t('freebies_locked', '{amount} more to Unlock'), { amount: formatMoney(Math.round(g.remaining * 100), curr) });
+          return (
+            <div class="cartmax-freebie-locked" key={'locked-' + g.id}>
+              {g.image
+                ? <img class="cartmax-freebie-locked-img" src={resizeImage(g.image, 128)} alt="" width="64" height="64" loading="lazy" />
+                : <span class="cartmax-freebie-locked-img" />}
+              <div class="cartmax-freebie-locked-info">
+                <span class="cartmax-freebie-locked-title">{g.title}</span>
+                <span class="cartmax-freebie-locked-msg"><IconLock />{msg}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   renderCouponCard(c, kind, isLoading) {
     var self = this;
     var base = 'cartmax-' + kind + '-card';
@@ -3062,7 +3199,7 @@ export default class CartDrawer extends Component {
     return (
       <div class={base + (gap ? ' ' + base + '--locked' : '')} key={c.code}>
         <div class={base + '-accent'}>
-          <span>{c.accent}</span>
+          {c.accent ? <span>{c.accent}</span> : this._couponIcon()}
         </div>
         <div class={base + '-info'}>
           <span class={base + '-code'}>{c.code}</span>
@@ -3104,7 +3241,9 @@ export default class CartDrawer extends Component {
               <div class="cartmax-discount-card cartmax-discount-card--applied">
                 {cfg.accent
                   ? <div class="cartmax-discount-card-accent"><span>{cfg.accent}</span></div>
-                  : null
+                  : this._couponIcon()
+                    ? <div class="cartmax-discount-card-accent">{this._couponIcon()}</div>
+                    : null
                 }
                 <div class="cartmax-discount-card-info">
                   <span class="cartmax-discount-card-code">{d.code}</span>
@@ -3301,10 +3440,15 @@ export default class CartDrawer extends Component {
   // card impression, which feeds the performance ranking).
   async handleUpsellAdd(variantId, productMeta, card) {
     var c = card || {};
-    var props = { _cartx_upsell: c.source === 'rule' ? 'rule:' + c.trigger_product_id : (c.source || 'default') };
+    // Special Offer cards share this add path; they carry their own line
+    // property and promotion id so orders and analytics credit the right row.
+    var special = c.kind === 'special';
+    var props = special
+      ? { _cartx_special: c.source || 'collection' }
+      : { _cartx_upsell: c.source === 'rule' ? 'rule:' + c.trigger_product_id : (c.source || 'default') };
     var addedProps = {
-      promotion_id: c.product_id ? 'upsell:' + c.product_id : undefined,
-      promotion_type: 'upsell',
+      promotion_id: c.product_id ? (special ? 'special:' : 'upsell:') + c.product_id : undefined,
+      promotion_type: special ? 'special_offer' : 'upsell',
       promotion_name: (productMeta && productMeta.title) || undefined,
       variant_id: String(variantId),
       product_id: c.product_id,
@@ -3531,6 +3675,135 @@ export default class CartDrawer extends Component {
     }).filter(function (p) { return cartVariantIds.indexOf(p.variant_id) === -1; }).filter(notRejected);
     this._ensureUpsellAvailability(cards);
     return { cards: cards, showSoldOut: true, strategies: upsells.strategies || {} };
+  }
+
+  // Fetch the showcase products once per page (and again if the setting
+  // changes). Storefront API when the token is there, else the AJAX product
+  // endpoints; both return prices in the shopper's currency.
+  _ensureSpecialProducts() {
+    var s = this._special;
+    var key = s.source + ':' + (s.source === 'collection' ? s.collection : s.handles.join(','));
+    if (this._specialKey === key) return;
+    this._specialKey = key;
+    var self = this;
+    var want = Math.min(50, s.max + 10); // headroom for in-cart / sold-out skips
+    var root = (window.Shopify && window.Shopify.routes && window.Shopify.routes.root) || '/';
+    var byAjax = function () {
+      var handlesP = s.source === 'collection'
+        ? fetch(root + 'collections/' + encodeURIComponent(s.collection) + '/products.json?limit=' + want)
+            .then(function (r) { return r.ok ? r.json() : { products: [] }; })
+            .then(function (d) { return ((d && d.products) || []).map(function (p) { return p.handle; }); })
+        : Promise.resolve(s.handles);
+      return handlesP.then(function (handles) {
+        return Promise.all(handles.slice(0, want).map(function (h) {
+          return fetch(root + 'products/' + encodeURIComponent(h) + '.js')
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(showcaseFromAjax)
+            .catch(function () { return null; });
+        }));
+      });
+    };
+    var run;
+    if ((s.source === 'collection' && !s.collection) || (s.source === 'products' && !s.handles.length)) {
+      run = Promise.resolve([]);
+    } else if (isStorefrontReady()) {
+      run = fetchShowcaseNodes(s.source === 'collection' ? { collection: s.collection, first: want } : { handles: s.handles })
+        .then(function (nodes) { return nodes.map(showcaseFromStorefront); })
+        .catch(byAjax);
+    } else {
+      run = byAjax();
+    }
+    run.then(function (list) {
+      if (self._specialKey !== key) return;
+      self.setState({ specialProducts: (list || []).filter(Boolean) });
+    }).catch(function (err) {
+      console.error('[cartx] special offer products failed to load:', err);
+    });
+  }
+
+  renderSpecialOffer() {
+    var s = this._special;
+    var cart = this.state.cart;
+    var items = (cart && cart.items) || [];
+    if (items.length === 0 && !s.show_on_empty) return null;
+    this._ensureSpecialProducts();
+    var cards = pickSpecialProducts(this.state.specialProducts, items, s.max);
+    if (cards.length === 0) return null;
+
+    var self = this;
+    var curr = this._currency;
+    var u = this._upsells;
+    var compact = s.card_style === 'compact';
+    var heading = s.heading || 'Special Price';
+    var addingText = this._t('upsell_adding', 'Adding...');
+    var discountTpl = this._t('line_discount_format', '{pct}% off');
+    var btnText = u.btn_text || 'ADD TO CART';
+    var imgPx = compact ? 128 : ({ small: 130, medium: 180, large: 230 }[u.card_size] || 180);
+    var standardClass = 'cartmax-upsells cartmax-upsells--' + (u.card_layout || 'horizontal')
+      + (u.btn_position === 'over_image' ? ' cartmax-upsells--btn-over-image' : '');
+
+    return (
+      <div class={'cartmax-special ' + (compact ? 'cartmax-special--compact' : 'cartmax-special--standard ' + standardClass)}>
+        <div class={compact ? 'cartmax-special-heading' : 'cartmax-upsells-heading'}
+          style={compact ? undefined : { justifyContent: u.heading_position === 'center' ? 'center' : 'flex-start' }}>{heading}</div>
+        <div class={compact ? 'cartmax-special-scroll' : 'cartmax-upsells-scroll'}>
+          {cards.map(function (p, i) {
+            var vid = p.variant_id;
+            var isAdding = self.state.updating['upsell_' + vid];
+            var productMeta = { title: p.title, image: p.image_url, price: p.price, product_id: p.product_id };
+            var card = { kind: 'special', product_id: p.product_id, source: s.source, position: i + 1 };
+            var pct = discountPercent(p.price, p.compare_at_price);
+            var onAdd = function () { self.handleUpsellAdd(vid, productMeta, card); };
+            var img = p.image_url
+              ? <img class={compact ? 'cartmax-special-img' : 'cartmax-upsell-img'} src={resizeImage(p.image_url, imgPx)} alt={p.title} loading="lazy" />
+              : <div class={compact ? 'cartmax-special-img' : 'cartmax-upsell-img-placeholder'}><span class="visually-hidden">No image</span></div>;
+            var price = (
+              <div class={compact ? 'cartmax-special-price' : 'cartmax-upsell-price'}>
+                <span class={compact ? 'cartmax-special-sale' : 'cartmax-upsell-sale'}>{formatMoney(p.price * 100, curr)}</span>
+                {p.compare_at_price && (compact || u.show_compare_price)
+                  ? <span class={compact ? 'cartmax-special-compare' : 'cartmax-upsell-compare'}>{formatMoney(p.compare_at_price * 100, curr)}</span>
+                  : null}
+                {pct > 0
+                  ? <span class={compact ? 'cartmax-special-pct' : 'cartmax-upsell-discount'}>{compact ? pct + '%' : fillTemplate(discountTpl, { pct: pct })}</span>
+                  : null}
+              </div>
+            );
+            var promo = {
+              key: p.product_id,
+              'data-cartmax-promo-id': 'special:' + p.product_id,
+              'data-cartmax-promo-type': 'special_offer',
+              ref: function (el) { self._observePromo(el); },
+            };
+            if (compact) {
+              return (
+                <div class="cartmax-special-card" {...promo}>
+                  {img}
+                  <div class="cartmax-special-info">
+                    <div class="cartmax-special-title">{p.title}</div>
+                    {price}
+                  </div>
+                  <button type="button" class="cartmax-special-add" onClick={onAdd} disabled={isAdding}
+                    aria-label={'Add ' + p.title + ' to cart'}>
+                    {isAdding ? <span class="cartmax-special-spinner" aria-hidden="true" /> : <span aria-hidden="true">+</span>}
+                  </button>
+                </div>
+              );
+            }
+            var addBtn = <button class="cartmax-upsell-add" onClick={onAdd} disabled={isAdding}>{isAdding ? addingText : btnText}</button>;
+            return (
+              <div class={'cartmax-upsell-card cartmax-upsell-card--' + (u.card_size || 'medium')} {...promo}>
+                {u.btn_position === 'over_image' ? <div class="cartmax-upsell-media">{img}{addBtn}</div> : img}
+                <div class="cartmax-upsell-info">
+                  <div class="cartmax-upsell-title">{p.title}</div>
+                  {price}
+                  {u.btn_position === 'over_image' ? null : addBtn}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
   }
 
   renderUpsells() {
@@ -3925,6 +4198,7 @@ export default class CartDrawer extends Component {
     var countStyle = this._layout.header_count_style;
 
     // Body sections in the merchant's order (Customize Cart → Sections).
+    var specialFirst = sec.order.indexOf('special_offer') < sec.order.indexOf('upsells');
     var bodySections = {
       progress_bar: () => (hasItems && sec.show_progress_bar ? this.renderProgressBar() : null),
       claim_gifts: () => (hasItems && sec.show_claim_gifts ? this.renderClaimGifts() : null),
@@ -3934,9 +4208,15 @@ export default class CartDrawer extends Component {
         : isEmpty
           ? this.renderEmpty()
           : hasItems
-            ? displayItems.map((item) => this.renderLineItem(item))
+            ? (this._layout.gift_lines_placement === 'section'
+              ? [
+                  displayItems.filter((item) => !hasFreebieMarker(item.properties)).map((item) => this.renderLineItem(item)),
+                  this.renderFreebies(displayItems.filter((item) => hasFreebieMarker(item.properties))),
+                ]
+              : displayItems.map((item) => this.renderLineItem(item)))
             : null),
       coupons: () => (hasItems && sec.show_coupons ? this.renderCoupons() : null),
+      special_offer: () => (hasItems && sec.show_special_offer ? this.renderSpecialOffer() : null),
       upsells: () => (hasItems && sec.show_upsells ? this.renderUpsells() : null),
     };
 
@@ -3970,6 +4250,13 @@ export default class CartDrawer extends Component {
                   : null
                 }
               </span>
+              {this._layout.show_clear_all && count > 0
+                ? <button type="button" class="cartmax-clear-all" onClick={() => this.handleClearAll()}>
+                    <IconTrash />
+                    <span>{this._t('clear_all', 'Clear All')}</span>
+                  </button>
+                : null
+              }
               <button class="cartmax-close" onClick={this.close} aria-label="Close cart">
                 <IconClose />
               </button>
@@ -3989,8 +4276,10 @@ export default class CartDrawer extends Component {
             {/* Ribbon */}
             {hasItems && sec.show_ribbon ? this.renderRibbon() : null}
 
-            {/* Upsells pinned to bottom on empty cart */}
+            {/* Special Offer + upsells pinned to bottom on empty cart, in the merchant's order */}
+            {isEmpty && sec.show_special_offer && specialFirst ? this.renderSpecialOffer() : null}
             {isEmpty && sec.show_upsells ? this.renderUpsells() : null}
+            {isEmpty && sec.show_special_offer && !specialFirst ? this.renderSpecialOffer() : null}
 
             {/* Footer */}
             {hasItems ? this.renderFooter() : null}

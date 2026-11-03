@@ -60,15 +60,30 @@ Both font settings fall back to `sans-serif` if the font fails to load.
 | `coupon_cards_layout` | Features → Coupons | `scroll`, `list` |
 | `upsells_btn_position` | Features → Upsells | `below`, `over_image` |
 | `upsells_show_discount` | Features → Upsells | `false` |
+| `show_clear_all`, `clear_all_confirm` | Design → Drawer | `false`; `true` (asks with `text.clear_all_confirm` before emptying the cart) |
+| `gift_line_show_price` | Design → Cart items | `false` (free gift lines show the struck original price, "~~₹999~~ Free"; only when the line is charged ₹0) |
+| `variant_show_option_names` | Design → Cart items | `false` ("Size: M / Colour: Red" instead of "M / Red") |
+| `price_decimals` | Design → Cart items | `store` (the store's money format), `hide_zero` (drop ".00" only), `hide` (always round). Formatting is `formatAmount` in `app/lib/money-format.js`, shared by the server and the drawer |
+| `gift_lines_placement` | Design → Cart items | `inline`, `section` (gift lines in their own "Freebies For you" block with an n/N Unlocked counter) |
+| `freebies_show_icon` | Cart items (Freebies section) | `true` |
+| `freebies_show_locked`, `freebies_locked_scope` | Cart items (Freebies section) | `false`; `all`, `next`. Locked rows use the offer's saved `reward.gift_variant_data` for title and image |
+| `coupon_icon`, `coupon_icon_svg` | Features → Coupons | `default`, `none`, `custom` (inline SVG from `coupon_icon_svg`) |
+| `special_offer_heading` | Features → Special Offer | "Special Price" |
+| `special_offer_source` | Features → Special Offer | `collection`, `products` |
+| `special_offer_collection`, `special_offer_products` | Features → Special Offer | `{handle, title}`, `[]` (handles only; the drawer fetches live products from the storefront) |
+| `special_offer_max` | Features → Special Offer | 1–20 (6) |
+| `special_offer_card_style` | Features → Special Offer | `compact`, `standard` (same card as Upsells) |
+| `special_offer_show_on_empty` | Features → Special Offer | `false` |
 
 ## Sections (`drawer.sections`)
 
 | Key | Customize Cart | Default |
 |---|---|---|
-| `order` | Features → Section order | progress bar, claim gifts, offer cards, cart items, coupons, upsells. Unknown keys are ignored and missing ones appended (`normalizeSectionOrder`). `ribbon` is stored but renders outside the body. |
+| `order` | Features → Section order | progress bar, claim gifts, offer cards, cart items, coupons, special offer, upsells. Unknown keys are ignored and missing ones appended (`normalizeSectionOrder`). `ribbon` is stored but renders outside the body. |
 | `show_locked_coupons` | Features → Coupons | `false`. Coupons below their minimum show greyed out with "Add ₹X more" / "Add N more items", closest first. |
 | `coupon_panel_input` | Features → Coupons | `false`. Code field at the top of Offers & Coupons. |
 | `coupon_applied_style` | Features → Coupons | `chip`, `card` (REMOVE and "You saved ₹X") |
+| `show_special_offer` | Features → Special Offer | `false`. Display only: the discount itself is a cartx promotion or a Shopify discount. Products in the cart or sold out are skipped; the row hides when none are left. Adds carry `_cartx_special`; analytics id `special:<product_id>`. Its `order` key `special_offer` is slotted above `upsells` for saved orders that predate it. |
 
 ## Announcement bar and progress bar
 
@@ -84,6 +99,8 @@ Both font settings fall back to `sans-serif` if the font fails to load.
 
 `progress_bar.track_thickness` is deliberately not in `DEFAULT_CONFIG`: stores that never saved it get the stylesheet's 8px track.
 
+**Bold text:** `**double asterisks**` in milestone top messages, the all-complete message and the ribbon render as bold. No setting.
+
 ## Text (`drawer.text`)
 
 Every visible drawer string has a key. Content → Buttons & labels and Content → Price breakup show each default as the field's placeholder. Templates: `{amount}` (shop currency), `{count}`, `{pct}`.
@@ -91,6 +108,8 @@ Every visible drawer string has a key. Content → Buttons & labels and Content 
 Gift cards: `gift_add_button`, `gift_remove_button`, `claim_gift_button`, `gift_free_label`, `gift_adding`, `gift_claimed`, `gift_unavailable`, `claim_limit_reached`, `gift_paid_badge`, `gift_unavailable_notice`.
 Cart items: `free_badge`, `line_remove`, `line_discount_format`, `out_of_stock`, `checkout_preparing`.
 Coupons: `coupon_placeholder`, `coupon_view_all`, `coupon_apply`, `coupon_remove`, `coupon_invalid`, `coupon_failed`, `coupon_locked_message`, `coupon_locked_qty_message`, `coupon_saved_message`, `coupons_panel_title`, `coupons_panel_label`, `coupons_panel_placeholder`.
+Header: `clear_all`, `clear_all_confirm`.
+Freebies section: `freebies_heading`, `freebies_counter` (`{count}/{total}`), `freebies_locked` (`{amount}`), `freebies_locked_qty` (`{count}`).
 Upsells: `upsells_empty_heading`, `upsells_subheading`, `upsell_sold_out`, `upsell_adding`.
 Sublines (empty = hidden): `coupon_link_subtitle` (on the "Apply Coupon ›" row), `upsells_subheading`, `checkout_subtext` (inside the checkout button).
 Price breakup: `price_breakup_link`, `price_breakup_title`, `pb_total_mrp`, `pb_discount_mrp`, `pb_coupon_discount`, `pb_shipping`, `pb_shipping_value`, `pb_total`, `shipping_note` (multi-line; shows a box and an info toggle).
