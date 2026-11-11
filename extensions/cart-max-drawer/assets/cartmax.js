@@ -872,6 +872,19 @@
     });
     return out;
   }
+  function promoCartSignature(cart) {
+    var items = cart && cart.items || [];
+    var lines = items.map(function(it) {
+      var fin = it.final_line_price != null ? it.final_line_price : it.line_price;
+      return it.variant_id + ":" + (it.quantity || 0) + ":" + (it.properties ? it.properties._offer_id || "" : "") + (it._cartx_unpriced ? ":u" : "") + "$" + (Number(fin) || 0);
+    }).sort().join("|");
+    var codes = (cart && cart.discount_codes || []).filter(function(d2) {
+      return d2.applicable;
+    }).map(function(d2) {
+      return d2.code;
+    }).sort().join(",");
+    return lines + "#" + codes + "#" + (Number(cart && cart.total_discount) || 0);
+  }
 
   // src/confetti.js
   var PARTICLE_COUNT = 80;
@@ -4523,16 +4536,7 @@
     // item signature changes (so gift reconciliation converges, no eval loop) and
     // debounced so rapid edits collapse into one proxy call.
     _cartSignature(cart) {
-      var items = cart && cart.items || [];
-      var lines = items.map(function(it) {
-        return it.variant_id + ":" + (it.quantity || 0) + ":" + (it.properties ? it.properties._offer_id || "" : "") + (it._cartx_unpriced ? ":u" : "");
-      }).sort().join("|");
-      var codes = (cart && cart.discount_codes || []).filter(function(d2) {
-        return d2.applicable;
-      }).map(function(d2) {
-        return d2.code;
-      }).sort().join(",");
-      return lines + "#" + codes;
+      return promoCartSignature(cart);
     }
     _maybeRunGqlPromo(cart) {
       var sig = this._cartSignature(cart);

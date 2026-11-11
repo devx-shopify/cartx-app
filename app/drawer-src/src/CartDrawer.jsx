@@ -1,6 +1,6 @@
 /* eslint-disable */
 import { h, Component, Fragment } from 'preact';
-import { setPriceDecimals, fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId, hasFreebieMarker, showsQuantitySelector, giftChargedAmount, giftOriginalPrice, variantText, boldParts, normalizeSectionOrder, milestonePositions, mapProgress, fillTemplate, formatQty, discountPercent, compareAtSavings, splitCoupons, savingsForCode, buildFreebieTiers, showcaseFromAjax, showcaseFromStorefront, pickSpecialProducts } from './helpers';
+import { setPriceDecimals, fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId, hasFreebieMarker, showsQuantitySelector, giftChargedAmount, giftOriginalPrice, variantText, boldParts, normalizeSectionOrder, milestonePositions, mapProgress, fillTemplate, formatQty, discountPercent, compareAtSavings, splitCoupons, savingsForCode, buildFreebieTiers, showcaseFromAjax, showcaseFromStorefront, pickSpecialProducts, promoCartSignature } from './helpers';
 import { fireConfetti, setConfettiLottieUrl } from './confetti';
 import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLine, ensureCartxAttribute, ensureDrawerAttribute, localGiftDelta, giftIntendedQuantity, dispatchLocalBar, getCachedOffers } from './evaluate';
 import { isGraphqlCartEnabled, isStorefrontReady, fetchProductAvailability, fetchShowcaseNodes } from './storefront-cart';
@@ -1347,27 +1347,8 @@ export default class CartDrawer extends Component {
   // item signature changes (so gift reconciliation converges, no eval loop) and
   // debounced so rapid edits collapse into one proxy call.
   _cartSignature(cart) {
-    var items = (cart && cart.items) || [];
-    var lines = items.map(function (it) {
-      // The ':u' marker is what makes a placeholder line and its reconciled,
-      // priced self produce DIFFERENT signatures. Without it both hash the same
-      // (variant + qty + offer are unchanged by reconcile), so the sig guard in
-      // _maybeRunAjaxPromo swallowed the corrected evaluation and the cart was
-      // left evaluated as if it were empty.
-      return it.variant_id + ':' + (it.quantity || 0) + ':'
-        + (it.properties ? (it.properties._offer_id || '') : '')
-        + (it._cartx_unpriced ? ':u' : '');
-    }).sort().join('|');
-    // Include the applied discount codes: a coupon apply/remove leaves items and
-    // quantities untouched, so without this the signature is identical and the
-    // promo eval (which recomputes total_savings + coupon availability) is
-    // skipped — leaving the footer "you saved {amount}" stale until a qty change.
-    var codes = ((cart && cart.discount_codes) || [])
-      .filter(function (d) { return d.applicable; })
-      .map(function (d) { return d.code; })
-      .sort()
-      .join(',');
-    return lines + '#' + codes;
+    // Pure helper (helpers.js) so the "did the cart change?" rule is tested.
+    return promoCartSignature(cart);
   }
 
   _maybeRunGqlPromo(cart) {
