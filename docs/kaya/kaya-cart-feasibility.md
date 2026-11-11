@@ -35,6 +35,7 @@ The design is mobile only. On desktop the drawer uses the same look at 420 px wi
 | "Freebies For you" mint block with heading and icon, free gift rows with "Free" pill | 🧪 | Now a real Freebies section (§4 #2) instead of the CSS reorder |
 | Free gift row: struck original price (~~₹440~~ Free) | 🧪 | New gift line price setting (§4 #3) |
 | Freebies: "1/3 Unlocked" counter and locked rows ("₹302 more to Unlock") | 🧪 | §4 #2 |
+| Gift tiers: wipes at tier 1, gel at tier 2, both at tier 3 (not added up) | 🧪 | New Gift milestones setting, Highest only (§4 #4) |
 | "Recommended For you": 240 px side-scrolling cards, "+" on the image, ~~₹440~~ ₹200 52% | ✅ | Also shown on the empty cart |
 | Coupon pill: tag, "₹200 saved with 'FLAT200'", "View all coupons ›", Remove | ✅ | Custom CSS on the applied coupon card |
 | Savings strip "You are saving ₹999 on this product" | ✅ | Wording ❓ (§5 #4) |
@@ -70,13 +71,16 @@ These work with the import file alone:
 
 ## 4. cartx development (🧪 built, in testing)
 
-All three are built in the next cartx release and are off by default. The import file turns them on. Test them on the dev preview (setup guide §9) before go-live.
+Items 1–3 are built in the next cartx release, item 4 in the release after it; all are off by default. The import file turns them on. Test them on the dev preview (setup guide §9) before go-live.
 
 | # | Feature | Setting (Customize Cart) | Kit value | Client answer still needed |
 |---|---|---|---|---|
 | 1 | Clear All button | Header → **Show Clear All**, plus **Ask before clearing** | On, asks first. Clears gifts too | Confirm the prompt and that gifts go too (§5 #1) |
 | 2 | Freebies tier list | Cart items → **Free gift lines: Own section**, **Show locked gifts**, **All tiers / Next tier only** | Own section, all tiers | All tiers vs next tier (§5 #2) |
 | 3 | Struck price on free gift lines | Cart items → **Show the original price on free gift lines** | On | None |
+| 4 | Highest gift milestone only | cartx **Settings → Behavior → Gift milestones: Highest only** (not in the import file; saved per theme) | Highest only: ₹499 wipes, ₹699 gel only, ₹999 one wipe + one gel | None (client asked for this) |
+
+Item 4: by default cartx adds up the gifts of every milestone passed, so ₹699 gave wipes + gel and ₹999 gave 2 wipes + 2 gel. With Highest only, each milestone lists exactly the gifts it gives, lower milestones' gifts are removed when a higher one is reached, and they come back if the cart drops. Branch `feat/gift-milestones-highest-only`, test in setup guide §10. Other stores stay on Add up.
 
 The old Custom CSS trick that moved gift lines below the cart card is gone; the CSS now styles the real Freebies section and the Clear All pill.
 
@@ -97,7 +101,7 @@ The old Custom CSS trick that moved gift lines below the cart card is gone; the 
 
 **Content**
 
-- Milestones: real thresholds, rewards and gift products for ₹499, ₹699 and ₹999 *(the mock-up shows Free Wipes, Free Soothing Cleansing Gel, and both)*.
+- Milestones: real thresholds, rewards and gift products for ₹499, ₹699 and ₹999 *(the mock-up shows Free Wipes, Free Soothing Cleansing Gel, and both; the client confirmed tier 2 is the gel only and tier 3 is both, see §4 #4)*.
 - Discount codes (created in Shopify), e.g. FLAT200.
 - Products for "Recommended For you".
 
@@ -111,7 +115,7 @@ The settings and Custom CSS were rendered with the released drawer code at 360 p
 
 ## 7. Plan
 
-1. **Now:** test the new build on the dev preview with this kit (setup guide §9).
+1. **Now:** test the new build on the dev preview with this kit (setup guide §9), and the Gift milestones setting (setup guide §10).
 2. **After the cartx release:** test theme, import, milestones and gifts, coupons, recommendations; QA against Figma; share the preview with the client with the questions in §5.
 3. **Go live** after sign-off (setup guide).
 
@@ -119,5 +123,6 @@ The settings and Custom CSS were rendered with the released drawer code at 360 p
 
 - Most of the Kaya design ships with settings and the Custom CSS: header, milestone bar, the one-card cart, freebies block, "Recommended For you", the coupon pill, footer and empty cart.
 - The three development items (Freebies tier list, Clear All, struck gift price) are built and in testing; they go live with the next cartx release.
+- Tier gifts as the client wants (wipes, then gel only, then both) need the new Gift milestones setting, Highest only; built and in testing.
 - Small differences: "1 Products" for a single item, the second trust item in CSS, milestone amounts typed in cartx, and the stepper border colour taken from the screenshot.
 - Client input needed on eight questions, mainly how freebies work, Clear All, the recommendation products and the savings wording.

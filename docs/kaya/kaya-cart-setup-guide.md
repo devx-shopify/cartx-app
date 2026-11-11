@@ -75,9 +75,11 @@ The bar shows the progress-bar tiers. Each tier's **sub label** is the amount sh
 
 **b. Free Soothing Cleansing Gel at ₹699 *(placeholder)*.** The same as (a), with threshold 699, the gel as the gift, and label `Free Soothing Cleansing Gel` / `₹699`.
 
-**c. Both at ₹999 *(placeholder)*.** Threshold 999, label `Free Soothing Cleansing Gel + Wipes` / `₹999`. How "both" is given (one offer with two gifts, or the ₹699 offer plus the wipes kept) depends on the client's answer in feasibility §5 #2.
+**c. Both at ₹999 *(placeholder)*.** One offer with **both** gifts (wipes and gel, quantity 1 each), threshold 999, label `Free Soothing Cleansing Gel + Wipes` / `₹999`.
 
 Under **Settings → Progress bar**, drag the tiers into the order ₹499, ₹699, ₹999.
+
+**d. Highest milestone only.** Under **Settings → Behavior → Gift milestones**, choose **Highest only**. The shopper then gets only the gifts of the highest milestone reached: ₹499 → wipes, ₹699 → gel only (the wipes are removed), ₹999 → one wipe + one gel. If the cart drops back below a milestone, the gifts step back down. With the default **Add up**, every milestone passed keeps its gifts, so ₹999 would give 2 wipes + 2 gel. Claim gifts are not affected. This setting is saved per theme and needs the gift milestones release (§10).
 
 Gifts in the cart appear in their own "Freebies For you" section with the struck original price and the "Free" pill, the "1/3 Unlocked" counter, and a locked row ("₹302 more to Unlock") for every gift not reached yet. The import sets this up (**Customize Cart → Features → Cart items**: Free gift lines **Own section**, Show locked gifts **on**, **All tiers**). The counter counts the gift offers on the milestone bar, so each tier needs its gift offer.
 
@@ -110,6 +112,7 @@ Check on a phone (or a 360 px window), and on desktop at the 420 px drawer, agai
 | 2 | Add a second product | "2 Products"; both lines in one card with a divider |
 | 3 | Cross ₹499 | First dot turns teal with a check; the gift appears in the mint "Freebies For you" section as ~~₹440~~ "Free"; the counter reads "1/3 Unlocked" and the ₹699 and ₹999 gifts show as locked rows with "₹X more to Unlock" |
 | 3a | Change quantity around a threshold | Counter, locked rows and their amounts update; crossing ₹699 moves that gift from locked to the cart |
+| 3b | Gift milestones, Highest only (§4 d) | ₹499: wipes only. ₹699: gel only, wipes gone. ₹999: one wipe + one gel. Lower the cart below ₹999: back to gel only |
 | 4 | Quantity and bin | Stepper updates the line; the bin removes it |
 | 5 | View all coupons › | Offers & Coupons with the code field and "All Coupons"; apply FLAT200; the pill reads "₹200 saved with 'FLAT200'"; Remove clears it |
 | 6 | View Price Breakup | Price breakup sheet |
@@ -122,7 +125,7 @@ Check on a phone (or a 360 px window), and on desktop at the 420 px drawer, agai
 ## 8. Go live (after client sign-off)
 
 1. Select the **live** theme in cartx, export its backup, then import the final settings exported from the test theme (so QA tweaks come along).
-2. Recreate or check the milestones, offers, coupons and recommendations for the live theme. These are saved per theme.
+2. Recreate or check the milestones, offers, coupons and recommendations for the live theme, and set **Settings → Behavior → Gift milestones: Highest only** (§4 d). These are saved per theme.
 3. Turn the cartx embed **on** in the live theme; check one add-to-cart and the checkout. Turn on **both** cartx app embeds: **cartx Drawer** and **cartx Promotions**. Without Promotions the gift and claim-gift discounts never apply: gifts stay at full price and show no struck price.
 
 **Roll back:** turn the cartx embed off on the live theme. The theme's own cart comes back straight away.
@@ -151,3 +154,23 @@ Clear All, the Freebies section with counter and locked rows, the struck gift pr
 | 7 | Admin preview | — | The Customize Cart preview follows each setting above |
 
 When the release is deployed, these features are live for every store, and this kit can be imported on the Kaya store.
+
+## 10. Test gift milestones, Highest only (dev preview, before the release)
+
+The **Gift milestones** setting (§4 d) is built on branch `feat/gift-milestones-highest-only` and not released yet. It changes the server and the drawer, so it needs both the Fly release and `shopify app deploy`.
+
+1. Run the preview from the feature worktree, as in §9 (`cd /Users/vishvamjoshi0310/Documents/shopify-projects/cartx-feat`, `npm run dev`, pick devx-dev; run `shopify app deploy` afterwards to restore the app URLs).
+2. On `devx-dev`, set up the three offers as in §4 a–c, and set **Settings → Behavior → Gift milestones: Highest only**.
+3. Check:
+
+| # | Cart total | Expected gifts in the cart |
+|---|---|---|
+| 1 | Below ₹499 | None |
+| 2 | ₹499–₹698 | Wipes |
+| 3 | ₹699–₹998 | Gel only; the wipes line is removed |
+| 4 | ₹999 and above | One wipe + one gel (no extra copies) |
+| 5 | Back down to ₹699–₹998 | Gel only |
+| 6 | Gift milestones: **Add up** | Gifts add up again (₹999 → 2 wipes + 2 gel); this is the default for other stores |
+| 7 | Checkout at each step | The gifts in the cart are free; nothing else is |
+| 8 | Freebies section | Counter "n/3 Unlocked" and the locked rows still follow the milestones reached |
+
