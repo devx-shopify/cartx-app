@@ -746,3 +746,31 @@ export function pickSpecialProducts(products, cartItems, max) {
   });
   return out;
 }
+
+// "Did the cart change?" key for the promo eval (CartDrawer._maybeRunAjaxPromo /
+// _maybeRunGqlPromo skip the server eval when it is unchanged).
+// Lines: variant + qty + offer id, plus ':u' for an unpriced placeholder so the
+// placeholder and its priced self differ. Codes: applied discount codes, so a
+// coupon apply/remove re-evaluates.
+// Money: each line's final price and the cart's total discount. A quantity
+// change shows instantly with the old (pre-discount) money; Shopify's reply then
+// brings an automatic discount (e.g. a merchant Buy 2 Get 2) with the same
+// variants and quantities. Without money in the key that reply was skipped and
+// the bar stayed on the pre-discount value (Just Herbs, Nov 2026: stuck at ₹796
+// on a ₹398 cart, unlocking gift tiers the shopper had not reached).
+export function promoCartSignature(cart) {
+  var items = (cart && cart.items) || [];
+  var lines = items.map(function (it) {
+    var fin = it.final_line_price != null ? it.final_line_price : it.line_price;
+    return it.variant_id + ':' + (it.quantity || 0) + ':'
+      + (it.properties ? (it.properties._offer_id || '') : '')
+      + (it._cartx_unpriced ? ':u' : '')
+      + '$' + (Number(fin) || 0);
+  }).sort().join('|');
+  var codes = ((cart && cart.discount_codes) || [])
+    .filter(function (d) { return d.applicable; })
+    .map(function (d) { return d.code; })
+    .sort()
+    .join(',');
+  return lines + '#' + codes + '#' + (Number(cart && cart.total_discount) || 0);
+}
