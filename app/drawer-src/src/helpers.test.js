@@ -6,6 +6,7 @@ import {
   couponShortfall, splitCoupons, savingsForCode, milestonePositions, mapProgress,
   boldParts, variantText, giftOriginalPrice, buildFreebieTiers,
   showcaseFromAjax, showcaseFromStorefront, pickSpecialProducts,
+  promoCartSignature,
 } from './helpers.js'
 
 describe('normalizeSectionOrder', () => {
@@ -363,3 +364,39 @@ describe('compareAtSavings', () => {
     expect(compareAtSavings([{ variant_id: '9', quantity: 1, line_price: 10000 }], { 9: 15000 })).toBe(5000);
   });
 });
+
+describe('promoCartSignature', () => {
+  const line = (over = {}) => ({ key: 'k1', variant_id: 7, quantity: 4, properties: {}, final_line_price: 79600, ...over })
+  const cart = (items, over = {}) => ({ items, discount_codes: [], total_discount: 0, ...over })
+
+  test('same cart → same signature', () => {
+    expect(promoCartSignature(cart([line()]))).toBe(promoCartSignature(cart([line()])))
+  })
+  test('automatic discount arriving with the same qty changes it (Just Herbs B2G2)', () => {
+    // Optimistic qty 4 at ₹199 each, then Shopify replies with Buy 2 Get 2.
+    const before = cart([line()])
+    const after = cart([line({ final_line_price: 39800 })], { total_discount: 39800 })
+    expect(promoCartSignature(after)).not.toBe(promoCartSignature(before))
+  })
+  test('a cart-level discount alone changes it', () => {
+    expect(promoCartSignature(cart([line()], { total_discount: 5000 })))
+      .not.toBe(promoCartSignature(cart([line()])))
+  })
+  test('qty, offer id, unpriced marker and applied codes still count', () => {
+    const base = promoCartSignature(cart([line()]))
+    expect(promoCartSignature(cart([line({ quantity: 5 })]))).not.toBe(base)
+    expect(promoCartSignature(cart([line({ properties: { _offer_id: 'O1' } })]))).not.toBe(base)
+    expect(promoCartSignature(cart([line({ _cartx_unpriced: true })]))).not.toBe(base)
+    expect(promoCartSignature(cart([line()], { discount_codes: [{ code: 'X', applicable: true }] }))).not.toBe(base)
+    expect(promoCartSignature(cart([line()], { discount_codes: [{ code: 'X', applicable: false }] }))).toBe(base)
+  })
+  test('line order does not matter; falls back to line_price', () => {
+    const a = line({ key: 'a', variant_id: 1 }), b = line({ key: 'b', variant_id: 2 })
+    expect(promoCartSignature(cart([a, b]))).toBe(promoCartSignature(cart([b, a])))
+    const noFinal = { key: 'z', variant_id: 3, quantity: 1, properties: {}, line_price: 100 }
+    expect(promoCartSignature(cart([noFinal]))).toBe(promoCartSignature(cart([{ ...noFinal, final_line_price: 100 }])))
+  })
+  test('empty / missing cart is safe', () => {
+    expect(promoCartSignature(null)).toBe(promoCartSignature({ items: [] }))
+  })
+})
