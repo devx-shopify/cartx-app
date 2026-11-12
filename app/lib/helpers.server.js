@@ -6,6 +6,9 @@ import { FROZEN_PAGES, FROZEN_PAGE_PREFIXES } from './constants.js'
 // the external-discount subtraction. See app/lib/upsell-rank.js.
 export { adjustedTotal, adjustedQty } from './upsell-rank.js'
 
+// Page/customer targeting is shared with the drawer bundle (app/lib/page-target.js).
+export { pageMatch, getActiveEntries, customerMatchesTags } from './page-target.js'
+
 export function computeTotalSavings(cart) {
   if (!cart) return 0
   // original_total_price is the cart total before any discount is applied;
@@ -21,44 +24,6 @@ export function computeTotalSavings(cart) {
     const fin = item.final_line_price ?? item.line_price ?? 0
     return sum + Math.max(0, orig - fin)
   }, 0)
-}
-
-export function pageMatch(entryHandles, currentPath) {
-  const path = currentPath.split('?')[0]
-  if (entryHandles.includes('/')) return true
-  return entryHandles.includes(path)
-}
-
-function normalizeTag(t) {
-  return String(t).trim().toLowerCase()
-}
-
-/**
- * True when `customer` satisfies `rule.customer_tags` targeting.
- * - No targeting set → matches everyone (including guests).
- * - required_any → customer must carry at least one of these tags; a guest
- *   (no customer) therefore fails.
- * - excluded → customer must carry none of these tags; a guest passes.
- */
-export function customerMatchesTags(rule, customer) {
-  const target = rule?.customer_tags
-  if (!target) return true
-  const required = (target.required_any || []).map(normalizeTag).filter(Boolean)
-  const excluded = (target.excluded || []).map(normalizeTag).filter(Boolean)
-  const tags = (customer?.tags || []).map(normalizeTag)
-  if (excluded.length && excluded.some((t) => tags.includes(t))) return false
-  if (required.length && !required.some((t) => tags.includes(t))) return false
-  return true
-}
-
-export function getActiveEntries(currentPath, allEntries) {
-  const path = currentPath.split('?')[0]
-  const specific = allEntries.filter(
-    (e) => e.page_handles.some((h) => h !== '/' && h === path)
-  )
-  if (specific.length > 0) return specific
-
-  return allEntries.filter((e) => e.page_handles.includes('/'))
 }
 
 export function isFrozenPage(path) {

@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest'
+import { describe, test, it, expect } from 'vitest'
 import { evaluateOffers, evaluateClaimRemovals } from './rules.js'
 
 // ── Fixtures ────────────────────────────────────────────────
@@ -179,5 +179,35 @@ describe('evaluateClaimRemovals — orphaned & below-threshold claim gifts', () 
   test('non-claim lines are ignored', () => {
     const items = [{ key: 'p1', variant_id: 111, quantity: 1, properties: {} }]
     expect(evaluateClaimRemovals([], items, 3750, 8, true)).toEqual([])
+  })
+})
+
+describe('instant bar matches the server bar', () => {
+  it('includes claim gifts and Settings milestones (no late pop-in)', async () => {
+    const { localEvaluate } = await import('./rules.js')
+    const { buildBar } = await import('../../lib/progress-bar.js')
+    const cfg = {
+      offers: [{ id: 'o599', enabled: true, page_handles: ['/'], trigger: { price_threshold: 599 }, reward: { type: 'auto_add_gift', gift_variants: [], add_mode: 'auto' }, bar: { show: true, label: 'o599' } }],
+      claim_gifts: [{ id: 'c799', enabled: true, page_handles: ['/'], trigger: { type: 'price', threshold: 799 }, bar: { show: true, label: 'c799' } }],
+      progress_bar: { enabled: true, tier_order: [], visual_milestones: [{ id: 'm1', enabled: true, page_handles: ['/'], label: 'm1', trigger: { type: 'price', threshold: 999 } }] },
+      money_format: '₹{{amount}}',
+    }
+    const cart = { items: [{ variant_id: 9, quantity: 1, price: 30000, original_line_price: 30000, final_line_price: 30000, properties: {} }] }
+    globalThis.window = globalThis.window || { location: { pathname: '/' } }
+    const local = localEvaluate(cfg, cart, null)
+    const server = buildBar(cfg, '/', 300, 1, '₹{{amount}}', null)
+    expect(local.bar.tiers.map((t) => t.id)).toEqual(server.tiers.map((t) => t.id))
+    expect(local.bar.tiers.map((t) => t.id)).toEqual(expect.arrayContaining(['o599', 'c799', 'm1']))
+  })
+})
+
+describe('evaluateOffers — paused page', () => {
+  it('adds no gift while paused but keeps existing ones', () => {
+    const offer = { id: 'o', enabled: true, page_handles: ['/'], trigger: { price_threshold: 100 }, reward: { type: 'auto_add_gift', gift_variants: ['5'], add_mode: 'auto', quantity_per_variant: 1 }, bar: { show: false } }
+    const gift = { variant_id: 5, quantity: 1, key: 'g', properties: { _freebie: 'true', _offer_id: 'o' } }
+    const added = evaluateOffers([offer], { items: [] }, 500, 1, '/', null, true)
+    expect(added.to_add).toEqual([])
+    const kept = evaluateOffers([offer], { items: [gift] }, 500, 2, '/', null, true)
+    expect(kept.to_remove).toEqual([])
   })
 })

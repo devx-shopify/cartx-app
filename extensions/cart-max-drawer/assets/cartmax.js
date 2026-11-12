@@ -1,5 +1,5 @@
 (() => {
-  // ../../../cartx-app/app/drawer-src/node_modules/preact/dist/preact.module.js
+  // node_modules/preact/dist/preact.module.js
   var n;
   var l;
   var u;
@@ -1159,39 +1159,385 @@
     return out;
   }
 
-  // src/rules.js
-  function pageMatch(handles, path) {
+  // ../lib/page-target.js
+  function cleanPath(path) {
+    return String(path || "").split("?")[0];
+  }
+  function pageMatch(handles, currentPath) {
     if (!handles || handles.length === 0) return false;
-    if (handles.indexOf("/") !== -1) return true;
-    var clean = path.split("?")[0];
-    return handles.indexOf(clean) !== -1;
+    if (handles.includes("/")) return true;
+    return handles.includes(cleanPath(currentPath));
+  }
+  function getActiveEntries(currentPath, allEntries) {
+    const path = cleanPath(currentPath);
+    const specific = allEntries.filter(
+      (e2) => (e2.page_handles || []).some((h2) => h2 !== "/" && h2 === path)
+    );
+    if (specific.length > 0) return specific;
+    return allEntries.filter((e2) => (e2.page_handles || []).includes("/"));
   }
   function normalizeTag(t2) {
     return String(t2).trim().toLowerCase();
   }
   function customerMatchesTags(rule, customer) {
-    var target = rule && rule.customer_tags;
+    const target = rule == null ? void 0 : rule.customer_tags;
     if (!target) return true;
-    var required = (target.required_any || []).map(normalizeTag).filter(Boolean);
-    var excluded = (target.excluded || []).map(normalizeTag).filter(Boolean);
-    var tags = (customer && customer.tags || []).map(normalizeTag);
-    if (excluded.length) {
-      for (var i2 = 0; i2 < excluded.length; i2++) {
-        if (tags.indexOf(excluded[i2]) !== -1) return false;
-      }
-    }
-    if (required.length) {
-      var matched = false;
-      for (var j2 = 0; j2 < required.length; j2++) {
-        if (tags.indexOf(required[j2]) !== -1) {
-          matched = true;
-          break;
-        }
-      }
-      if (!matched) return false;
-    }
+    const required = (target.required_any || []).map(normalizeTag).filter(Boolean);
+    const excluded = (target.excluded || []).map(normalizeTag).filter(Boolean);
+    const tags = ((customer == null ? void 0 : customer.tags) || []).map(normalizeTag);
+    if (excluded.length && excluded.some((t2) => tags.includes(t2))) return false;
+    if (required.length && !required.some((t2) => tags.includes(t2))) return false;
     return true;
   }
+  function exclusiveMilestones(milestones, currentPath, customer) {
+    const path = cleanPath(currentPath);
+    return (milestones || []).filter(
+      (m2) => m2.enabled && m2.display === "only_this" && (m2.page_handles || []).some((h2) => h2 !== "/" && h2 === path) && customerMatchesTags(m2, customer)
+    );
+  }
+  function offersPausedOnPage(config, currentPath, customer) {
+    var _a;
+    return exclusiveMilestones((_a = config == null ? void 0 : config.progress_bar) == null ? void 0 : _a.visual_milestones, currentPath, customer).length > 0;
+  }
+
+  // ../lib/template.js
+  function resolveTemplate(template, values = {}, moneyFormat, decimals) {
+    if (!template) return "";
+    let result = template;
+    for (const [key, value] of Object.entries(values)) {
+      const pattern = new RegExp(`\\[\\[\\s*${key}\\s*\\]\\]`, "gi");
+      const formatted = key.toUpperCase() === "PRICE" ? formatPrice(value, moneyFormat, decimals) : String(value != null ? value : "");
+      result = result.replace(pattern, formatted);
+    }
+    return result;
+  }
+  function formatPrice(amount, moneyFormat, decimals) {
+    if (amount == null) return "";
+    if (isNaN(Number(amount))) return String(amount);
+    return formatAmount(Number(amount), moneyFormat, decimals);
+  }
+
+  // ../lib/tier-order.js
+  var TYPE_RANK = { price: 0, quantity: 1 };
+  function defaultTypeOf(t2) {
+    return t2.type || t2._trigger_type || t2.trigger_type;
+  }
+  function compareDefault(typeOf) {
+    return (a2, b2) => {
+      var _a, _b;
+      const ta = (_a = TYPE_RANK[typeOf(a2)]) != null ? _a : 2;
+      const tb = (_b = TYPE_RANK[typeOf(b2)]) != null ? _b : 2;
+      return ta - tb || Number(a2.threshold) - Number(b2.threshold);
+    };
+  }
+  function defaultTierOrder(tiers, typeOf = defaultTypeOf) {
+    return tiers.slice().sort(compareDefault(typeOf));
+  }
+  function orderTiers(tiers, tierOrder, typeOf = defaultTypeOf) {
+    var _a;
+    if (!Array.isArray(tierOrder) || tierOrder.length === 0) return defaultTierOrder(tiers, typeOf);
+    const byId = new Map(tiers.map((t2) => [t2.id, t2]));
+    const placed = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const id of tierOrder) {
+      const t2 = byId.get(id);
+      if (t2 && !seen.has(id)) {
+        placed.push(t2);
+        seen.add(id);
+      }
+    }
+    const unplaced = defaultTierOrder(tiers.filter((t2) => !seen.has(t2.id)), typeOf);
+    for (const t2 of unplaced) {
+      const type = typeOf(t2);
+      const amount = Number(t2.threshold);
+      let at = -1;
+      for (let i2 = 0; i2 < placed.length; i2++) {
+        if (typeOf(placed[i2]) === type && Number(placed[i2].threshold) <= amount) at = i2 + 1;
+      }
+      if (at === -1) {
+        const first = placed.findIndex((p2) => typeOf(p2) === type);
+        if (first !== -1) at = first;
+      }
+      if (at === -1) at = ((_a = TYPE_RANK[type]) != null ? _a : 2) === 0 ? 0 : placed.length;
+      placed.splice(at, 0, t2);
+    }
+    return placed;
+  }
+
+  // ../lib/progress-bar.js
+  function milestoneEntry(m2) {
+    return {
+      id: m2.id,
+      source: "visual_milestone",
+      // Visual milestones are not promotions — no promotion_id/type so the
+      // drawer-side observer skips them.
+      promotion_id: null,
+      promotion_type: null,
+      threshold: m2.trigger.threshold,
+      trigger_type: m2.trigger.type,
+      label: m2.label,
+      sub_label: m2.sub_label || null,
+      icon_url: m2.icon_url || null
+    };
+  }
+  function collectBarEntries(config, page, customer) {
+    var _a;
+    const exclusive = exclusiveMilestones(config.progress_bar.visual_milestones, page, customer);
+    if (exclusive.length > 0) return exclusive.map(milestoneEntry);
+    const entries = [];
+    const eligibleOffers = (config.offers || []).filter(
+      (o2) => {
+        var _a2;
+        return o2.enabled && ((_a2 = o2.bar) == null ? void 0 : _a2.show) && customerMatchesTags(o2, customer);
+      }
+    );
+    const activeOffers = getActiveEntries(page, eligibleOffers);
+    const activeOfferIds = new Set(activeOffers.map((o2) => o2.id));
+    for (const offer of config.offers || []) {
+      if (!activeOfferIds.has(offer.id)) continue;
+      if (((_a = offer.reward) == null ? void 0 : _a.type) === "volume_discount") {
+        const tiers = (offer.reward.tiers || []).slice().sort((a2, b2) => a2.quantity - b2.quantity);
+        for (const tier of tiers) {
+          const tierMainLabel = `Buy ${tier.quantity}`;
+          const tierSubLabel = offer.reward.discount_mode === "fixed_total" ? `\u20B9${tier.value}` : `${tier.value}% OFF`;
+          entries.push({
+            id: offer.id + "_tier_" + tier.quantity,
+            source: "volume_discount",
+            promotion_id: offer.id,
+            promotion_type: "offer",
+            threshold: tier.quantity,
+            trigger_type: "quantity",
+            label: tierMainLabel,
+            sub_label: tierSubLabel,
+            icon_url: offer.bar.icon_url || null,
+            top_message: `Add [[QTY]] more for ${tierMainLabel} @ ${tierSubLabel}!`,
+            ribbon_message: null,
+            _volume_tier_value: tier.value,
+            _volume_discount_mode: offer.reward.discount_mode
+          });
+        }
+        continue;
+      }
+      entries.push({
+        id: offer.id,
+        source: "offer",
+        promotion_id: offer.id,
+        promotion_type: "offer",
+        threshold: offer.trigger.price_threshold || offer.trigger.quantity_threshold,
+        trigger_type: offer.trigger.price_threshold ? "price" : "quantity",
+        label: offer.bar.label,
+        sub_label: offer.bar.sub_label || null,
+        icon_url: offer.bar.icon_url || null,
+        top_message: offer.bar.top_message || null,
+        ribbon_message: offer.bar.ribbon_message || null
+      });
+    }
+    const hasPageSpecificOffers = activeOffers.some(
+      (o2) => !(o2.page_handles || []).includes("/")
+    );
+    const eligibleClaims = (config.claim_gifts || []).filter(
+      (c2) => {
+        var _a2;
+        return c2.enabled && ((_a2 = c2.bar) == null ? void 0 : _a2.show) && customerMatchesTags(c2, customer);
+      }
+    );
+    const activeClaims = hasPageSpecificOffers ? [] : getActiveEntries(page, eligibleClaims);
+    const activeClaimIds = new Set(activeClaims.map((c2) => c2.id));
+    for (const claim of config.claim_gifts || []) {
+      if (!activeClaimIds.has(claim.id)) continue;
+      entries.push({
+        id: claim.id,
+        source: "claim_gift",
+        promotion_id: claim.id,
+        promotion_type: "claim-gift",
+        threshold: claim.trigger.threshold,
+        trigger_type: claim.trigger.type,
+        label: claim.bar.label,
+        sub_label: claim.bar.sub_label || null,
+        icon_url: claim.bar.icon_url || null,
+        top_message: claim.bar.locked_message || null
+      });
+    }
+    for (const m2 of config.progress_bar.visual_milestones || []) {
+      if (hasPageSpecificOffers) continue;
+      if (!m2.enabled) continue;
+      if (!pageMatch(m2.page_handles, page)) continue;
+      if (!customerMatchesTags(m2, customer)) continue;
+      entries.push(milestoneEntry(m2));
+    }
+    return entries;
+  }
+  function mergeCollisions(entries) {
+    const groups = /* @__PURE__ */ new Map();
+    for (const e2 of entries) {
+      const key = e2.threshold;
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key).push(e2);
+    }
+    const merged = [];
+    for (const [, group2] of groups) {
+      if (group2.length === 1) {
+        merged.push(group2[0]);
+      } else {
+        merged.push({
+          ...group2[0],
+          label: group2.map((e2) => e2.label).join("\n+ "),
+          sources: group2.map((e2) => ({ id: e2.id, source: e2.source, promotion_id: e2.promotion_id, promotion_type: e2.promotion_type }))
+        });
+      }
+    }
+    return merged;
+  }
+  function computeBarState(tiers, currentValue, allCompleteMsg, moneyFormat, decimals) {
+    var _a;
+    const segmentWidth = 100 / tiers.length;
+    let progress = 0;
+    let nextFound = false;
+    let topMessage = null;
+    let prevThreshold = 0;
+    for (const tier of tiers) {
+      if (currentValue >= tier.threshold) {
+        tier.state = "active";
+        progress += segmentWidth;
+      } else if (!nextFound) {
+        tier.state = "next";
+        const remaining = tier.threshold - currentValue;
+        const segmentRange = tier.threshold - prevThreshold;
+        const segmentProgress = segmentRange > 0 ? (currentValue - prevThreshold) / segmentRange : 0;
+        progress += segmentProgress * segmentWidth;
+        nextFound = true;
+        topMessage = tier.top_message ? resolveTemplate(
+          tier.top_message,
+          {
+            PRICE: tier._volume_tier_value || remaining,
+            QTY: remaining
+          },
+          moneyFormat,
+          decimals
+        ) : null;
+      } else {
+        tier.state = "inactive";
+      }
+      prevThreshold = tier.threshold;
+    }
+    if (!nextFound) {
+      topMessage = allCompleteMsg;
+    }
+    return {
+      enabled: true,
+      mode: ((_a = tiers[0]) == null ? void 0 : _a.trigger_type) || null,
+      progress_pct: Math.min(progress, 100),
+      top_message: topMessage,
+      tiers: tiers.map((t2) => ({
+        id: t2.id,
+        source: t2.source,
+        promotion_id: t2.promotion_id || null,
+        promotion_type: t2.promotion_type || null,
+        threshold: t2.threshold,
+        trigger_type: t2.trigger_type,
+        label: t2.label,
+        sub_label: t2.sub_label,
+        icon_url: t2.icon_url,
+        state: t2.state,
+        apply_button: t2.apply_button,
+        ribbon_message: t2.ribbon_message || null
+      }))
+    };
+  }
+  function computeTierStates(tiers, currentValue, moneyFormat, decimals) {
+    let nextFound = false;
+    let prevThreshold = 0;
+    return tiers.map((tier) => {
+      let state2;
+      let topMsg = null;
+      if (currentValue >= tier.threshold) {
+        state2 = "active";
+      } else if (!nextFound) {
+        state2 = "next";
+        nextFound = true;
+        const remaining = tier.threshold - currentValue;
+        topMsg = tier.top_message ? resolveTemplate(tier.top_message, { PRICE: tier._volume_tier_value || remaining, QTY: remaining }, moneyFormat, decimals) : null;
+      } else {
+        state2 = "inactive";
+      }
+      const result = {
+        ...tier,
+        state: state2,
+        _top_message: topMsg,
+        _prevThreshold: prevThreshold,
+        _trigger_type: tier.trigger_type
+      };
+      prevThreshold = tier.threshold;
+      return result;
+    });
+  }
+  function buildBar(config, page, adjustedTotal2, adjustedQty2, moneyFormat, customer) {
+    var _a, _b, _c;
+    if (!((_a = config == null ? void 0 : config.progress_bar) == null ? void 0 : _a.enabled)) return null;
+    const decimals = (_c = (_b = config.drawer) == null ? void 0 : _b.layout) == null ? void 0 : _c.price_decimals;
+    const entries = collectBarEntries(config, page, customer);
+    if (entries.length === 0) return null;
+    const tierOrder = config.progress_bar.tier_order || [];
+    const priceEntries = entries.filter((e2) => e2.trigger_type === "price");
+    const qtyEntries = entries.filter((e2) => e2.trigger_type === "quantity");
+    if (priceEntries.length > 0 && qtyEntries.length > 0) {
+      const priceMerged = mergeCollisions(priceEntries);
+      priceMerged.sort((a2, b2) => a2.threshold - b2.threshold);
+      const priceTiers = computeTierStates(priceMerged, adjustedTotal2, moneyFormat, decimals);
+      const qtyMerged = mergeCollisions(qtyEntries);
+      qtyMerged.sort((a2, b2) => a2.threshold - b2.threshold);
+      const qtyTiers = computeTierStates(qtyMerged, adjustedQty2, moneyFormat, decimals);
+      const allTiers = orderTiers([...priceTiers, ...qtyTiers], tierOrder);
+      const nextTier = allTiers.find((t2) => t2.state === "next");
+      const allComplete = allTiers.every((t2) => t2.state === "active");
+      const totalSegments = allTiers.length;
+      const activeCount = allTiers.filter((t2) => t2.state === "active").length;
+      let progressPct = activeCount / totalSegments * 100;
+      if (nextTier) {
+        const partial = nextTier._trigger_type === "price" ? (adjustedTotal2 - (nextTier._prevThreshold || 0)) / (nextTier.threshold - (nextTier._prevThreshold || 0)) : (adjustedQty2 - (nextTier._prevThreshold || 0)) / (nextTier.threshold - (nextTier._prevThreshold || 0));
+        progressPct += Math.max(0, Math.min(1, partial)) * (100 / totalSegments);
+      }
+      return {
+        enabled: true,
+        mode: "mixed",
+        progress_pct: Math.min(progressPct, 100),
+        top_message: (nextTier == null ? void 0 : nextTier._top_message) || (allComplete ? config.progress_bar.all_complete_message : null),
+        tiers: allTiers.map((t2) => ({
+          id: t2.id,
+          source: t2.source,
+          promotion_id: t2.promotion_id || null,
+          promotion_type: t2.promotion_type || null,
+          threshold: t2.threshold,
+          trigger_type: t2._trigger_type || t2.trigger_type,
+          label: t2.label,
+          sub_label: t2.sub_label,
+          icon_url: t2.icon_url,
+          state: t2.state,
+          ribbon_message: t2.ribbon_message || null
+        }))
+      };
+    }
+    const mode = priceEntries.length > 0 ? "price" : "quantity";
+    const filtered = mode === "price" ? priceEntries : qtyEntries;
+    const merged = mergeCollisions(filtered);
+    merged.sort((a2, b2) => a2.threshold - b2.threshold);
+    const currentValue = mode === "price" ? adjustedTotal2 : adjustedQty2;
+    const bar = computeBarState(
+      merged,
+      currentValue,
+      config.progress_bar.all_complete_message,
+      moneyFormat,
+      decimals
+    );
+    if (bar && bar.tiers) {
+      bar.tiers = orderTiers(bar.tiers, tierOrder);
+    }
+    return bar;
+  }
+
+  // src/rules.js
   function evaluateTrigger(offer, cart, adjTotal, adjQty) {
     if (offer.source && offer.source.type === "product") {
       var ids = (offer.source.product_variant_ids || []).map(function(v2) {
@@ -1206,7 +1552,7 @@
     var qtyMet = t2.quantity_threshold && adjQty >= t2.quantity_threshold;
     return priceMet || qtyMet;
   }
-  function evaluateOffers(offers, cart, adjTotal, adjQty, page, customer) {
+  function evaluateOffers(offers, cart, adjTotal, adjQty, page, customer, paused) {
     var toAdd = [];
     var toRemove = [];
     var triggeredIds = {};
@@ -1226,7 +1572,7 @@
           }
           triggeredGiftVids[offer.id] = grantSet;
         }
-        if (offer.reward && offer.reward.type === "auto_add_gift" && offer.reward.add_mode === "auto") {
+        if (!paused && offer.reward && offer.reward.type === "auto_add_gift" && offer.reward.add_mode === "auto") {
           var giftVids = offer.reward.gift_variants || [];
           for (var g2 = 0; g2 < giftVids.length; g2++) {
             var vid = String(normalizeVariantId(giftVids[g2]));
@@ -1289,75 +1635,6 @@
     }
     return removals;
   }
-  function buildBar(config, adjTotal, adjQty, page, moneyFormat, customer) {
-    if (!config.progress_bar || !config.progress_bar.enabled) return null;
-    var entries = [];
-    for (var i2 = 0; i2 < (config.offers || []).length; i2++) {
-      var offer = config.offers[i2];
-      if (!offer.bar || !offer.bar.show) continue;
-      if (!pageMatch(offer.page_handles, page)) continue;
-      if (!customerMatchesTags(offer, customer)) continue;
-      entries.push({
-        threshold: offer.trigger.price_threshold || offer.trigger.quantity_threshold,
-        trigger_type: offer.trigger.price_threshold ? "price" : "quantity",
-        label: offer.bar.label || "",
-        top_message: offer.bar.top_message || null
-      });
-    }
-    if (entries.length === 0) return null;
-    entries.sort(function(a2, b2) {
-      return a2.threshold - b2.threshold;
-    });
-    var mode = entries.some(function(e2) {
-      return e2.trigger_type === "price";
-    }) ? "price" : "quantity";
-    var filtered = entries.filter(function(e2) {
-      return e2.trigger_type === mode;
-    });
-    if (filtered.length === 0) return null;
-    var currentValue = mode === "price" ? adjTotal : adjQty;
-    var segmentWidth = 100 / filtered.length;
-    var progress = 0;
-    var topMessage = null;
-    var tiers = [];
-    var prevThreshold = 0;
-    for (var t2 = 0; t2 < filtered.length; t2++) {
-      var tier = filtered[t2];
-      var state2;
-      if (currentValue >= tier.threshold) {
-        state2 = "active";
-        progress += segmentWidth;
-      } else if (!topMessage) {
-        state2 = "next";
-        var remaining = tier.threshold - currentValue;
-        var segmentRange = tier.threshold - prevThreshold;
-        var segmentProgress = segmentRange > 0 ? (currentValue - prevThreshold) / segmentRange : 0;
-        progress += segmentProgress * segmentWidth;
-        if (tier.top_message) {
-          var formatted = formatMoneyTemplate(moneyFormat, remaining);
-          topMessage = tier.top_message.replace(/\[\[\s*price\s*\]\]/gi, formatted);
-        }
-      } else {
-        state2 = "inactive";
-      }
-      prevThreshold = tier.threshold;
-      tiers.push({
-        threshold: tier.threshold,
-        label: tier.label,
-        state: state2
-      });
-    }
-    if (topMessage === null && currentValue >= filtered[filtered.length - 1].threshold) {
-      topMessage = config.progress_bar.all_complete_message || null;
-    }
-    return {
-      enabled: true,
-      mode,
-      progress_pct: Math.min(progress, 100),
-      top_message: topMessage,
-      tiers
-    };
-  }
   function localEvaluate(cachedConfig, cart, customer) {
     if (!cachedConfig || !cart) return null;
     var items = cart.items || [];
@@ -1367,12 +1644,13 @@
     var cfgOffers = cachedConfig.offers || [];
     var cfgClaims = cachedConfig.claim_gifts || [];
     var configPopulated = cfgOffers.length > 0 || cfgClaims.length > 0;
-    var offerResult = evaluateOffers(cfgOffers, cart, adjTotal, adjQty, page, customer);
+    var paused = offersPausedOnPage(cachedConfig, page, customer);
+    var offerResult = evaluateOffers(cfgOffers, cart, adjTotal, adjQty, page, customer, paused);
     var claimRemovals = evaluateClaimRemovals(cfgClaims, items, adjTotal, adjQty, configPopulated);
     if (claimRemovals.length) {
       offerResult.to_remove = (offerResult.to_remove || []).concat(claimRemovals);
     }
-    var bar = buildBar(cachedConfig, adjTotal, adjQty, page, cachedConfig.money_format || "", customer);
+    var bar = buildBar(cachedConfig, page, adjTotal, adjQty, cachedConfig.money_format || storeMoneyFormat(), customer);
     var ribbonMessage = null;
     if (bar && bar.tiers) {
       for (var i2 = 0; i2 < bar.tiers.length; i2++) {

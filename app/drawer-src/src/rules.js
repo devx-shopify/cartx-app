@@ -4,47 +4,16 @@
 // Used when config is cached — avoids server roundtrip.
 // =============================================================
 
-import { normalizeVariantId as normalizeId, formatMoneyTemplate } from './helpers';
+import { normalizeVariantId as normalizeId, storeMoneyFormat } from './helpers';
 import { adjustedTotal, adjustedQty } from '../../lib/upsell-rank.js';
 // ^ shared with the server (helpers.server.js re-exports the same functions),
 // so qualifying spend is computed identically on both sides.
-
-function pageMatch(handles, path) {
-  if (!handles || handles.length === 0) return false;
-  if (handles.indexOf('/') !== -1) return true;
-  var clean = path.split('?')[0];
-  return handles.indexOf(clean) !== -1;
-}
+import { pageMatch, customerMatchesTags, offersPausedOnPage } from '../../lib/page-target.js';
+import { buildBar } from '../../lib/progress-bar.js';
+// ^ also shared with the server: the instant bar is built by the SAME code as
+// the server's, so no milestone pops in when the server result lands.
 
 // ── Evaluate offers (mirrors triggers.server.js) ──────────
-
-function normalizeTag(t) {
-  return String(t).trim().toLowerCase();
-}
-
-// Client mirror of customerMatchesTags from helpers.server.js.
-// Keeps optimistic local eval in sync with server filtering, otherwise
-// an offer can flash on screen before the server response removes it.
-function customerMatchesTags(rule, customer) {
-  var target = rule && rule.customer_tags;
-  if (!target) return true;
-  var required = (target.required_any || []).map(normalizeTag).filter(Boolean);
-  var excluded = (target.excluded || []).map(normalizeTag).filter(Boolean);
-  var tags = ((customer && customer.tags) || []).map(normalizeTag);
-  if (excluded.length) {
-    for (var i = 0; i < excluded.length; i++) {
-      if (tags.indexOf(excluded[i]) !== -1) return false;
-    }
-  }
-  if (required.length) {
-    var matched = false;
-    for (var j = 0; j < required.length; j++) {
-      if (tags.indexOf(required[j]) !== -1) { matched = true; break; }
-    }
-    if (!matched) return false;
-  }
-  return true;
-}
 
 function evaluateTrigger(offer, cart, adjTotal, adjQty) {
   // Product-presence trigger — fires when any source variant is in the cart
@@ -72,7 +41,10 @@ function evaluateTrigger(offer, cart, adjTotal, adjQty) {
   return priceMet || qtyMet;
 }
 
-export function evaluateOffers(offers, cart, adjTotal, adjQty, page, customer) {
+// `paused`: an "Only this milestone" custom milestone is on this page, so no
+// gift is added here. Triggers are still worked out so gifts already in the
+// cart are kept (mirrors the server's evaluateOffers).
+export function evaluateOffers(offers, cart, adjTotal, adjQty, page, customer, paused) {
   var toAdd = [];
   var toRemove = [];
   var triggeredIds = {};
@@ -102,7 +74,7 @@ export function evaluateOffers(offers, cart, adjTotal, adjQty, page, customer) {
         }
         triggeredGiftVids[offer.id] = grantSet;
       }
-      if (offer.reward && offer.reward.type === 'auto_add_gift' && offer.reward.add_mode === 'auto') {
+      if (!paused && offer.reward && offer.reward.type === 'auto_add_gift' && offer.reward.add_mode === 'auto') {
         var giftVids = offer.reward.gift_variants || [];
         for (var g = 0; g < giftVids.length; g++) {
           // String()-coerce both sides: gift_variants are gids (→ numeric string)
@@ -199,84 +171,6 @@ export function evaluateClaimRemovals(claimGifts, items, adjTotal, adjQty, confi
   return removals;
 }
 
-// ── Build progress bar (simplified client-side) ───────────
-
-function buildBar(config, adjTotal, adjQty, page, moneyFormat, customer) {
-  if (!config.progress_bar || !config.progress_bar.enabled) return null;
-
-  var entries = [];
-
-  // Collect from offers
-  for (var i = 0; i < (config.offers || []).length; i++) {
-    var offer = config.offers[i];
-    if (!offer.bar || !offer.bar.show) continue;
-    if (!pageMatch(offer.page_handles, page)) continue;
-    if (!customerMatchesTags(offer, customer)) continue;
-    entries.push({
-      threshold: offer.trigger.price_threshold || offer.trigger.quantity_threshold,
-      trigger_type: offer.trigger.price_threshold ? 'price' : 'quantity',
-      label: offer.bar.label || '',
-      top_message: offer.bar.top_message || null,
-    });
-  }
-
-  if (entries.length === 0) return null;
-
-  // Sort by threshold
-  entries.sort(function (a, b) { return a.threshold - b.threshold; });
-
-  // Determine mode
-  var mode = entries.some(function (e) { return e.trigger_type === 'price'; }) ? 'price' : 'quantity';
-  var filtered = entries.filter(function (e) { return e.trigger_type === mode; });
-  if (filtered.length === 0) return null;
-
-  var currentValue = mode === 'price' ? adjTotal : adjQty;
-  var segmentWidth = 100 / filtered.length;
-  var progress = 0;
-  var topMessage = null;
-  var tiers = [];
-  var prevThreshold = 0;
-
-  for (var t = 0; t < filtered.length; t++) {
-    var tier = filtered[t];
-    var state;
-    if (currentValue >= tier.threshold) {
-      state = 'active';
-      progress += segmentWidth;
-    } else if (!topMessage) {
-      state = 'next';
-      var remaining = tier.threshold - currentValue;
-      var segmentRange = tier.threshold - prevThreshold;
-      var segmentProgress = segmentRange > 0 ? (currentValue - prevThreshold) / segmentRange : 0;
-      progress += segmentProgress * segmentWidth;
-      if (tier.top_message) {
-        var formatted = formatMoneyTemplate(moneyFormat, remaining);
-        topMessage = tier.top_message.replace(/\[\[\s*price\s*\]\]/gi, formatted);
-      }
-    } else {
-      state = 'inactive';
-    }
-    prevThreshold = tier.threshold;
-    tiers.push({
-      threshold: tier.threshold,
-      label: tier.label,
-      state: state,
-    });
-  }
-
-  if (topMessage === null && currentValue >= filtered[filtered.length - 1].threshold) {
-    topMessage = config.progress_bar.all_complete_message || null;
-  }
-
-  return {
-    enabled: true,
-    mode: mode,
-    progress_pct: Math.min(progress, 100),
-    top_message: topMessage,
-    tiers: tiers,
-  };
-}
-
 // ── Main: evaluate cart locally ───────────────────────────
 
 export function localEvaluate(cachedConfig, cart, customer) {
@@ -294,12 +188,13 @@ export function localEvaluate(cachedConfig, cart, customer) {
   // mis-resolved config, exactly as evaluateOffers gates freebie removal.
   var configPopulated = cfgOffers.length > 0 || cfgClaims.length > 0;
 
-  var offerResult = evaluateOffers(cfgOffers, cart, adjTotal, adjQty, page, customer);
+  var paused = offersPausedOnPage(cachedConfig, page, customer);
+  var offerResult = evaluateOffers(cfgOffers, cart, adjTotal, adjQty, page, customer, paused);
   var claimRemovals = evaluateClaimRemovals(cfgClaims, items, adjTotal, adjQty, configPopulated);
   if (claimRemovals.length) {
     offerResult.to_remove = (offerResult.to_remove || []).concat(claimRemovals);
   }
-  var bar = buildBar(cachedConfig, adjTotal, adjQty, page, cachedConfig.money_format || '', customer);
+  var bar = buildBar(cachedConfig, page, adjTotal, adjQty, cachedConfig.money_format || storeMoneyFormat(), customer);
 
   // Ribbon from next locked tier
   var ribbonMessage = null;

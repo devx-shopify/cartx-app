@@ -80,7 +80,8 @@ export function evaluateOffers(
   adjustedTotal,
   adjustedQty,
   page,
-  customer
+  customer,
+  { paused = false } = {}
 ) {
   const eligible = offers.filter((o) => o.enabled && customerMatchesTags(o, customer))
   const active = getActiveEntries(page, eligible)
@@ -109,6 +110,12 @@ export function evaluateOffers(
       })
       continue
     }
+
+    // An "Only this milestone" custom milestone on this page pauses gift
+    // offers here: nothing new is added or shown. Gifts already in the cart are
+    // kept by the cross-page pass below. (Volume discounts are applied by the
+    // Function wherever the cart is, so they're still reported above.)
+    if (paused) continue
 
     const triggered = evaluateTrigger(offer, cart, adjustedTotal, adjustedQty)
     if (!triggered) continue
