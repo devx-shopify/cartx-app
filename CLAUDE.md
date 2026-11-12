@@ -77,3 +77,11 @@ Prisma/Postgres; deployed on Fly.io; Sentry monitoring; two Shopify Functions
   Enabling `checkJs`/`.jsx` is a large triage deferred until after launch.
 - Legacy `storefront/src/*` is superseded by `app/drawer-src/src/*` (both
   esbuild to the same `cartmax.js`); the drawer build is canonical.
+- Trigger sources: `app/lib/line-match.js` decides which cart lines a
+  promotion / bar milestone counts (whole cart, specific products, or a
+  collection) and is shared by the server, the drawer and the progress bar
+  (both deploys). Collections are resolved to product IDs on save
+  (`collection-products.server.js`, cap 2500) and refreshed by the
+  collections/update, collections/delete and products/update webhooks. A
+  collection saved before this has no product list and still counts the whole
+  cart until re-saved. The volume Function filters on `product_ids` per offer.

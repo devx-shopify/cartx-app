@@ -1,4 +1,5 @@
 import { useLoaderData, useOutletContext } from "react-router";
+import { resolveCollectionSources } from "../lib/collection-products.server.js";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
@@ -64,6 +65,7 @@ export const action = async ({ request, params }) => {
   // Offer COUNT isn't hard-blocked — over-limit offers just don't apply at
   // checkout, and the promotions page shows an upgrade note.
   const planData = await getActivePlan(admin, session.shop);
+  let collectionWarnings = [];
   if (type === "offer") {
     const rewardErr = offerRewardPolicyError(planData, body.reward?.type);
     if (rewardErr) return rewardErr;
@@ -76,6 +78,11 @@ export const action = async ({ request, params }) => {
       const vids = body.reward.gift_variants || [];
       const variantDataMap = await fetchVariantData(admin, vids);
       body.reward.gift_variant_data = enrichVariantData(vids, variantDataMap);
+    }
+    // "A collection": store the collection's product IDs so the trigger, the
+    // bar and the volume discount count only that collection's lines.
+    if (body.source?.type === "collection") {
+      collectionWarnings = await resolveCollectionSources(admin, [body.source]);
     }
     config.offers[idx] = { ...config.offers[idx], ...body, id: params.id };
   } else if (type === "coupon") {
@@ -93,7 +100,7 @@ export const action = async ({ request, params }) => {
   await saveConfig(shopId, themeId, config);
 
   // Discount syncs are secondary effects — never let one crash the save.
-  const warnings = await syncDiscounts(admin, session.shop, config, type);
+  const warnings = [...collectionWarnings, ...(await syncDiscounts(admin, session.shop, config, type))];
 
   return { ok: true, warnings };
 };

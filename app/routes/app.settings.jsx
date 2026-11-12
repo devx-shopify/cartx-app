@@ -13,6 +13,7 @@ import {
   getSelectedTheme,
 } from "../lib/config.server.js";
 import { generateId } from "../lib/helpers.server.js";
+import { resolveCollectionSources } from "../lib/collection-products.server.js";
 import { markStep } from "../lib/onboarding.server.js";
 import TargetingSection from "../components/TargetingSection.jsx";
 import VStack from "../components/VStack.jsx";
@@ -104,12 +105,34 @@ function milestoneDisplay(display, pageHandles) {
   return display === "only_this" && !pageHandles.includes("/") ? "only_this" : undefined;
 }
 
+// Clean a submitted milestone source; resolve a collection's products now so
+// the bar can count only its lines (refreshed later by webhooks).
+async function milestoneSource(admin, source, warnings) {
+  if (!source || typeof source !== "object") return undefined;
+  if (source.type === "products") {
+    const ids = (source.product_ids || []).map(String).filter(Boolean);
+    if (!ids.length) return undefined;
+    const products = (source.products || [])
+      .filter((p) => p && p.id)
+      .map((p) => ({ id: String(p.id), ...(p.title ? { title: String(p.title) } : {}) }));
+    return { type: "products", product_ids: ids, ...(products.length ? { products } : {}) };
+  }
+  if (source.type === "collection" && source.collection_id) {
+    const out = { type: "collection", collection_id: String(source.collection_id) };
+    if (source.collection_title) out.collection_title = String(source.collection_title);
+    warnings.push(...(await resolveCollectionSources(admin, [out])));
+    return out;
+  }
+  return undefined;
+}
+
 export const action = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const preferred = await getSelectedTheme(session.shop);
   const { shopId, themeId } = await getShopAndTheme(admin, session, preferred);
   const config = await loadConfig(shopId, themeId);
   const body = await request.json();
+  const warnings = [];
 
   if (body._action === "add_milestone") {
     const pageHandles = Array.isArray(body.page_handles)
@@ -124,10 +147,11 @@ export const action = async ({ request }) => {
       icon_url: body.icon_url || undefined,
       page_handles: pageHandles,
       page_targets: body.page_targets,
+      source: await milestoneSource(admin, body.source, warnings),
       display: milestoneDisplay(body.display, pageHandles),
     });
     await saveConfig(shopId, themeId, config);
-    return { ok: true };
+    return { ok: true, warnings };
   }
   if (body._action === "delete_milestone") {
     config.progress_bar.visual_milestones = config.progress_bar.visual_milestones.filter((m) => m.id !== body.id);
@@ -150,11 +174,12 @@ export const action = async ({ request }) => {
         ? body.page_handles
         : body.page_handles.split(",").map((h) => h.trim()).filter(Boolean);
       milestone.page_targets = body.page_targets;
+      milestone.source = await milestoneSource(admin, body.source, warnings);
       milestone.display = milestoneDisplay(body.display, milestone.page_handles);
       if (typeof body.icon_url === "string") milestone.icon_url = body.icon_url || undefined;
     }
     await saveConfig(shopId, themeId, config);
-    return { ok: true };
+    return { ok: true, warnings };
   }
 
   config.progress_bar.enabled = body.progress_bar_enabled;
@@ -350,6 +375,46 @@ function MilestoneFormFields({ initial, onSubmit, onCancel, submitting, submitLa
   const [pageTargets, setPageTargets] = useState(initial?.page_targets);
   const [display, setDisplay] = useState(initial?.display === "only_this" ? "only_this" : "with_others");
   const allPages = pageHandles.includes("/");
+  // What counts toward the threshold: whole cart, chosen products, or a collection.
+  const [sourceType, setSourceType] = useState(initial?.source?.type ?? "cart");
+  const [sourceProducts, setSourceProducts] = useState(
+    initial?.source?.products ??
+      (initial?.source?.product_ids || []).map((id) => ({ id })),
+  );
+  const [collection, setCollection] = useState(
+    initial?.source?.collection_id
+      ? { id: initial.source.collection_id, title: initial.source.collection_title || "" }
+      : null,
+  );
+
+  async function pickSourceProducts() {
+    const selection = await shopify.resourcePicker({
+      type: "product",
+      multiple: true,
+      action: "select",
+      filter: { variants: false },
+      selectionIds: sourceProducts.map((p) => ({
+        id: String(p.id).startsWith("gid://") ? p.id : `gid://shopify/Product/${p.id}`,
+      })),
+    });
+    if (selection) {
+      setSourceProducts(selection.map((p) => ({ id: String(p.id).split("/").pop(), title: p.title })));
+    }
+  }
+  async function pickSourceCollection() {
+    const selection = await shopify.resourcePicker({ type: "collection", multiple: false, action: "select" });
+    if (selection?.[0]) setCollection({ id: selection[0].id, title: selection[0].title || "" });
+  }
+
+  function buildSource() {
+    if (sourceType === "products" && sourceProducts.length) {
+      return { type: "products", product_ids: sourceProducts.map((p) => p.id), products: sourceProducts };
+    }
+    if (sourceType === "collection" && collection) {
+      return { type: "collection", collection_id: collection.id, collection_title: collection.title || undefined };
+    }
+    return undefined;
+  }
 
   function handleSubmit() {
     if (!label.trim() || !threshold) return;
@@ -362,6 +427,7 @@ function MilestoneFormFields({ initial, onSubmit, onCancel, submitting, submitLa
       page_handles: pageHandles,
       page_targets: pageTargets,
       display: allPages ? "with_others" : display,
+      source: buildSource(),
     });
   }
 
@@ -379,6 +445,38 @@ function MilestoneFormFields({ initial, onSubmit, onCancel, submitting, submitLa
           </s-select>
           <s-number-field label="Threshold" value={String(threshold)} onInput={(e) => setThreshold(e.target.value)} />
         </div>
+        <s-select
+          label="Counts toward this milestone"
+          value={sourceType}
+          onChange={(e) => setSourceType(e.target.value)}
+          details={
+            sourceType === "cart"
+              ? "Everything in the cart, after discounts (free gifts excluded)."
+              : "Only these items count toward the threshold, after discounts (free gifts excluded)."
+          }
+        >
+          <s-option value="cart">Entire cart</s-option>
+          <s-option value="products">Specific products</s-option>
+          <s-option value="collection">A collection</s-option>
+        </s-select>
+        {sourceType === "products" && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <s-button onClick={pickSourceProducts}>Select products</s-button>
+            {sourceProducts.length > 0 && (
+              <s-text color="subdued">
+                {sourceProducts.length === 1
+                  ? sourceProducts[0].title || "1 product"
+                  : `${sourceProducts.length} products`}
+              </s-text>
+            )}
+          </div>
+        )}
+        {sourceType === "collection" && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <s-button onClick={pickSourceCollection}>Select collection</s-button>
+            {collection && <s-badge tone="success">{collection.title || "Collection selected"}</s-badge>}
+          </div>
+        )}
         <TargetingSection
           pageHandles={pageHandles}
           pageTargets={pageTargets}
@@ -494,7 +592,10 @@ export default function Settings() {
   }, [pbEnabled, allCompleteMessage, lineup, ribbonEnabled, oosOverride, crossPageBehavior, data]);
 
   useEffect(() => {
-    if (fetcher.data?.ok) shopify.toast.show("Settings saved");
+    if (fetcher.data?.ok) {
+      const w = fetcher.data.warnings || [];
+      shopify.toast.show(w.length ? w[0] : "Settings saved", w.length ? { isError: true, duration: 8000 } : undefined);
+    }
   }, [fetcher.data, shopify]);
 
   function handleSave() {

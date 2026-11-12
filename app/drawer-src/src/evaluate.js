@@ -8,6 +8,8 @@ import { internalFetch, fetchCart, cartUpdateAll, getContext, normalizeVariantId
 import { localEvaluate } from './rules';
 import { setStorefrontConfig } from './storefront-cart';
 import { adjustedTotal, adjustedQty } from '../../lib/upsell-rank.js';
+import { isScoped, scopedTotals } from '../../lib/line-match.js';
+import { tierSource } from '../../lib/progress-bar.js';
 
 var PROXY_URL = '/apps/cartx/evaluate-cart';
 
@@ -371,10 +373,23 @@ function recomputeBar(serverBar, cart) {
     return tier.trigger_type || (mode === 'price' ? 'price' : 'quantity');
   }
 
+  // A milestone scoped to products/a collection (scope_ref) counts only those
+  // lines — same shared matcher as the server (app/lib/line-match.js).
+  function tierValue(tier) {
+    var ttype = tierType(tier);
+    if (tier.scope_ref) {
+      var src = tierSource(_cachedConfig, tier.scope_ref);
+      if (isScoped(src)) {
+        var sc = scopedTotals(items, src);
+        return ttype === 'price' ? sc.total : sc.qty;
+      }
+    }
+    return ttype === 'price' ? adjTotal : adjQty;
+  }
+
   // First pass: compare each tier against its own current value (price vs qty).
   var stated = tiers.map(function (tier) {
-    var ttype = tierType(tier);
-    var cv = ttype === 'price' ? adjTotal : adjQty;
+    var cv = tierValue(tier);
     return Object.assign({}, tier, {
       state: cv >= tier.threshold ? 'active' : 'inactive',
     });
@@ -412,7 +427,7 @@ function recomputeBar(serverBar, cart) {
   }
   if (nextTier) {
     var ttypeN = tierType(nextTier);
-    var cvN = ttypeN === 'price' ? adjTotal : adjQty;
+    var cvN = tierValue(nextTier);
     var sameTypeSorted = newTiers
       .filter(function (t) { return tierType(t) === ttypeN; })
       .slice()
@@ -434,8 +449,7 @@ function recomputeBar(serverBar, cart) {
   if (!nextTier) {
     topMessage = (_cachedConfig && _cachedConfig.progress_bar && _cachedConfig.progress_bar.all_complete_message) || serverBar.top_message;
   } else {
-    var ttypeT = tierType(nextTier);
-    var cvT = ttypeT === 'price' ? adjTotal : adjQty;
+    var cvT = tierValue(nextTier);
     var remaining = nextTier.threshold - cvT;
     var tmpl = findTopMessage(nextTier.id);
     if (tmpl) {

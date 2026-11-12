@@ -1,4 +1,5 @@
 import { useSearchParams, useOutletContext } from "react-router";
+import { resolveCollectionSources } from "../lib/collection-products.server.js";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
@@ -46,6 +47,7 @@ export const action = async ({ request }) => {
   const planData = await getActivePlan(admin, session.shop);
   const typeErr = promoTypePolicyError(planData, type);
   if (typeErr) return typeErr;
+  let collectionWarnings = [];
   if (type === "offer") {
     const rewardErr = offerRewardPolicyError(planData, body.reward?.type);
     if (rewardErr) return rewardErr;
@@ -60,6 +62,11 @@ export const action = async ({ request }) => {
       const variantDataMap = await fetchVariantData(admin, vids);
       body.reward.gift_variant_data = enrichVariantData(vids, variantDataMap);
     }
+    // "A collection": store the collection's product IDs so the trigger, the
+    // bar and the volume discount count only that collection's lines.
+    if (body.source?.type === "collection") {
+      collectionWarnings = await resolveCollectionSources(admin, [body.source]);
+    }
     config.offers.push({ id: generateId(), ...body });
   } else if (type === "coupon") {
     config.coupons.push({ id: generateId(), ...body });
@@ -73,7 +80,7 @@ export const action = async ({ request }) => {
 
   // Discount syncs are secondary effects — the promotion is already saved. A
   // Shopify API hiccup here must not crash the save; surface it as a warning.
-  const warnings = await syncDiscounts(admin, session.shop, config, type);
+  const warnings = [...collectionWarnings, ...(await syncDiscounts(admin, session.shop, config, type))];
 
   // Mark onboarding step
   await markStep(session.shop, "offer_created");

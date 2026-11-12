@@ -132,7 +132,7 @@ export const action = async ({ request }) => {
     // claim gifts pause here (the bar shows only that milestone).
     const paused = offersPausedOnPage(config, page, customer);
     offerResult = evaluateOffers(config.offers || [], cart, adjTotal, adjQty, page, customer, { paused });
-    bar = buildBar(config, page, adjTotal, adjQty, moneyFormat, customer);
+    bar = buildBar(config, page, adjTotal, adjQty, moneyFormat, customer, cart.items);
     ({ ribbon_message } = getRibbonFromBar(bar));
     availableCoupons = resolveAvailableCoupons(config.coupons || [], cart, page, customer);
     claimGifts = paused ? null : resolveClaimGifts(config.claim_gifts || [], cart, adjTotal, adjQty, page, customer);
