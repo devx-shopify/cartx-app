@@ -50,6 +50,16 @@ Prisma/Postgres; deployed on Fly.io; Sentry monitoring; two Shopify Functions
   fail it are picked in the admin but left out of evaluate-cart. upsell-rank.js is also the single home for
   `adjustedTotal` / `adjustedQty` — do not reintroduce local copies; three had
   already drifted apart once.
+- The progress bar is built by ONE shared module, `app/lib/progress-bar.js`
+  (with `page-target.js`, `template.js`, `tier-order.js`, `money-format.js`),
+  used by the server (`evaluate/bar.server.js` re-exports it) and by the
+  drawer's instant bar (`drawer-src/src/rules.js`). Keep them dependency-free;
+  a change needs BOTH deploys. A separate drawer copy had drifted (it skipped
+  claim gifts + Settings milestones) and caused bar layout shift.
+- Custom milestones (Settings → Progress bar) have `display`: `with_others`
+  (default) | `only_this`. `only_this` is allowed only on page-targeted
+  milestones; on its page the bar shows only it and gift offers + claim gifts
+  pause (`offersPausedOnPage`); gifts already in the cart stay.
 - Upsells: `upsell-recs.js` picks the candidates (cart-based product rules from
   the `UpsellRule` table, then the default list); `upsell-rank.js` orders them
   (gap-filler, Shopify recommendations, performance). Upsell analytics use the
