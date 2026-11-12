@@ -79,6 +79,7 @@ export const loader = async ({ request }) => {
       threshold: m.trigger.threshold,
       type: m.trigger.type,
       enabled: m.enabled,
+      only_this: m.display === "only_this",
       can_toggle: true,
     });
   }
@@ -97,6 +98,12 @@ export const loader = async ({ request }) => {
   };
 };
 
+// "Only this milestone" is kept only on page-targeted milestones: on "All
+// pages" it would hide every other milestone everywhere.
+function milestoneDisplay(display, pageHandles) {
+  return display === "only_this" && !pageHandles.includes("/") ? "only_this" : undefined;
+}
+
 export const action = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const preferred = await getSelectedTheme(session.shop);
@@ -105,6 +112,9 @@ export const action = async ({ request }) => {
   const body = await request.json();
 
   if (body._action === "add_milestone") {
+    const pageHandles = Array.isArray(body.page_handles)
+      ? body.page_handles
+      : body.page_handles.split(",").map((h) => h.trim()).filter(Boolean);
     config.progress_bar.visual_milestones.push({
       id: generateId(),
       enabled: true,
@@ -112,10 +122,9 @@ export const action = async ({ request }) => {
       label: body.label,
       sub_label: body.sub_label || undefined,
       icon_url: body.icon_url || undefined,
-      page_handles: Array.isArray(body.page_handles)
-        ? body.page_handles
-        : body.page_handles.split(",").map((h) => h.trim()).filter(Boolean),
+      page_handles: pageHandles,
       page_targets: body.page_targets,
+      display: milestoneDisplay(body.display, pageHandles),
     });
     await saveConfig(shopId, themeId, config);
     return { ok: true };
@@ -141,6 +150,7 @@ export const action = async ({ request }) => {
         ? body.page_handles
         : body.page_handles.split(",").map((h) => h.trim()).filter(Boolean);
       milestone.page_targets = body.page_targets;
+      milestone.display = milestoneDisplay(body.display, milestone.page_handles);
       if (typeof body.icon_url === "string") milestone.icon_url = body.icon_url || undefined;
     }
     await saveConfig(shopId, themeId, config);
@@ -285,6 +295,9 @@ function TierRow({
           {isMilestone && !item.enabled && (
             <s-badge tone="warning">Off</s-badge>
           )}
+          {isMilestone && item.only_this && (
+            <s-badge tone="info">Only this milestone</s-badge>
+          )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
           <s-badge tone={SOURCE_TONE[item.source_label] || undefined}>{item.source_label}</s-badge>
@@ -335,6 +348,8 @@ function MilestoneFormFields({ initial, onSubmit, onCancel, submitting, submitLa
   const [threshold, setThreshold] = useState(String(initial?.trigger?.threshold ?? ""));
   const [pageHandles, setPageHandles] = useState(initial?.page_handles?.length ? initial.page_handles : ["/"]);
   const [pageTargets, setPageTargets] = useState(initial?.page_targets);
+  const [display, setDisplay] = useState(initial?.display === "only_this" ? "only_this" : "with_others");
+  const allPages = pageHandles.includes("/");
 
   function handleSubmit() {
     if (!label.trim() || !threshold) return;
@@ -346,6 +361,7 @@ function MilestoneFormFields({ initial, onSubmit, onCancel, submitting, submitLa
       threshold,
       page_handles: pageHandles,
       page_targets: pageTargets,
+      display: allPages ? "with_others" : display,
     });
   }
 
@@ -369,6 +385,22 @@ function MilestoneFormFields({ initial, onSubmit, onCancel, submitting, submitLa
           onChange={({ page_handles, page_targets }) => { setPageHandles(page_handles); setPageTargets(page_targets); }}
           heading="Milestone targeting"
         />
+        <s-select
+          label="Display"
+          value={allPages ? "with_others" : display}
+          onChange={(e) => setDisplay(e.target.value)}
+          details={
+            allPages
+              ? "Target specific pages to show only this milestone there."
+              : display === "only_this"
+                ? "On its pages the bar shows only this milestone, and gift offers and claim gifts pause there. Gifts already in the cart stay."
+                : "Shown together with the other milestones on its pages."
+          }
+          {...(allPages ? { disabled: true } : {})}
+        >
+          <s-option value="with_others">With other milestones</s-option>
+          <s-option value="only_this">Only this milestone</s-option>
+        </s-select>
         <div style={{ display: "flex", gap: 8 }}>
           <s-button variant="primary" onClick={handleSubmit} {...(submitting ? { disabled: true } : {})}>
             {submitLabel ?? "Save"}

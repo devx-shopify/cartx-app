@@ -172,6 +172,9 @@ export const VisualMilestoneSchema = z.object({
   icon_url: z.string().optional(),
   page_handles: z.array(z.string()).min(1),
   page_targets: z.array(PageTargetSchema).optional(),
+  // 'only_this': on its (specific) pages the bar shows only this milestone and
+  // gift offers pause there. Absent = shown with the other milestones.
+  display: z.enum(['with_others', 'only_this']).optional(),
 })
 
 export const UpsellProductSchema = z.object({

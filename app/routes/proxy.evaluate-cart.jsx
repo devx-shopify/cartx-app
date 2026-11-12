@@ -7,6 +7,7 @@ import { loadStorefrontToken } from "../lib/storefront-token.server.js";
 import { adjustedTotal, adjustedQty, isFrozenPage, computeTotalSavings } from "../lib/helpers.server.js";
 import { evaluateOffers } from "../lib/evaluate/triggers.server.js";
 import { buildBar, getRibbonFromBar } from "../lib/evaluate/bar.server.js";
+import { offersPausedOnPage } from "../lib/page-target.js";
 import { resolveAvailableCoupons } from "../lib/evaluate/coupons.server.js";
 import { resolveClaimGifts } from "../lib/evaluate/claims.server.js";
 import { loadUpsellAddRates } from "../lib/upsell-stats.server.js";
@@ -127,11 +128,14 @@ export const action = async ({ request }) => {
 
   let offerResult, bar, ribbon_message, availableCoupons, claimGifts;
   try {
-    offerResult = evaluateOffers(config.offers || [], cart, adjTotal, adjQty, page, customer);
+    // "Only this milestone" custom milestone on this page → gift offers and
+    // claim gifts pause here (the bar shows only that milestone).
+    const paused = offersPausedOnPage(config, page, customer);
+    offerResult = evaluateOffers(config.offers || [], cart, adjTotal, adjQty, page, customer, { paused });
     bar = buildBar(config, page, adjTotal, adjQty, moneyFormat, customer);
     ({ ribbon_message } = getRibbonFromBar(bar));
     availableCoupons = resolveAvailableCoupons(config.coupons || [], cart, page, customer);
-    claimGifts = resolveClaimGifts(config.claim_gifts || [], cart, adjTotal, adjQty, page, customer);
+    claimGifts = paused ? null : resolveClaimGifts(config.claim_gifts || [], cart, adjTotal, adjQty, page, customer);
   } catch (err) {
     console.error('[cartx] Evaluate pipeline error:', err);
     return Response.json({ error: "Evaluation failed" }, { status: 500 });
@@ -202,20 +206,31 @@ export const action = async ({ request }) => {
       // product-presence trigger and the gift is never added. See rules.js.
       source: o.source,
       trigger: o.trigger,
-      reward: { type: o.reward.type, gift_variants: o.reward.gift_variants, gift_variant_data: o.reward.gift_variant_data, quantity_per_variant: o.reward.quantity_per_variant, add_mode: o.reward.add_mode },
+      reward: { type: o.reward.type, gift_variants: o.reward.gift_variants, gift_variant_data: o.reward.gift_variant_data, quantity_per_variant: o.reward.quantity_per_variant, add_mode: o.reward.add_mode, tiers: o.reward.tiers, discount_mode: o.reward.discount_mode },
       page_handles: o.page_handles,
       bar: o.bar,
+      // enabled + customer_tags let the drawer's shared bar builder
+      // (app/lib/progress-bar.js) pick exactly the server's milestones.
+      enabled: true,
+      customer_tags: o.customer_tags,
     })),
     // Minimal claim-gift data (id + trigger) so the drawer's local eval can pull
     // a claimed freebie the instant the cart drops below its threshold — same as
     // it does for offer gifts. Without this the client cache has no claim rules
     // and a stranded claim gift can leave a zero-total cart.
+    // bar/page_handles/customer_tags feed the drawer's instant progress bar,
+    // so claim milestones are drawn at once instead of popping in later.
     claim_gifts: (config.claim_gifts || []).filter((g) => g.enabled).map((g) => ({
       id: g.id,
       trigger: g.trigger,
+      enabled: true,
+      page_handles: g.page_handles,
+      customer_tags: g.customer_tags,
+      bar: g.bar,
     })),
     progress_bar: config.progress_bar,
     money_format: moneyFormat || '',
+    drawer: { layout: { price_decimals: config.drawer?.layout?.price_decimals } },
     // Storefront GraphQL cart (Phase A): public token (app-minted) + pinned API
     // version. Null until minted (drawer falls back to AJAX; flag off anyway).
     storefront_token: storefrontToken,
