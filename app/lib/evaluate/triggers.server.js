@@ -1,50 +1,20 @@
 import { getActiveEntries, customerMatchesTags } from '../helpers.server.js'
 import { LINE_PROPS } from '../constants.js'
+import { offerTriggered, volumeQualifyingQty } from '../line-match.js'
 
 function normalizeId(id) {
   const s = String(id)
   return s.startsWith('gid://') ? s.split('/').pop() : s
 }
 
+// Trigger + volume counting live in the shared matcher (app/lib/line-match.js)
+// so the drawer counts exactly the same lines.
 function evaluateTrigger(offer, cart, adjustedTotal, adjustedQty) {
-  // Product presence trigger — fires when any source variant is in cart
-  if (offer.source?.type === 'product') {
-    const ids = (offer.source.product_variant_ids || []).map(normalizeId)
-    return cart.items.some((item) => ids.includes(normalizeId(item.variant_id)))
-  }
-
-  let scopeTotal = adjustedTotal
-  let scopeQty = adjustedQty
-
-  // Collection scoping — only count items from that collection
-  // Note: collection matching requires product metadata; for now use full cart
-  // This will be enhanced when collection data is available from evaluate-cart request
-
-  const priceMet =
-    offer.trigger.price_threshold && scopeTotal >= offer.trigger.price_threshold
-  const qtyMet =
-    offer.trigger.quantity_threshold &&
-    scopeQty >= offer.trigger.quantity_threshold
-
-  return priceMet || qtyMet
+  return offerTriggered(offer, cart.items, adjustedTotal, adjustedQty)
 }
 
-// ── Volume discount helpers ─────────────────────────────────
-
 function countQualifyingItems(offer, cart) {
-  const items = cart.items || []
-  if (offer.source?.type === 'product') {
-    const ids = (offer.source.product_variant_ids || []).map(normalizeId)
-    return items.reduce((sum, item) => {
-      if (item.properties?.[LINE_PROPS.FREEBIE] === 'true') return sum
-      return ids.includes(normalizeId(item.variant_id)) ? sum + item.quantity : sum
-    }, 0)
-  }
-  // Collection or no source — count all non-freebie items
-  return items.reduce((sum, item) => {
-    if (item.properties?.[LINE_PROPS.FREEBIE] === 'true') return sum
-    return sum + item.quantity
-  }, 0)
+  return volumeQualifyingQty(offer, cart.items)
 }
 
 function getActiveVolumeTier(offer, qualifyingQty) {

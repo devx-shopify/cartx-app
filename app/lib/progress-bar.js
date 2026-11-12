@@ -7,6 +7,7 @@
 import { pageMatch, getActiveEntries, customerMatchesTags, exclusiveMilestones } from './page-target.js'
 import { resolveTemplate } from './template.js'
 import { orderTiers } from './tier-order.js'
+import { isScoped, scopedTotals, sourceKey } from './line-match.js'
 
 function milestoneEntry(m) {
   return {
@@ -21,7 +22,21 @@ function milestoneEntry(m) {
     label: m.label,
     sub_label: m.sub_label || null,
     icon_url: m.icon_url || null,
+    _source: m.source || null,
   }
+}
+
+/**
+ * The trigger source behind a bar tier (by its `scope_ref`), looked up in the
+ * config. The drawer uses it to re-count a scoped milestone on every cart change.
+ */
+export function tierSource(config, scopeRef) {
+  if (!config || !scopeRef) return null
+  const offers = config.offers || []
+  for (const o of offers) if (o.id === scopeRef) return o.source || null
+  const ms = (config.progress_bar && config.progress_bar.visual_milestones) || []
+  for (const m of ms) if (m.id === scopeRef) return m.source || null
+  return null
 }
 
 function collectBarEntries(config, page, customer) {
@@ -63,6 +78,10 @@ function collectBarEntries(config, page, customer) {
           ribbon_message: null,
           _volume_tier_value: tier.value,
           _volume_discount_mode: offer.reward.discount_mode,
+          // Volume tiers count only the offer's products/collection, like the
+          // discount Function does.
+          _source: offer.source || null,
+          _scope_ref: offer.id,
         })
       }
       continue
@@ -81,6 +100,10 @@ function collectBarEntries(config, page, customer) {
       icon_url: offer.bar.icon_url || null,
       top_message: offer.bar.top_message || null,
       ribbon_message: offer.bar.ribbon_message || null,
+      // "A collection" counts only that collection; "specific products" is a
+      // presence trigger, so its bar keeps the whole-cart value.
+      _source: offer.source?.type === 'collection' ? offer.source : null,
+      _scope_ref: offer.id,
     })
   }
 
@@ -128,7 +151,9 @@ function collectBarEntries(config, page, customer) {
 function mergeCollisions(entries) {
   const groups = new Map()
   for (const e of entries) {
-    const key = e.threshold
+    // Same threshold AND same lines counted — a collection milestone at ₹999
+    // is a different marker from a whole-cart one at ₹999.
+    const key = e.threshold + '|' + sourceKey(e._source)
     if (!groups.has(key)) {
       groups.set(key, [])
     }
@@ -152,6 +177,11 @@ function mergeCollisions(entries) {
   return merged
 }
 
+// A tier's own current value: its scoped total when it counts only some lines.
+function valueOf(tier, currentValue) {
+  return tier._cv != null ? tier._cv : currentValue
+}
+
 function computeBarState(tiers, currentValue, allCompleteMsg, moneyFormat, decimals) {
   const segmentWidth = 100 / tiers.length
   let progress = 0
@@ -160,14 +190,15 @@ function computeBarState(tiers, currentValue, allCompleteMsg, moneyFormat, decim
   let prevThreshold = 0
 
   for (const tier of tiers) {
-    if (currentValue >= tier.threshold) {
+    const cv = valueOf(tier, currentValue)
+    if (cv >= tier.threshold) {
       tier.state = 'active'
       progress += segmentWidth
     } else if (!nextFound) {
       tier.state = 'next'
-      const remaining = tier.threshold - currentValue
+      const remaining = tier.threshold - cv
       const segmentRange = tier.threshold - prevThreshold
-      const segmentProgress = segmentRange > 0 ? (currentValue - prevThreshold) / segmentRange : 0
+      const segmentProgress = segmentRange > 0 ? Math.max(0, cv - prevThreshold) / segmentRange : 0
       progress += segmentProgress * segmentWidth
       nextFound = true
       topMessage = tier.top_message
@@ -209,6 +240,7 @@ function computeBarState(tiers, currentValue, allCompleteMsg, moneyFormat, decim
       state: t.state,
       apply_button: t.apply_button,
       ribbon_message: t.ribbon_message || null,
+      scope_ref: t._cv != null ? t._scope_ref : null,
     })),
   }
 }
@@ -219,12 +251,13 @@ function computeTierStates(tiers, currentValue, moneyFormat, decimals) {
   return tiers.map((tier) => {
     let state
     let topMsg = null
-    if (currentValue >= tier.threshold) {
+    const cv = valueOf(tier, currentValue)
+    if (cv >= tier.threshold) {
       state = 'active'
     } else if (!nextFound) {
       state = 'next'
       nextFound = true
-      const remaining = tier.threshold - currentValue
+      const remaining = tier.threshold - cv
       topMsg = tier.top_message
         ? resolveTemplate(tier.top_message, { PRICE: tier._volume_tier_value || remaining, QTY: remaining }, moneyFormat, decimals)
         : null
@@ -243,12 +276,23 @@ function computeTierStates(tiers, currentValue, moneyFormat, decimals) {
   })
 }
 
-export function buildBar(config, page, adjustedTotal, adjustedQty, moneyFormat, customer) {
+// `items` (the cart lines) lets milestones scoped to products/a collection
+// count only their lines; without it every milestone uses the cart totals.
+export function buildBar(config, page, adjustedTotal, adjustedQty, moneyFormat, customer, items) {
   if (!config?.progress_bar?.enabled) return null
   const decimals = config.drawer?.layout?.price_decimals
 
   const entries = collectBarEntries(config, page, customer)
   if (entries.length === 0) return null
+
+  if (items) {
+    for (const e of entries) {
+      if (!isScoped(e._source)) continue
+      const scoped = scopedTotals(items, e._source)
+      e._cv = e.trigger_type === 'price' ? scoped.total : scoped.qty
+      e._scope_ref = e._scope_ref || e.id
+    }
+  }
 
   const tierOrder = config.progress_bar.tier_order || []
 
@@ -279,9 +323,8 @@ export function buildBar(config, page, adjustedTotal, adjustedQty, moneyFormat, 
     let progressPct = (activeCount / totalSegments) * 100
     if (nextTier) {
       // Add partial progress for the next tier
-      const partial = nextTier._trigger_type === 'price'
-        ? (adjustedTotal - (nextTier._prevThreshold || 0)) / (nextTier.threshold - (nextTier._prevThreshold || 0))
-        : (adjustedQty - (nextTier._prevThreshold || 0)) / (nextTier.threshold - (nextTier._prevThreshold || 0))
+      const cvNext = valueOf(nextTier, nextTier._trigger_type === 'price' ? adjustedTotal : adjustedQty)
+      const partial = (cvNext - (nextTier._prevThreshold || 0)) / (nextTier.threshold - (nextTier._prevThreshold || 0))
       progressPct += Math.max(0, Math.min(1, partial)) * (100 / totalSegments)
     }
 
@@ -298,6 +341,7 @@ export function buildBar(config, page, adjustedTotal, adjustedQty, moneyFormat, 
         trigger_type: t._trigger_type || t.trigger_type,
         label: t.label, sub_label: t.sub_label, icon_url: t.icon_url,
         state: t.state, ribbon_message: t.ribbon_message || null,
+        scope_ref: t._cv != null ? t._scope_ref : null,
       })),
     }
   }

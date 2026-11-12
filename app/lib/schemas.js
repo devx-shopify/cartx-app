@@ -47,6 +47,9 @@ export const OfferSchema = z.object({
       type: z.enum(['product', 'collection']),
       product_variant_ids: z.array(z.string()).optional(),
       collection_id: z.string().optional(),
+      // Resolved from Shopify on save, refreshed by webhooks (line-match.js).
+      collection_title: z.string().optional(),
+      collection_product_ids: z.array(z.string()).optional(),
     })
     .optional(),
   trigger: z.object({
@@ -160,6 +163,15 @@ export const ClaimGiftSchema = z.object({
   }
 })
 
+export const MilestoneSourceSchema = z.object({
+  type: z.enum(['cart', 'products', 'collection']),
+  product_ids: z.array(z.string()).optional(),
+  products: z.array(z.object({ id: z.string(), title: z.string().optional() })).optional(),
+  collection_id: z.string().optional(),
+  collection_title: z.string().optional(),
+  collection_product_ids: z.array(z.string()).optional(),
+})
+
 export const VisualMilestoneSchema = z.object({
   id: z.string().min(1),
   enabled: z.boolean(),
@@ -172,6 +184,8 @@ export const VisualMilestoneSchema = z.object({
   icon_url: z.string().optional(),
   page_handles: z.array(z.string()).min(1),
   page_targets: z.array(PageTargetSchema).optional(),
+  // Which cart lines count toward the threshold. Absent = the whole cart.
+  source: MilestoneSourceSchema.optional(),
   // 'only_this': on its (specific) pages the bar shows only this milestone and
   // gift offers pause there. Absent = shown with the other milestones.
   display: z.enum(['with_others', 'only_this']).optional(),

@@ -64,3 +64,57 @@ describe('cartx volume discount — safety gate', () => {
     expect(result).toEqual({ operations: [] });
   });
 });
+
+describe('cartx volume discount — collection offers (product_ids)', () => {
+  function line(n, variant, product, qty) {
+    return {
+      id: 'gid://shopify/CartLine/' + n,
+      quantity: qty,
+      merchandise: {
+        __typename: 'ProductVariant',
+        id: 'gid://shopify/ProductVariant/' + variant,
+        product: { id: 'gid://shopify/Product/' + product },
+      },
+      cost: {
+        amountPerQuantity: { amount: '100.0' },
+        subtotalAmount: { amount: String(100 * qty) + '.0' },
+      },
+      freebieAttr: null,
+    };
+  }
+  function input(offer, lines) {
+    return {
+      cart: { cartxActive: { value: 'on' }, lines },
+      discount: {
+        discountClasses: [DiscountClass.Product],
+        metafield: { value: JSON.stringify({ offers: [offer] }) },
+      },
+    };
+  }
+  const OFFER = {
+    offer_id: 'vol-col',
+    variant_ids: [],
+    product_ids: ['501'],
+    discount_mode: 'percentage',
+    tiers: [{ quantity: 2, value: 10 }],
+    message: 'Collection Deal',
+  };
+
+  test('counts and discounts only products in the collection', () => {
+    const result = cartLinesDiscountsGenerateRun(input(OFFER, [line(1, 11, 501, 2), line(2, 22, 999, 3)]));
+    const candidates = result.operations[0].productDiscountsAdd.candidates;
+    expect(candidates.length).toBe(1);
+    expect(candidates[0].targets[0].cartLine.id).toBe('gid://shopify/CartLine/1');
+  });
+
+  test('other products do not help reach the tier', () => {
+    const result = cartLinesDiscountsGenerateRun(input(OFFER, [line(1, 11, 501, 1), line(2, 22, 999, 3)]));
+    expect(result.operations.length === 0 || result.operations[0].productDiscountsAdd.candidates.length === 0).toBe(true);
+  });
+
+  test('an offer without product_ids still covers every product (unchanged)', () => {
+    const { product_ids, ...open } = OFFER;
+    const result = cartLinesDiscountsGenerateRun(input(open, [line(1, 11, 501, 1), line(2, 22, 999, 1)]));
+    expect(result.operations[0].productDiscountsAdd.candidates.length).toBe(2);
+  });
+});

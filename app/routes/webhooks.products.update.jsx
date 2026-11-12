@@ -1,5 +1,6 @@
 import { authenticate } from '../shopify.server'
 import { handleProductUpdate } from '../lib/product-sync.server.js'
+import { handleProductChangeForCollections } from '../lib/collection-products.server.js'
 import { captureException } from '../lib/sentry.server.js'
 
 export const action = async ({ request }) => {
@@ -9,6 +10,8 @@ export const action = async ({ request }) => {
     const productId = payload?.id
     console.log(`[cartx][${topic}] received for ${shop} product ${productId}`)
     if (productId) await handleProductUpdate(shop, String(productId), admin)
+    // A product edit can change smart-collection membership (throttled per shop).
+    if (productId) await handleProductChangeForCollections(shop, admin)
   } catch (err) {
     // Swallow + report: returning non-200 makes Shopify retry, and product
     // snapshots going briefly stale must never loop a bad payload forever.

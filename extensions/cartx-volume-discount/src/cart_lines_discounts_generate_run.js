@@ -60,6 +60,9 @@ export function cartLinesDiscountsGenerateRun(input) {
 
   for (const offer of offers) {
     const variantIds = (offer.variant_ids || []).map(normalizeId);
+    // Collection offers send the collection's product IDs (resolved by the app
+    // when the offer is saved). Absent = no product filter.
+    const productIds = Array.isArray(offer.product_ids) ? offer.product_ids.map(normalizeId) : null;
     const tiers = (offer.tiers || []).slice().sort((a, b) => b.quantity - a.quantity);
     if (tiers.length === 0) continue;
 
@@ -76,6 +79,7 @@ export function cartLinesDiscountsGenerateRun(input) {
 
       // If variant_ids specified, only count matching. If empty, count all.
       if (variantIds.length > 0 && !variantIds.includes(vid)) continue;
+      if (productIds && !productIds.includes(normalizeId(line.merchandise.product?.id || ''))) continue;
 
       const unitPrice = parseFloat(line.cost.amountPerQuantity.amount);
       const lineTotal = parseFloat(line.cost.subtotalAmount.amount);
