@@ -134,6 +134,9 @@ export default forwardRef(function OfferForm(
   const [collectionId, setCollectionId] = useState(
     offer?.source?.collection_id ?? "",
   );
+  const [collectionTitle, setCollectionTitle] = useState(
+    offer?.source?.collection_title ?? "",
+  );
   const [triggerType, setTriggerType] = useState(
     offer?.trigger?.price_threshold
       ? "price"
@@ -237,7 +240,10 @@ export default forwardRef(function OfferForm(
       multiple: false,
       action: "select",
     });
-    if (selection?.[0]) setCollectionId(selection[0].id);
+    if (selection?.[0]) {
+      setCollectionId(selection[0].id);
+      setCollectionTitle(selection[0].title || "");
+    }
   }
   async function pickGiftVariants() {
     const selection = await shopify.resourcePicker({
@@ -326,7 +332,11 @@ export default forwardRef(function OfferForm(
           ? undefined
           : sourceType === "product"
             ? { type: "product", product_variant_ids: productVariantIds }
-            : { type: "collection", collection_id: collectionId },
+            : {
+                type: "collection",
+                collection_id: collectionId,
+                ...(collectionTitle ? { collection_title: collectionTitle } : {}),
+              },
       trigger:
         rewardType === "volume_discount"
           ? {
@@ -752,9 +762,17 @@ export default forwardRef(function OfferForm(
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <s-button onClick={pickCollection}>Select collection</s-button>
               {collectionId && (
-                <s-badge tone="success">Collection selected</s-badge>
+                <s-badge tone="success">
+                  {collectionTitle || "Collection selected"}
+                </s-badge>
               )}
             </div>
+          )}
+          {sourceType === "collection" && (
+            <s-text color="subdued">
+              Only products in this collection count toward the trigger
+              {rewardType === "volume_discount" ? " and get the discount" : ""}.
+            </s-text>
           )}
         </VStack>
       </s-section>

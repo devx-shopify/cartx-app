@@ -10,35 +10,16 @@ import { adjustedTotal, adjustedQty } from '../../lib/upsell-rank.js';
 // so qualifying spend is computed identically on both sides.
 import { pageMatch, customerMatchesTags, offersPausedOnPage } from '../../lib/page-target.js';
 import { buildBar } from '../../lib/progress-bar.js';
+import { offerTriggered } from '../../lib/line-match.js';
 // ^ also shared with the server: the instant bar is built by the SAME code as
 // the server's, so no milestone pops in when the server result lands.
 
 // ── Evaluate offers (mirrors triggers.server.js) ──────────
 
+// Shared with the server (app/lib/line-match.js): presence trigger for
+// "specific products", collection-scoped totals for "a collection".
 function evaluateTrigger(offer, cart, adjTotal, adjQty) {
-  // Product-presence trigger — fires when any source variant is in the cart
-  // (e.g. a product-page gift with an empty `trigger: {}`). Mirrors the server
-  // (triggers.server.js); without this the local AJAX-cart reconcile can never
-  // add such a gift, since it drives gift add/remove from local eval, not the
-  // server's to_add.
-  if (offer.source && offer.source.type === 'product') {
-    // Compare as strings: `product_variant_ids` are gids that normalize to a
-    // numeric STRING, but a /cart.js line's `variant_id` is a NUMBER that
-    // normalizeVariantId leaves untouched — so `indexOf` (strict ===) never
-    // matches without coercing both sides. (The server's normalizeId does
-    // String(id); mirror that here.) Getting this wrong makes the offer read as
-    // "not triggered" locally, which yanks the just-added gift back out.
-    var ids = (offer.source.product_variant_ids || []).map(function (v) {
-      return String(normalizeId(v));
-    });
-    return (cart.items || []).some(function (li) {
-      return ids.indexOf(String(normalizeId(li.variant_id))) !== -1;
-    });
-  }
-  var t = offer.trigger || {};
-  var priceMet = t.price_threshold && adjTotal >= t.price_threshold;
-  var qtyMet = t.quantity_threshold && adjQty >= t.quantity_threshold;
-  return priceMet || qtyMet;
+  return offerTriggered(offer, cart.items || [], adjTotal, adjQty);
 }
 
 // `paused`: an "Only this milestone" custom milestone is on this page, so no
@@ -194,7 +175,7 @@ export function localEvaluate(cachedConfig, cart, customer) {
   if (claimRemovals.length) {
     offerResult.to_remove = (offerResult.to_remove || []).concat(claimRemovals);
   }
-  var bar = buildBar(cachedConfig, page, adjTotal, adjQty, cachedConfig.money_format || storeMoneyFormat(), customer);
+  var bar = buildBar(cachedConfig, page, adjTotal, adjQty, cachedConfig.money_format || storeMoneyFormat(), customer, cart.items || []);
 
   // Ribbon from next locked tier
   var ribbonMessage = null;

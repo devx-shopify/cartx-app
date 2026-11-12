@@ -1264,6 +1264,78 @@
     return placed;
   }
 
+  // ../lib/line-match.js
+  function idSet(list) {
+    var set = {};
+    var arr = list || [];
+    for (var i2 = 0; i2 < arr.length; i2++) set[String(normalizeId(arr[i2]))] = true;
+    return set;
+  }
+  function sourceMatcher(source) {
+    if (!source || !source.type || source.type === "cart") return null;
+    if (source.type === "product") {
+      return { variants: idSet(source.product_variant_ids), products: null };
+    }
+    if (source.type === "products") {
+      return { variants: null, products: idSet(source.product_ids) };
+    }
+    if (source.type === "collection") {
+      if (!Array.isArray(source.collection_product_ids)) return null;
+      return { variants: null, products: idSet(source.collection_product_ids) };
+    }
+    return null;
+  }
+  function lineMatches(item, matcher) {
+    if (!matcher) return true;
+    if (!item) return false;
+    if (matcher.variants) return !!matcher.variants[String(normalizeId(item.variant_id))];
+    if (matcher.products) return !!matcher.products[String(normalizeId(item.product_id))];
+    return false;
+  }
+  function scopedTotals(items, source) {
+    var matcher = sourceMatcher(source);
+    var list = items || [];
+    var cents = 0;
+    var qty = 0;
+    for (var i2 = 0; i2 < list.length; i2++) {
+      var item = list[i2];
+      if (isGiftLine(item) || !lineMatches(item, matcher)) continue;
+      var gross = item.original_line_price != null ? item.original_line_price : item.line_price || 0;
+      cents += Math.max(0, gross - externalDiscountCents(item));
+      qty += item.quantity || 0;
+    }
+    return { total: cents / 100, qty };
+  }
+  function isScoped(source) {
+    return sourceMatcher(source) !== null;
+  }
+  function sourceKey(source) {
+    var m2 = sourceMatcher(source);
+    if (!m2) return "";
+    var set = m2.variants || m2.products || {};
+    return (m2.variants ? "v:" : "p:") + Object.keys(set).sort().join(",");
+  }
+  function offerTriggered(offer, items, adjTotal, adjQty) {
+    var source = offer && offer.source;
+    if (source && source.type === "product") {
+      var matcher = sourceMatcher(source);
+      var list = items || [];
+      for (var i2 = 0; i2 < list.length; i2++) {
+        if (lineMatches(list[i2], matcher)) return true;
+      }
+      return false;
+    }
+    var total = adjTotal;
+    var qty = adjQty;
+    if (isScoped(source)) {
+      var scoped = scopedTotals(items, source);
+      total = scoped.total;
+      qty = scoped.qty;
+    }
+    var t2 = offer && offer.trigger || {};
+    return !!(t2.price_threshold && total >= t2.price_threshold || t2.quantity_threshold && qty >= t2.quantity_threshold);
+  }
+
   // ../lib/progress-bar.js
   function milestoneEntry(m2) {
     return {
@@ -1277,11 +1349,20 @@
       trigger_type: m2.trigger.type,
       label: m2.label,
       sub_label: m2.sub_label || null,
-      icon_url: m2.icon_url || null
+      icon_url: m2.icon_url || null,
+      _source: m2.source || null
     };
   }
+  function tierSource(config, scopeRef) {
+    if (!config || !scopeRef) return null;
+    const offers = config.offers || [];
+    for (const o2 of offers) if (o2.id === scopeRef) return o2.source || null;
+    const ms = config.progress_bar && config.progress_bar.visual_milestones || [];
+    for (const m2 of ms) if (m2.id === scopeRef) return m2.source || null;
+    return null;
+  }
   function collectBarEntries(config, page, customer) {
-    var _a;
+    var _a, _b;
     const exclusive = exclusiveMilestones(config.progress_bar.visual_milestones, page, customer);
     if (exclusive.length > 0) return exclusive.map(milestoneEntry);
     const entries = [];
@@ -1313,7 +1394,11 @@
             top_message: `Add [[QTY]] more for ${tierMainLabel} @ ${tierSubLabel}!`,
             ribbon_message: null,
             _volume_tier_value: tier.value,
-            _volume_discount_mode: offer.reward.discount_mode
+            _volume_discount_mode: offer.reward.discount_mode,
+            // Volume tiers count only the offer's products/collection, like the
+            // discount Function does.
+            _source: offer.source || null,
+            _scope_ref: offer.id
           });
         }
         continue;
@@ -1329,7 +1414,11 @@
         sub_label: offer.bar.sub_label || null,
         icon_url: offer.bar.icon_url || null,
         top_message: offer.bar.top_message || null,
-        ribbon_message: offer.bar.ribbon_message || null
+        ribbon_message: offer.bar.ribbon_message || null,
+        // "A collection" counts only that collection; "specific products" is a
+        // presence trigger, so its bar keeps the whole-cart value.
+        _source: ((_b = offer.source) == null ? void 0 : _b.type) === "collection" ? offer.source : null,
+        _scope_ref: offer.id
       });
     }
     const hasPageSpecificOffers = activeOffers.some(
@@ -1370,7 +1459,7 @@
   function mergeCollisions(entries) {
     const groups = /* @__PURE__ */ new Map();
     for (const e2 of entries) {
-      const key = e2.threshold;
+      const key = e2.threshold + "|" + sourceKey(e2._source);
       if (!groups.has(key)) {
         groups.set(key, []);
       }
@@ -1390,6 +1479,9 @@
     }
     return merged;
   }
+  function valueOf(tier, currentValue) {
+    return tier._cv != null ? tier._cv : currentValue;
+  }
   function computeBarState(tiers, currentValue, allCompleteMsg, moneyFormat, decimals) {
     var _a;
     const segmentWidth = 100 / tiers.length;
@@ -1398,14 +1490,15 @@
     let topMessage = null;
     let prevThreshold = 0;
     for (const tier of tiers) {
-      if (currentValue >= tier.threshold) {
+      const cv = valueOf(tier, currentValue);
+      if (cv >= tier.threshold) {
         tier.state = "active";
         progress += segmentWidth;
       } else if (!nextFound) {
         tier.state = "next";
-        const remaining = tier.threshold - currentValue;
+        const remaining = tier.threshold - cv;
         const segmentRange = tier.threshold - prevThreshold;
-        const segmentProgress = segmentRange > 0 ? (currentValue - prevThreshold) / segmentRange : 0;
+        const segmentProgress = segmentRange > 0 ? Math.max(0, cv - prevThreshold) / segmentRange : 0;
         progress += segmentProgress * segmentWidth;
         nextFound = true;
         topMessage = tier.top_message ? resolveTemplate(
@@ -1442,7 +1535,8 @@
         icon_url: t2.icon_url,
         state: t2.state,
         apply_button: t2.apply_button,
-        ribbon_message: t2.ribbon_message || null
+        ribbon_message: t2.ribbon_message || null,
+        scope_ref: t2._cv != null ? t2._scope_ref : null
       }))
     };
   }
@@ -1452,12 +1546,13 @@
     return tiers.map((tier) => {
       let state2;
       let topMsg = null;
-      if (currentValue >= tier.threshold) {
+      const cv = valueOf(tier, currentValue);
+      if (cv >= tier.threshold) {
         state2 = "active";
       } else if (!nextFound) {
         state2 = "next";
         nextFound = true;
-        const remaining = tier.threshold - currentValue;
+        const remaining = tier.threshold - cv;
         topMsg = tier.top_message ? resolveTemplate(tier.top_message, { PRICE: tier._volume_tier_value || remaining, QTY: remaining }, moneyFormat, decimals) : null;
       } else {
         state2 = "inactive";
@@ -1473,12 +1568,20 @@
       return result;
     });
   }
-  function buildBar(config, page, adjustedTotal2, adjustedQty2, moneyFormat, customer) {
+  function buildBar(config, page, adjustedTotal2, adjustedQty2, moneyFormat, customer, items) {
     var _a, _b, _c;
     if (!((_a = config == null ? void 0 : config.progress_bar) == null ? void 0 : _a.enabled)) return null;
     const decimals = (_c = (_b = config.drawer) == null ? void 0 : _b.layout) == null ? void 0 : _c.price_decimals;
     const entries = collectBarEntries(config, page, customer);
     if (entries.length === 0) return null;
+    if (items) {
+      for (const e2 of entries) {
+        if (!isScoped(e2._source)) continue;
+        const scoped = scopedTotals(items, e2._source);
+        e2._cv = e2.trigger_type === "price" ? scoped.total : scoped.qty;
+        e2._scope_ref = e2._scope_ref || e2.id;
+      }
+    }
     const tierOrder = config.progress_bar.tier_order || [];
     const priceEntries = entries.filter((e2) => e2.trigger_type === "price");
     const qtyEntries = entries.filter((e2) => e2.trigger_type === "quantity");
@@ -1496,7 +1599,8 @@
       const activeCount = allTiers.filter((t2) => t2.state === "active").length;
       let progressPct = activeCount / totalSegments * 100;
       if (nextTier) {
-        const partial = nextTier._trigger_type === "price" ? (adjustedTotal2 - (nextTier._prevThreshold || 0)) / (nextTier.threshold - (nextTier._prevThreshold || 0)) : (adjustedQty2 - (nextTier._prevThreshold || 0)) / (nextTier.threshold - (nextTier._prevThreshold || 0));
+        const cvNext = valueOf(nextTier, nextTier._trigger_type === "price" ? adjustedTotal2 : adjustedQty2);
+        const partial = (cvNext - (nextTier._prevThreshold || 0)) / (nextTier.threshold - (nextTier._prevThreshold || 0));
         progressPct += Math.max(0, Math.min(1, partial)) * (100 / totalSegments);
       }
       return {
@@ -1515,7 +1619,8 @@
           sub_label: t2.sub_label,
           icon_url: t2.icon_url,
           state: t2.state,
-          ribbon_message: t2.ribbon_message || null
+          ribbon_message: t2.ribbon_message || null,
+          scope_ref: t2._cv != null ? t2._scope_ref : null
         }))
       };
     }
@@ -1539,18 +1644,7 @@
 
   // src/rules.js
   function evaluateTrigger(offer, cart, adjTotal, adjQty) {
-    if (offer.source && offer.source.type === "product") {
-      var ids = (offer.source.product_variant_ids || []).map(function(v2) {
-        return String(normalizeVariantId(v2));
-      });
-      return (cart.items || []).some(function(li) {
-        return ids.indexOf(String(normalizeVariantId(li.variant_id))) !== -1;
-      });
-    }
-    var t2 = offer.trigger || {};
-    var priceMet = t2.price_threshold && adjTotal >= t2.price_threshold;
-    var qtyMet = t2.quantity_threshold && adjQty >= t2.quantity_threshold;
-    return priceMet || qtyMet;
+    return offerTriggered(offer, cart.items || [], adjTotal, adjQty);
   }
   function evaluateOffers(offers, cart, adjTotal, adjQty, page, customer, paused) {
     var toAdd = [];
@@ -1650,7 +1744,7 @@
     if (claimRemovals.length) {
       offerResult.to_remove = (offerResult.to_remove || []).concat(claimRemovals);
     }
-    var bar = buildBar(cachedConfig, page, adjTotal, adjQty, cachedConfig.money_format || storeMoneyFormat(), customer);
+    var bar = buildBar(cachedConfig, page, adjTotal, adjQty, cachedConfig.money_format || storeMoneyFormat(), customer, cart.items || []);
     var ribbonMessage = null;
     if (bar && bar.tiers) {
       for (var i2 = 0; i2 < bar.tiers.length; i2++) {
@@ -2357,9 +2451,19 @@
     function tierType(tier) {
       return tier.trigger_type || (mode === "price" ? "price" : "quantity");
     }
-    var stated = tiers.map(function(tier) {
+    function tierValue(tier) {
       var ttype = tierType(tier);
-      var cv = ttype === "price" ? adjTotal : adjQty;
+      if (tier.scope_ref) {
+        var src = tierSource(_cachedConfig, tier.scope_ref);
+        if (isScoped(src)) {
+          var sc = scopedTotals(items, src);
+          return ttype === "price" ? sc.total : sc.qty;
+        }
+      }
+      return ttype === "price" ? adjTotal : adjQty;
+    }
+    var stated = tiers.map(function(tier) {
+      var cv = tierValue(tier);
       return Object.assign({}, tier, {
         state: cv >= tier.threshold ? "active" : "inactive"
       });
@@ -2393,7 +2497,7 @@
     }
     if (nextTier) {
       var ttypeN = tierType(nextTier);
-      var cvN = ttypeN === "price" ? adjTotal : adjQty;
+      var cvN = tierValue(nextTier);
       var sameTypeSorted = newTiers.filter(function(t2) {
         return tierType(t2) === ttypeN;
       }).slice().sort(function(a2, b2) {
@@ -2414,8 +2518,7 @@
     if (!nextTier) {
       topMessage = _cachedConfig && _cachedConfig.progress_bar && _cachedConfig.progress_bar.all_complete_message || serverBar.top_message;
     } else {
-      var ttypeT = tierType(nextTier);
-      var cvT = ttypeT === "price" ? adjTotal : adjQty;
+      var cvT = tierValue(nextTier);
       var remaining = nextTier.threshold - cvT;
       var tmpl = findTopMessage(nextTier.id);
       if (tmpl) {

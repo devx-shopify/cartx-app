@@ -152,7 +152,14 @@ export function buildVolumeDiscountConfig(offers, limit = Infinity) {
     .slice(0, limit)
     .map((o) => ({
       offer_id: o.id,
-      variant_ids: (o.source?.product_variant_ids || []).map(normalizeId),
+      variant_ids: o.source?.type === "product"
+        ? (o.source.product_variant_ids || []).map(normalizeId)
+        : [],
+      // "A collection": only that collection's products get the discount. Not
+      // sent until the collection has been resolved (old offers: re-save).
+      ...(o.source?.type === "collection" && Array.isArray(o.source.collection_product_ids)
+        ? { product_ids: o.source.collection_product_ids.map(normalizeId) }
+        : {}),
       discount_mode: o.reward.discount_mode,
       discount_priority: o.reward.discount_priority ?? 'lowest',
       max_cart_quantity: o.reward.max_cart_quantity ?? null,

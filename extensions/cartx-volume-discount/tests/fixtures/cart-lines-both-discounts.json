@@ -4,25 +4,37 @@
     "target": "cart.lines.discounts.generate.run",
     "input": {
       "cart": {
-        "cartxActive": { "value": "on" },
+        "cartxActive": {
+          "value": "on"
+        },
         "lines": [
           {
             "id": "gid://shopify/CartLine/0",
             "quantity": 3,
             "cost": {
-              "amountPerQuantity": { "amount": "50.0" },
-              "subtotalAmount": { "amount": "150.0" }
+              "amountPerQuantity": {
+                "amount": "50.0"
+              },
+              "subtotalAmount": {
+                "amount": "150.0"
+              }
             },
             "merchandise": {
               "__typename": "ProductVariant",
-              "id": "gid://shopify/ProductVariant/222"
+              "id": "gid://shopify/ProductVariant/222",
+              "product": {
+                "id": "gid://shopify/Product/1"
+              }
             },
             "freebieAttr": null
           }
         ]
       },
       "discount": {
-        "discountClasses": ["PRODUCT", "ORDER"],
+        "discountClasses": [
+          "PRODUCT",
+          "ORDER"
+        ],
         "metafield": {
           "value": "{\"offers\":[{\"offer_id\":\"vol-2\",\"variant_ids\":[\"222\"],\"discount_mode\":\"percentage\",\"tiers\":[{\"quantity\":3,\"value\":10}],\"message\":\"Bulk Deal\"}]}"
         }
