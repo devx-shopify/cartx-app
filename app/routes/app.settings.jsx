@@ -81,6 +81,7 @@ export const loader = async ({ request }) => {
       type: m.trigger.type,
       enabled: m.enabled,
       only_this: m.display === "only_this",
+      page_only: m.display === "page_only",
       can_toggle: true,
     });
   }
@@ -99,10 +100,11 @@ export const loader = async ({ request }) => {
   };
 };
 
-// "Only this milestone" is kept only on page-targeted milestones: on "All
-// pages" it would hide every other milestone everywhere.
+// "Only this milestone" / "Only this page's promotions" are kept only on
+// page-targeted milestones: on "All pages" they would take over every page.
+const PAGE_DISPLAYS = ["only_this", "page_only"];
 function milestoneDisplay(display, pageHandles) {
-  return display === "only_this" && !pageHandles.includes("/") ? "only_this" : undefined;
+  return PAGE_DISPLAYS.includes(display) && !pageHandles.includes("/") ? display : undefined;
 }
 
 // Clean a submitted milestone source; resolve a collection's products now so
@@ -323,6 +325,9 @@ function TierRow({
           {isMilestone && item.only_this && (
             <s-badge tone="info">Only this milestone</s-badge>
           )}
+          {isMilestone && item.page_only && (
+            <s-badge tone="info">Only this page's promotions</s-badge>
+          )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
           <s-badge tone={SOURCE_TONE[item.source_label] || undefined}>{item.source_label}</s-badge>
@@ -373,7 +378,9 @@ function MilestoneFormFields({ initial, onSubmit, onCancel, submitting, submitLa
   const [threshold, setThreshold] = useState(String(initial?.trigger?.threshold ?? ""));
   const [pageHandles, setPageHandles] = useState(initial?.page_handles?.length ? initial.page_handles : ["/"]);
   const [pageTargets, setPageTargets] = useState(initial?.page_targets);
-  const [display, setDisplay] = useState(initial?.display === "only_this" ? "only_this" : "with_others");
+  const [display, setDisplay] = useState(
+    PAGE_DISPLAYS.includes(initial?.display) ? initial.display : "with_others",
+  );
   const allPages = pageHandles.includes("/");
   // What counts toward the threshold: whole cart, chosen products, or a collection.
   const [sourceType, setSourceType] = useState(initial?.source?.type ?? "cart");
@@ -492,12 +499,15 @@ function MilestoneFormFields({ initial, onSubmit, onCancel, submitting, submitLa
               ? "Target specific pages to show only this milestone there."
               : display === "only_this"
                 ? "On its pages the bar shows only this milestone, and gift offers and claim gifts pause there. Gifts already in the cart stay."
-                : "Shown together with the other milestones on its pages."
+                : display === "page_only"
+                  ? "On its pages the bar shows every milestone, offer and claim gift targeted at that page. \"All pages\" ones are hidden there and their gifts pause. Gifts already in the cart stay."
+                  : "Shown together with the other milestones on its pages."
           }
           {...(allPages ? { disabled: true } : {})}
         >
           <s-option value="with_others">With other milestones</s-option>
           <s-option value="only_this">Only this milestone</s-option>
+          <s-option value="page_only">Only this page's promotions</s-option>
         </s-select>
         <div style={{ display: "flex", gap: 8 }}>
           <s-button variant="primary" onClick={handleSubmit} {...(submitting ? { disabled: true } : {})}>

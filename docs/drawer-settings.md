@@ -98,6 +98,7 @@ Both font settings fall back to `sans-serif` if the font fails to load.
 | `progress_bar.fill_color`, `.reached_dot_color` | Features → Progress bar | `""` (accent / primary) |
 | `progress_bar.badge_image_url`, `.badge_corner` | Features → Progress bar | `""`, `top-left`. A URL (Shopify Files link), not an upload, because the drawer config is inlined on every page. |
 | `progress_bar.track_color`, `.locked_dot_color`, `.label_color` | Features → Progress bar | `""` (#f1f3f5, #d1d5db, #6b7280) |
+| `progress_bar.visual_milestones[].display` | Settings → Milestones → Display | absent = `with_others`; `only_this` (bar shows only the "Only this milestone" milestones on their page; every gift offer and claim gift pauses there); `page_only` ("Only this page's promotions": bar shows every enabled milestone, offer and claim gift targeted at that page and hides the "All pages" ones; only the "All pages" gift offers and claim gifts pause). Both are kept only on page-targeted milestones; `only_this` wins when both apply. Logic in `app/lib/page-target.js` (`pausedOnPage`) and `app/lib/progress-bar.js`, shared by server and drawer. |
 | `progress_bar.milestone_spacing` | Features → Progress bar | `even` (1/n, 2/n … 100%), `edges` (first at the start, last at the end; the fill is remapped by `mapProgress`, and progress before the first milestone shows as empty) |
 
 `progress_bar.track_thickness` is deliberately not in `DEFAULT_CONFIG`: stores that never saved it get the stylesheet's 8px track.
