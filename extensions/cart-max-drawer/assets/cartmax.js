@@ -748,6 +748,62 @@
     var unit = item.final_price != null ? item.final_price : item.price || 0;
     return Number(unit) > 0;
   }
+  function showsReadOnlyQuantity(item) {
+    if (!item || showsQuantitySelector(item)) return false;
+    var p2 = item.properties || {};
+    if (hasFreebieMarker(p2) || p2["_claimed"] === "true" || p2["_cartmax_claim"] === "true") return false;
+    return (item.line_level_discount_allocations || []).some(function(a2) {
+      return (a2.amount || 0) > 0;
+    });
+  }
+  function cartMrpTotal(items, compareAtCache) {
+    var cache = compareAtCache || {};
+    var total = 0;
+    (items || []).forEach(function(it) {
+      var original = Number(it.original_price) || 0;
+      var compareUnit = Number(cache[String(it.variant_id)]) || 0;
+      var unit = compareUnit > original ? compareUnit : original;
+      total += unit * (Number(it.quantity) || 0);
+    });
+    return total;
+  }
+  function automaticDiscountRows(cart, appliedCodes, labels) {
+    if (!cart) return [];
+    var codes = (appliedCodes || []).map(function(c2) {
+      return String(c2).toUpperCase();
+    });
+    var names = labels || {};
+    var byTitle = {};
+    var order = [];
+    function add(app, amount) {
+      if (!app || !app.title || !(amount > 0)) return;
+      if (app.type === "discount_code") return;
+      if (codes.indexOf(String(app.title).toUpperCase()) !== -1) return;
+      var key = String(app.title).toLowerCase();
+      if (!byTitle[key]) {
+        byTitle[key] = { title: app.title, amount: 0 };
+        order.push(key);
+      }
+      byTitle[key].amount += amount;
+    }
+    (cart.items || []).forEach(function(it) {
+      (it.line_level_discount_allocations || []).forEach(function(a2) {
+        add(a2.discount_application, Number(a2.amount) || 0);
+      });
+    });
+    (cart.cart_level_discount_applications || []).forEach(function(d2) {
+      var key = d2 && d2.title ? String(d2.title).toLowerCase() : "";
+      if (byTitle[key]) return;
+      add(d2, Number(d2.total_allocated_amount) || 0);
+    });
+    return order.map(function(key) {
+      var row = byTitle[key];
+      var label = names[key] || row.title;
+      return { title: label, amount: row.amount };
+    }).sort(function(a2, b2) {
+      return b2.amount - a2.amount;
+    });
+  }
   function giftChargedAmount(item) {
     if (!item) return 0;
     var line = item.final_line_price != null ? item.final_line_price : item.line_price;
@@ -3995,6 +4051,8 @@
         pb_shipping: "Shipping Fee",
         pb_shipping_value: "Calculated at checkout",
         pb_total: "Total Amount",
+        pb_cartx_gift: "Free gift",
+        pb_cartx_volume: "Volume discount",
         shipping_note: ""
       };
       this._layout = {
@@ -4505,6 +4563,8 @@
         coupon_icon_svg: typeof l2.coupon_icon_svg === "string" ? l2.coupon_icon_svg : "",
         savings_show_icon: l2.savings_show_icon !== false,
         savings_include_compare: l2.savings_include_compare === true,
+        footer_total_show_mrp: l2.footer_total_show_mrp === true,
+        price_breakup_itemize_discounts: l2.price_breakup_itemize_discounts === true,
         checkout_full_width: l2.checkout_full_width === true,
         image_ratio: l2.image_ratio === "portrait" ? "portrait" : "square",
         line_item_style: l2.line_item_style === "card" ? "card" : "divided"
@@ -5583,6 +5643,7 @@
       var curr = this._currency;
       var isFreebie = hasFreebieMarker(item.properties) && item.properties["_claimed"] !== "true";
       var isClaimed = item.properties && (item.properties["_claimed"] === "true" || item.properties["_cartmax_claim"] === "true");
+      var readOnlyQty = showsReadOnlyQuantity(item);
       var isVariantOpen = this.state.variantOpen[item.key];
       var isVariantLoading = this.state.variantLoading[item.key];
       var cachedVariants = this._variantCache[String(item.product_id)] || [];
@@ -5675,12 +5736,12 @@
           strikethrough > 0 ? /* @__PURE__ */ k("span", { key: "orig", class: "cartmax-line-price-original" }, formatMoney(strikethrough, curr)) : null,
           !isClaimed && savingsPct > 0 ? /* @__PURE__ */ k("span", { key: "savings", class: "cartmax-line-savings-badge" }, layout.line_discount_show_icon ? /* @__PURE__ */ k(IconDiscountBadge, null) : null, fillTemplate(this._t("line_discount_format", "{pct}% off"), { pct: savingsPct })) : null
         ];
-      })()), !isClaimed && !isFreebie && item.line_level_discount_allocations && item.line_level_discount_allocations.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-line-discounts" }, item.line_level_discount_allocations.map((d2) => /* @__PURE__ */ k("span", { class: "cartmax-line-discount-tag", key: d2.discount_application.title }, d2.discount_application.title))) : null, !isFreebie && !isClaimed ? /* @__PURE__ */ k("div", { class: "cartmax-line-actions" }, !variantOnTop ? variantNode : null, showsQuantitySelector(item) ? /* @__PURE__ */ k("div", { class: "cartmax-qty-controls" }, textRemove ? /* @__PURE__ */ k(
+      })()), !isClaimed && !isFreebie && item.line_level_discount_allocations && item.line_level_discount_allocations.length > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-line-discounts" }, item.line_level_discount_allocations.map((d2) => /* @__PURE__ */ k("span", { class: "cartmax-line-discount-tag", key: d2.discount_application.title }, d2.discount_application.title))) : null, !isFreebie && !isClaimed ? /* @__PURE__ */ k("div", { class: "cartmax-line-actions" }, !variantOnTop ? variantNode : null, showsQuantitySelector(item) || readOnlyQty ? /* @__PURE__ */ k("div", { class: "cartmax-qty-controls" + (readOnlyQty ? " cartmax-qty-controls--readonly" : "") }, textRemove ? /* @__PURE__ */ k(
         "button",
         {
           class: "cartmax-qty-btn",
           onClick: () => this.queueQuantityChange(item.key, displayQty - 1),
-          disabled: isRemoving || displayQty <= 1,
+          disabled: readOnlyQty || isRemoving || displayQty <= 1,
           "aria-label": "Decrease quantity"
         },
         /* @__PURE__ */ k(IconMinus, null)
@@ -5689,7 +5750,7 @@
         {
           class: "cartmax-qty-btn",
           onClick: () => displayQty <= 1 ? this.handleRemove(item.key) : this.queueQuantityChange(item.key, displayQty - 1),
-          disabled: isRemoving,
+          disabled: readOnlyQty || isRemoving,
           "aria-label": displayQty <= 1 ? "Remove " + item.product_title : "Decrease quantity"
         },
         displayQty <= 1 ? /* @__PURE__ */ k(IconTrash, null) : /* @__PURE__ */ k(IconMinus, null)
@@ -5698,7 +5759,7 @@
         {
           class: "cartmax-qty-btn",
           onClick: () => this.queueQuantityChange(item.key, displayQty + 1),
-          disabled: isRemoving,
+          disabled: readOnlyQty || isRemoving,
           "aria-label": "Increase quantity"
         },
         /* @__PURE__ */ k(IconPlus, null)
@@ -6970,7 +7031,8 @@
       }
       var savingsParts = savings > 0 && this._text.savings_label ? this._text.savings_label.split("{amount}") : null;
       var trustMsg = this._text.checkout_trust_message || "";
-      return /* @__PURE__ */ k("div", { class: "cartmax-footer" }, savingsParts ? /* @__PURE__ */ k("div", { class: "cartmax-footer-savings" }, this._layout.savings_show_icon ? /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-icon" }, /* @__PURE__ */ k(IconSparkle, null)) : null, /* @__PURE__ */ k("span", null, savingsParts[0]), /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-amount" }, formatMoney(savings, curr)), /* @__PURE__ */ k("span", null, savingsParts[1] || ""), this._layout.savings_show_icon ? /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-icon" }, /* @__PURE__ */ k(IconSparkle, null)) : null) : null, /* @__PURE__ */ k("div", { class: "cartmax-footer-checkout" }, /* @__PURE__ */ k("div", { class: "cartmax-footer-price" }, /* @__PURE__ */ k("span", { class: "cartmax-footer-price-amount" + (this.state.cartSyncing ? " cartmax-price-updating" : "") }, formatMoney(cart.total_price, curr)), /* @__PURE__ */ k(
+      var footerMrp = this._layout.footer_total_show_mrp && cart ? cartMrpTotal(cart.items, this._compareAtCache) : 0;
+      return /* @__PURE__ */ k("div", { class: "cartmax-footer" }, savingsParts ? /* @__PURE__ */ k("div", { class: "cartmax-footer-savings" }, this._layout.savings_show_icon ? /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-icon" }, /* @__PURE__ */ k(IconSparkle, null)) : null, /* @__PURE__ */ k("span", null, savingsParts[0]), /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-amount" }, formatMoney(savings, curr)), /* @__PURE__ */ k("span", null, savingsParts[1] || ""), this._layout.savings_show_icon ? /* @__PURE__ */ k("span", { class: "cartmax-footer-savings-icon" }, /* @__PURE__ */ k(IconSparkle, null)) : null) : null, /* @__PURE__ */ k("div", { class: "cartmax-footer-checkout" }, /* @__PURE__ */ k("div", { class: "cartmax-footer-price" }, footerMrp > (Number(cart.total_price) || 0) ? /* @__PURE__ */ k("span", { class: "cartmax-footer-price-line" }, /* @__PURE__ */ k("span", { class: "cartmax-footer-price-amount" + (this.state.cartSyncing ? " cartmax-price-updating" : "") }, formatMoney(cart.total_price, curr)), /* @__PURE__ */ k("span", { class: "cartmax-footer-price-mrp" }, formatMoney(footerMrp, curr))) : /* @__PURE__ */ k("span", { class: "cartmax-footer-price-amount" + (this.state.cartSyncing ? " cartmax-price-updating" : "") }, formatMoney(cart.total_price, curr)), /* @__PURE__ */ k(
         "button",
         {
           class: "cartmax-price-breakup-link",
@@ -7069,12 +7131,7 @@
       var cart = this.state.cart;
       var curr = this._currency;
       var self = this;
-      var totalMRP = 0;
-      (cart.items || []).forEach(function(it) {
-        var compareUnit = self._compareAtCache[String(it.variant_id)];
-        var unit = compareUnit && compareUnit > (it.original_price || 0) ? compareUnit : it.original_price || 0;
-        totalMRP += unit * (it.quantity || 0);
-      });
+      var totalMRP = cartMrpTotal(cart.items, self._compareAtCache);
       var couponDiscount = 0;
       this.getAppliedCodes().forEach(function(code) {
         couponDiscount += savingsForCode(cart, code);
@@ -7083,6 +7140,10 @@
       var noteOpen = this.state.shippingNoteOpen !== false;
       var totalAmount = cart.total_price || 0;
       var discountOnMRP = Math.max(0, totalMRP - totalAmount - couponDiscount);
+      var discountRows = this._layout.price_breakup_itemize_discounts && discountOnMRP > 0 ? automaticDiscountRows(cart, this.getAppliedCodes(), {
+        "cartx free gift": this._t("pb_cartx_gift", "Free gift"),
+        "cartx volume discount": this._t("pb_cartx_volume", "Volume discount")
+      }) : [];
       return /* @__PURE__ */ k("div", { class: "cartmax-pb-backdrop", onClick: () => this.setState({ priceBreakupOpen: false }) }, /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-panel", onClick: (e2) => e2.stopPropagation() }, /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-header" }, /* @__PURE__ */ k("span", null, this._t("price_breakup_title", "Price Break Up")), /* @__PURE__ */ k(
         "button",
         {
@@ -7091,7 +7152,9 @@
           onClick: () => this.setState({ priceBreakupOpen: false })
         },
         /* @__PURE__ */ k(IconClose, null)
-      )), /* @__PURE__ */ k("div", { class: "cartmax-pb-divider" }), /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-rows" }, /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, this._t("pb_total_mrp", "Total MRP")), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount" }, formatMoney(totalMRP, curr))), discountOnMRP > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, this._t("pb_discount_mrp", "Discount on MRP")), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount cartmax-pb-discount" }, "-", formatMoney(discountOnMRP, curr))) : null, /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, this._t("pb_coupon_discount", "Coupon Discount")), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount cartmax-pb-discount" }, "-", formatMoney(couponDiscount, curr))), /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, this._t("pb_shipping", "Shipping Fee"), shippingNote ? /* @__PURE__ */ k(
+      )), /* @__PURE__ */ k("div", { class: "cartmax-pb-divider" }), /* @__PURE__ */ k("div", { class: "cartmax-price-breakup-rows" }, /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, this._t("pb_total_mrp", "Total MRP")), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount" }, formatMoney(totalMRP, curr))), discountOnMRP > 0 ? /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, this._t("pb_discount_mrp", "Discount on MRP")), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount cartmax-pb-discount" }, "-", formatMoney(discountOnMRP, curr))) : null, discountRows.map(function(row) {
+        return /* @__PURE__ */ k("div", { class: "cartmax-pb-row cartmax-pb-row--sub", key: "pbd-" + row.title }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, row.title), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount cartmax-pb-discount" }, "-", formatMoney(row.amount, curr)));
+      }), /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, this._t("pb_coupon_discount", "Coupon Discount")), /* @__PURE__ */ k("span", { class: "cartmax-pb-amount cartmax-pb-discount" }, "-", formatMoney(couponDiscount, curr))), /* @__PURE__ */ k("div", { class: "cartmax-pb-row" }, /* @__PURE__ */ k("span", { class: "cartmax-pb-label" }, this._t("pb_shipping", "Shipping Fee"), shippingNote ? /* @__PURE__ */ k(
         "button",
         {
           class: "cartmax-pb-info",
