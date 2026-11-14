@@ -376,6 +376,8 @@ export const DrawerConfigSchema = z.object({
     pb_shipping: z.string().default('Shipping Fee'),
     pb_shipping_value: z.string().default('Calculated at checkout'),
     pb_total: z.string().default('Total Amount'),
+    pb_cartx_gift: z.string().default('Free gift'),
+    pb_cartx_volume: z.string().default('Volume discount'),
     shipping_note: z.string().default(''),
     coupon_link_subtitle: z.string().default(''), // second line on the "Apply Coupon ›" row
     upsells_subheading: z.string().default(''), // line under the upsell heading
@@ -456,6 +458,8 @@ export const DrawerConfigSchema = z.object({
     savings_show_icon: z.boolean().default(true),
     // Savings ribbon adds compare-at (MRP) savings to the discount savings.
     savings_include_compare: z.boolean().default(false),
+    footer_total_show_mrp: z.boolean().default(false),
+    price_breakup_itemize_discounts: z.boolean().default(false),
     // Left/right padding of the drawer's blocks, in px. 0 = each block's own.
     content_padding: z.number().min(0).max(48).default(0),
     content_padding_mobile: z.number().min(0).max(48).default(0),

@@ -1310,7 +1310,15 @@ function ContentTab({ s, update }) {
             ["pb_shipping", "Shipping", "Shipping Fee"],
             ["pb_shipping_value", "Shipping value", "Calculated at checkout"],
             ["pb_total", "Total", "Total Amount"],
+            ["pb_cartx_gift", "cartx free gift discount (when listed)", "Free gift"],
+            ["pb_cartx_volume", "cartx volume discount (when listed)", "Volume discount"],
           ]} />
+          <s-checkbox
+            label="List automatic discounts under Discount on MRP"
+            details="Adds a smaller row per automatic discount (e.g. a Shopify Buy 2 Get 2, an automatic 10% off) under Discount on MRP, using the discount's title. Discount on MRP stays the total. Coupon codes keep their own row."
+            checked={s.layout.price_breakup_itemize_discounts || undefined}
+            onChange={(e) => update("layout.price_breakup_itemize_discounts", e.target.checked)}
+          />
           <s-text-area
             label="Shipping rules"
             rows={4}
@@ -1445,6 +1453,12 @@ function ContentTab({ s, update }) {
             details="Adds the MRP savings (compare-at price minus price) on cart items to the discount savings, so the ribbon shows even with no discount applied."
             checked={s.layout.savings_include_compare || undefined}
             onChange={(e) => update("layout.savings_include_compare", e.target.checked)}
+          />
+          <s-checkbox
+            label="Show MRP struck through next to the total"
+            details="Shows the cart's total MRP (compare-at price, else the original price) crossed out beside the total, e.g. ₹398 ₹3,996. Hidden when there is no saving."
+            checked={s.layout.footer_total_show_mrp || undefined}
+            onChange={(e) => update("layout.footer_total_show_mrp", e.target.checked)}
           />
           <s-checkbox
             label="Show payment icons"

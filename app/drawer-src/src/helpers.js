@@ -599,6 +599,70 @@ export function showsQuantitySelector(item) {
   return Number(unit) > 0;
 }
 
+// A paid-for product made free by a Shopify discount (e.g. a native "Buy 2 Get
+// 2" splits off a ₹0 line). Shopify sets its quantity from the paid line, so
+// the drawer shows the quantity in a disabled stepper instead of hiding it.
+// cartx's own gift / claim lines are excluded (they keep their own layout).
+export function showsReadOnlyQuantity(item) {
+  if (!item || showsQuantitySelector(item)) return false;
+  var p = item.properties || {};
+  if (hasFreebieMarker(p) || p['_claimed'] === 'true' || p['_cartmax_claim'] === 'true') return false;
+  return (item.line_level_discount_allocations || []).some(function (a) {
+    return (a.amount || 0) > 0;
+  });
+}
+
+// Total MRP of the cart in minor units: per line, the higher of the cached
+// compare-at price and Shopify's original price, times the quantity. Shared by
+// the footer strikethrough and the Price Break Up so the two always match.
+export function cartMrpTotal(items, compareAtCache) {
+  var cache = compareAtCache || {};
+  var total = 0;
+  (items || []).forEach(function (it) {
+    var original = Number(it.original_price) || 0;
+    var compareUnit = Number(cache[String(it.variant_id)]) || 0;
+    var unit = compareUnit > original ? compareUnit : original;
+    total += unit * (Number(it.quantity) || 0);
+  });
+  return total;
+}
+
+// The automatic (non-code) discounts on the cart, one row per title, largest
+// first: line-level ones (a native B2G2's free line) from each line's
+// allocations, order-level ones (an automatic "10% off") from
+// cart_level_discount_applications. Coupon codes are left out — they have their
+// own row. cartx's own Function discounts get readable labels.
+export function automaticDiscountRows(cart, appliedCodes, labels) {
+  if (!cart) return [];
+  var codes = (appliedCodes || []).map(function (c) { return String(c).toUpperCase(); });
+  var names = labels || {};
+  var byTitle = {};
+  var order = [];
+  function add(app, amount) {
+    if (!app || !app.title || !(amount > 0)) return;
+    if (app.type === 'discount_code') return;
+    if (codes.indexOf(String(app.title).toUpperCase()) !== -1) return;
+    var key = String(app.title).toLowerCase();
+    if (!byTitle[key]) { byTitle[key] = { title: app.title, amount: 0 }; order.push(key); }
+    byTitle[key].amount += amount;
+  }
+  (cart.items || []).forEach(function (it) {
+    (it.line_level_discount_allocations || []).forEach(function (a) {
+      add(a.discount_application, Number(a.amount) || 0);
+    });
+  });
+  (cart.cart_level_discount_applications || []).forEach(function (d) {
+    var key = d && d.title ? String(d.title).toLowerCase() : '';
+    if (byTitle[key]) return; // already counted from the line allocations
+    add(d, Number(d.total_allocated_amount) || 0);
+  });
+  return order.map(function (key) {
+    var row = byTitle[key];
+    var label = names[key] || row.title;
+    return { title: label, amount: row.amount };
+  }).sort(function (a, b) { return b.amount - a.amount; });
+}
+
 // What a gift line is ACTUALLY charging the shopper, in minor units. 0 means
 // the discount landed and the line really is free. > 0 means it did NOT land —
 // e.g. a merchant discount code with "combines with product discounts" off

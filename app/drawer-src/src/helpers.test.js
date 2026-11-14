@@ -6,7 +6,7 @@ import {
   couponShortfall, splitCoupons, savingsForCode, milestonePositions, mapProgress,
   boldParts, variantText, giftOriginalPrice, buildFreebieTiers,
   showcaseFromAjax, showcaseFromStorefront, pickSpecialProducts,
-  promoCartSignature,
+  promoCartSignature, showsReadOnlyQuantity, cartMrpTotal, automaticDiscountRows,
 } from './helpers.js'
 
 describe('normalizeSectionOrder', () => {
@@ -398,5 +398,69 @@ describe('promoCartSignature', () => {
   })
   test('empty / missing cart is safe', () => {
     expect(promoCartSignature(null)).toBe(promoCartSignature({ items: [] }))
+  })
+})
+
+// Just Herbs carts from the client screenshots (Nov 2026).
+const B2G2 = { type: 'automatic', title: 'B2G2' }
+const paidLine = { variant_id: 1, quantity: 2, price: 19900, final_price: 19900, original_price: 19900, line_level_discount_allocations: [] }
+const freeLine = {
+  variant_id: 1, quantity: 2, price: 19900, final_price: 0, original_price: 19900,
+  line_level_discount_allocations: [{ amount: 39800, discount_application: B2G2 }],
+}
+
+describe('showsReadOnlyQuantity', () => {
+  it('shows a disabled stepper on a line a Shopify discount made free', () => {
+    expect(showsQuantitySelector(freeLine)).toBe(false)
+    expect(showsReadOnlyQuantity(freeLine)).toBe(true)
+  })
+  it('not on paid lines, cartx gifts or claims', () => {
+    expect(showsReadOnlyQuantity(paidLine)).toBe(false)
+    expect(showsReadOnlyQuantity({ ...freeLine, properties: { _freebie: 'true' } })).toBe(false)
+    expect(showsReadOnlyQuantity({ ...freeLine, properties: { _cartmax_claim: 'true' } })).toBe(false)
+  })
+  it('not on a ₹0 line with no discount behind it', () => {
+    expect(showsReadOnlyQuantity({ ...freeLine, line_level_discount_allocations: [] })).toBe(false)
+  })
+})
+
+describe('cartMrpTotal', () => {
+  it('uses the higher of compare-at and original price', () => {
+    expect(cartMrpTotal([paidLine, freeLine], { 1: 99900 })).toBe(399600)
+    expect(cartMrpTotal([paidLine], {})).toBe(39800)
+    expect(cartMrpTotal(null)).toBe(0)
+  })
+})
+
+describe('automaticDiscountRows', () => {
+  it('B2G2 free line becomes one row', () => {
+    const cart = { items: [paidLine, freeLine], cart_level_discount_applications: [] }
+    expect(automaticDiscountRows(cart, [], {})).toEqual([{ title: 'B2G2', amount: 39800 }])
+  })
+  it('order-level automatic 10% off', () => {
+    const cart = {
+      items: [{ ...paidLine, quantity: 3 }],
+      cart_level_discount_applications: [{ type: 'automatic', title: 'Extra 10% Off', total_allocated_amount: 6000 }],
+    }
+    expect(automaticDiscountRows(cart, [], {})).toEqual([{ title: 'Extra 10% Off', amount: 6000 }])
+  })
+  it('leaves coupon codes out and labels cartx discounts', () => {
+    const cart = {
+      items: [{ ...paidLine, line_level_discount_allocations: [
+        { amount: 1000, discount_application: { type: 'discount_code', title: 'SAVE10' } },
+        { amount: 500, discount_application: { type: 'automatic', title: 'cartx volume discount' } },
+      ] }],
+      cart_level_discount_applications: [{ type: 'manual', title: 'save10', total_allocated_amount: 1000 }],
+    }
+    expect(automaticDiscountRows(cart, ['SAVE10'], { 'cartx volume discount': 'Volume discount' }))
+      .toEqual([{ title: 'Volume discount', amount: 500 }])
+  })
+  it('same title on several lines is summed, largest first', () => {
+    const a = (amt, t) => ({ amount: amt, discount_application: { type: 'automatic', title: t } })
+    const cart = { items: [
+      { ...paidLine, line_level_discount_allocations: [a(100, 'X'), a(900, 'Y')] },
+      { ...paidLine, line_level_discount_allocations: [a(100, 'x')] },
+    ] }
+    expect(automaticDiscountRows(cart, [], {})).toEqual([{ title: 'Y', amount: 900 }, { title: 'X', amount: 200 }])
   })
 })
