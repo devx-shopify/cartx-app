@@ -8,7 +8,7 @@ import { normalizeVariantId as normalizeId, storeMoneyFormat } from './helpers';
 import { adjustedTotal, adjustedQty } from '../../lib/upsell-rank.js';
 // ^ shared with the server (helpers.server.js re-exports the same functions),
 // so qualifying spend is computed identically on both sides.
-import { pageMatch, customerMatchesTags, offersPausedOnPage } from '../../lib/page-target.js';
+import { pageMatch, customerMatchesTags, pausedOnPage } from '../../lib/page-target.js';
 import { buildBar } from '../../lib/progress-bar.js';
 import { offerTriggered } from '../../lib/line-match.js';
 // ^ also shared with the server: the instant bar is built by the SAME code as
@@ -22,8 +22,10 @@ function evaluateTrigger(offer, cart, adjTotal, adjQty) {
   return offerTriggered(offer, cart.items || [], adjTotal, adjQty);
 }
 
-// `paused`: an "Only this milestone" custom milestone is on this page, so no
-// gift is added here. Triggers are still worked out so gifts already in the
+// `paused`: boolean or per-offer predicate (pausedOnPage). An "Only this
+// milestone" custom milestone on this page pauses every gift here; "Only this
+// page's promotions" pauses the ones not targeted at this page. Triggers are
+// still worked out so gifts already in the
 // cart are kept (mirrors the server's evaluateOffers).
 export function evaluateOffers(offers, cart, adjTotal, adjQty, page, customer, paused) {
   var toAdd = [];
@@ -34,6 +36,7 @@ export function evaluateOffers(offers, cart, adjTotal, adjQty, page, customer, p
   // keeps a gift line only if it appears here under its own offer id — so a
   // line survives ONLY while its offer still lists that exact variant.
   var triggeredGiftVids = {};
+  var isPaused = typeof paused === 'function' ? paused : function () { return !!paused; };
 
   for (var i = 0; i < offers.length; i++) {
     var offer = offers[i];
@@ -55,7 +58,7 @@ export function evaluateOffers(offers, cart, adjTotal, adjQty, page, customer, p
         }
         triggeredGiftVids[offer.id] = grantSet;
       }
-      if (!paused && offer.reward && offer.reward.type === 'auto_add_gift' && offer.reward.add_mode === 'auto') {
+      if (!isPaused(offer) && offer.reward && offer.reward.type === 'auto_add_gift' && offer.reward.add_mode === 'auto') {
         var giftVids = offer.reward.gift_variants || [];
         for (var g = 0; g < giftVids.length; g++) {
           // String()-coerce both sides: gift_variants are gids (→ numeric string)
@@ -169,7 +172,7 @@ export function localEvaluate(cachedConfig, cart, customer) {
   // mis-resolved config, exactly as evaluateOffers gates freebie removal.
   var configPopulated = cfgOffers.length > 0 || cfgClaims.length > 0;
 
-  var paused = offersPausedOnPage(cachedConfig, page, customer);
+  var paused = pausedOnPage(cachedConfig, page, customer);
   var offerResult = evaluateOffers(cfgOffers, cart, adjTotal, adjQty, page, customer, paused);
   var claimRemovals = evaluateClaimRemovals(cfgClaims, items, adjTotal, adjQty, configPopulated);
   if (claimRemovals.length) {

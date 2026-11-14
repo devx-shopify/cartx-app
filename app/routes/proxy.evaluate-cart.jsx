@@ -7,7 +7,7 @@ import { loadStorefrontToken } from "../lib/storefront-token.server.js";
 import { adjustedTotal, adjustedQty, isFrozenPage, computeTotalSavings } from "../lib/helpers.server.js";
 import { evaluateOffers } from "../lib/evaluate/triggers.server.js";
 import { buildBar, getRibbonFromBar } from "../lib/evaluate/bar.server.js";
-import { offersPausedOnPage } from "../lib/page-target.js";
+import { offersPausedOnPage, pausedOnPage } from "../lib/page-target.js";
 import { resolveAvailableCoupons } from "../lib/evaluate/coupons.server.js";
 import { resolveClaimGifts } from "../lib/evaluate/claims.server.js";
 import { loadUpsellAddRates } from "../lib/upsell-stats.server.js";
@@ -129,13 +129,15 @@ export const action = async ({ request }) => {
   let offerResult, bar, ribbon_message, availableCoupons, claimGifts;
   try {
     // "Only this milestone" custom milestone on this page → gift offers and
-    // claim gifts pause here (the bar shows only that milestone).
+    // claim gifts pause here (the bar shows only that milestone). "Only this
+    // page's promotions" → only the ones not targeted at this page pause.
     const paused = offersPausedOnPage(config, page, customer);
-    offerResult = evaluateOffers(config.offers || [], cart, adjTotal, adjQty, page, customer, { paused });
+    const isPaused = pausedOnPage(config, page, customer);
+    offerResult = evaluateOffers(config.offers || [], cart, adjTotal, adjQty, page, customer, { paused: isPaused });
     bar = buildBar(config, page, adjTotal, adjQty, moneyFormat, customer, cart.items);
     ({ ribbon_message } = getRibbonFromBar(bar));
     availableCoupons = resolveAvailableCoupons(config.coupons || [], cart, page, customer);
-    claimGifts = paused ? null : resolveClaimGifts(config.claim_gifts || [], cart, adjTotal, adjQty, page, customer);
+    claimGifts = paused ? null : resolveClaimGifts((config.claim_gifts || []).filter((c) => !isPaused(c)), cart, adjTotal, adjQty, page, customer);
   } catch (err) {
     console.error('[cartx] Evaluate pipeline error:', err);
     return Response.json({ error: "Evaluation failed" }, { status: 500 });
