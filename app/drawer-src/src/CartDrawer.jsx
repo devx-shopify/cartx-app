@@ -1,6 +1,6 @@
 /* eslint-disable */
 import { h, Component, Fragment } from 'preact';
-import { setPriceDecimals, fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId, hasFreebieMarker, showsQuantitySelector, giftChargedAmount, giftOriginalPrice, variantText, boldParts, normalizeSectionOrder, milestonePositions, mapProgress, fillTemplate, formatQty, discountPercent, compareAtSavings, splitCoupons, savingsForCode, buildFreebieTiers, showcaseFromAjax, showcaseFromStorefront, pickSpecialProducts, promoCartSignature } from './helpers';
+import { setPriceDecimals, fetchCart, cartUpdateAll, internalFetch, formatMoney, resizeImage, updateCartCount, trapFocus, applyDrawerSettings, dispatchOptimistic, simulateAdd, normalizeVariantId, hasFreebieMarker, showsQuantitySelector, showsReadOnlyQuantity, cartMrpTotal, automaticDiscountRows, giftChargedAmount, giftOriginalPrice, variantText, boldParts, normalizeSectionOrder, milestonePositions, mapProgress, fillTemplate, formatQty, discountPercent, compareAtSavings, splitCoupons, savingsForCode, buildFreebieTiers, showcaseFromAjax, showcaseFromStorefront, pickSpecialProducts, promoCartSignature } from './helpers';
 import { fireConfetti, setConfettiLottieUrl } from './confetti';
 import { waitForEvaluate, callEvaluate, applyOptimisticGifts, buildPendingGiftLine, ensureCartxAttribute, ensureDrawerAttribute, localGiftDelta, giftIntendedQuantity, dispatchLocalBar, getCachedOffers } from './evaluate';
 import { isGraphqlCartEnabled, isStorefrontReady, fetchProductAvailability, fetchShowcaseNodes } from './storefront-cart';
@@ -253,7 +253,7 @@ export default class CartDrawer extends Component {
       upsells_empty_heading: '', upsell_sold_out: 'Sold out',
       price_breakup_link: 'VIEW PRICE BREAKUP', price_breakup_title: 'Price Break Up',
       pb_total_mrp: 'Total MRP', pb_discount_mrp: 'Discount on MRP', pb_coupon_discount: 'Coupon Discount',
-      pb_shipping: 'Shipping Fee', pb_shipping_value: 'Calculated at checkout', pb_total: 'Total Amount',
+      pb_shipping: 'Shipping Fee', pb_shipping_value: 'Calculated at checkout', pb_total: 'Total Amount', pb_cartx_gift: 'Free gift', pb_cartx_volume: 'Volume discount',
       shipping_note: '',
     };
     this._layout = {
@@ -884,6 +884,8 @@ export default class CartDrawer extends Component {
       coupon_icon_svg: typeof l.coupon_icon_svg === 'string' ? l.coupon_icon_svg : '',
       savings_show_icon: l.savings_show_icon !== false,
       savings_include_compare: l.savings_include_compare === true,
+      footer_total_show_mrp: l.footer_total_show_mrp === true,
+      price_breakup_itemize_discounts: l.price_breakup_itemize_discounts === true,
       checkout_full_width: l.checkout_full_width === true,
       image_ratio: l.image_ratio === 'portrait' ? 'portrait' : 'square',
       line_item_style: l.line_item_style === 'card' ? 'card' : 'divided',
@@ -2164,6 +2166,7 @@ export default class CartDrawer extends Component {
     // GoKwik's `_gokwik_freebie`) makes it a gift line — no qty selector.
     var isFreebie = hasFreebieMarker(item.properties) && item.properties['_claimed'] !== 'true';
     var isClaimed = item.properties && (item.properties['_claimed'] === 'true' || item.properties['_cartmax_claim'] === 'true');
+    var readOnlyQty = showsReadOnlyQuantity(item);
     var isVariantOpen = this.state.variantOpen[item.key];
     var isVariantLoading = this.state.variantLoading[item.key];
     var cachedVariants = this._variantCache[String(item.product_id)] || [];
@@ -2359,21 +2362,21 @@ export default class CartDrawer extends Component {
           {!isFreebie && !isClaimed
             ? <div class="cartmax-line-actions">
                 {!variantOnTop ? variantNode : null}
-                {showsQuantitySelector(item)
-                  ? <div class="cartmax-qty-controls">
+                {(showsQuantitySelector(item) || readOnlyQty)
+                  ? <div class={'cartmax-qty-controls' + (readOnlyQty ? ' cartmax-qty-controls--readonly' : '')}>
                       {textRemove
                         // With a text remove link the minus never becomes a bin:
                         // it stops at 1 and REMOVE does the removing.
                         ? <button
                             class="cartmax-qty-btn"
                             onClick={() => this.queueQuantityChange(item.key, displayQty - 1)}
-                            disabled={isRemoving || displayQty <= 1}
+                            disabled={readOnlyQty || isRemoving || displayQty <= 1}
                             aria-label="Decrease quantity"
                           ><IconMinus /></button>
                         : <button
                             class="cartmax-qty-btn"
                             onClick={() => displayQty <= 1 ? this.handleRemove(item.key) : this.queueQuantityChange(item.key, displayQty - 1)}
-                            disabled={isRemoving}
+                            disabled={readOnlyQty || isRemoving}
                             aria-label={displayQty <= 1 ? ('Remove ' + item.product_title) : 'Decrease quantity'}
                           >{displayQty <= 1 ? <IconTrash /> : <IconMinus />}</button>
                       }
@@ -2385,7 +2388,7 @@ export default class CartDrawer extends Component {
                       <button
                         class="cartmax-qty-btn"
                         onClick={() => this.queueQuantityChange(item.key, displayQty + 1)}
-                        disabled={isRemoving}
+                        disabled={readOnlyQty || isRemoving}
                         aria-label="Increase quantity"
                       ><IconPlus /></button>
                     </div>
@@ -3923,6 +3926,9 @@ export default class CartDrawer extends Component {
       ? this._text.savings_label.split('{amount}')
       : null;
     var trustMsg = this._text.checkout_trust_message || '';
+    var footerMrp = (this._layout.footer_total_show_mrp && cart)
+      ? cartMrpTotal(cart.items, this._compareAtCache)
+      : 0;
 
     return (
       <div class="cartmax-footer">
@@ -3937,7 +3943,14 @@ export default class CartDrawer extends Component {
         ) : null}
         <div class="cartmax-footer-checkout">
           <div class="cartmax-footer-price">
-            <span class={'cartmax-footer-price-amount' + (this.state.cartSyncing ? ' cartmax-price-updating' : '')}>{formatMoney(cart.total_price, curr)}</span>
+            {footerMrp > (Number(cart.total_price) || 0)
+              ? (
+                <span class="cartmax-footer-price-line">
+                  <span class={'cartmax-footer-price-amount' + (this.state.cartSyncing ? ' cartmax-price-updating' : '')}>{formatMoney(cart.total_price, curr)}</span>
+                  <span class="cartmax-footer-price-mrp">{formatMoney(footerMrp, curr)}</span>
+                </span>
+              )
+              : <span class={'cartmax-footer-price-amount' + (this.state.cartSyncing ? ' cartmax-price-updating' : '')}>{formatMoney(cart.total_price, curr)}</span>}
             <button
               class="cartmax-price-breakup-link"
               onClick={() => this.setState({ priceBreakupOpen: true })}
@@ -4049,12 +4062,7 @@ export default class CartDrawer extends Component {
 
     // Total MRP = full retail: compare-at price where we have it, else the
     // line's own pre-discount price. Sum across lines.
-    var totalMRP = 0;
-    (cart.items || []).forEach(function (it) {
-      var compareUnit = self._compareAtCache[String(it.variant_id)];
-      var unit = (compareUnit && compareUnit > (it.original_price || 0)) ? compareUnit : (it.original_price || 0);
-      totalMRP += unit * (it.quantity || 0);
-    });
+    var totalMRP = cartMrpTotal(cart.items, self._compareAtCache);
 
     // Coupon discount = the amount attributable to the APPLIED coupon codes
     // (automatic/sale discounts are folded into "Discount on MRP"). Match by the
@@ -4073,6 +4081,14 @@ export default class CartDrawer extends Component {
     // Everything between retail and what's paid, minus the coupon portion, is
     // the "discount on MRP" (sale + automatic/volume discounts).
     var discountOnMRP = Math.max(0, totalMRP - totalAmount - couponDiscount);
+    // "Of which" rows under Discount on MRP: each automatic discount (a native
+    // B2G2, an automatic 10% off) by its Shopify title. Opt-in per store.
+    var discountRows = (this._layout.price_breakup_itemize_discounts && discountOnMRP > 0)
+      ? automaticDiscountRows(cart, this.getAppliedCodes(), {
+          'cartx free gift': this._t('pb_cartx_gift', 'Free gift'),
+          'cartx volume discount': this._t('pb_cartx_volume', 'Volume discount'),
+        })
+      : [];
 
     return (
       <div class="cartmax-pb-backdrop" onClick={() => this.setState({ priceBreakupOpen: false })}>
@@ -4099,6 +4115,14 @@ export default class CartDrawer extends Component {
                 <span class="cartmax-pb-amount cartmax-pb-discount">{'-'}{formatMoney(discountOnMRP, curr)}</span>
               </div>
             ) : null}
+            {discountRows.map(function (row) {
+              return (
+                <div class="cartmax-pb-row cartmax-pb-row--sub" key={'pbd-' + row.title}>
+                  <span class="cartmax-pb-label">{row.title}</span>
+                  <span class="cartmax-pb-amount cartmax-pb-discount">{'-'}{formatMoney(row.amount, curr)}</span>
+                </div>
+              );
+            })}
             <div class="cartmax-pb-row">
               <span class="cartmax-pb-label">{this._t('pb_coupon_discount', 'Coupon Discount')}</span>
               <span class="cartmax-pb-amount cartmax-pb-discount">{'-'}{formatMoney(couponDiscount, curr)}</span>

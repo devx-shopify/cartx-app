@@ -62,6 +62,8 @@ Both font settings fall back to `sans-serif` if the font fails to load.
 | `upsells_show_discount` | Features → Upsells | `false` |
 | `show_clear_all`, `clear_all_confirm` | Design → Drawer | `false`; `true` (asks with `text.clear_all_confirm` before emptying the cart) |
 | `savings_include_compare` | Design → Footer | `false` (the savings ribbon adds compare-at (MRP) savings on cart lines to the discount savings; computed in the drawer from the compare-at prices it already fetches, `compareAtSavings` in `helpers.js`) |
+| `footer_total_show_mrp` | Design → Footer | `false` (shows the cart's total MRP struck through beside the total; MRP = per line the higher of compare-at and original price × qty, `cartMrpTotal` in `helpers.js`, the same figure as Total MRP in the Price Break Up; hidden when not above the total) |
+| `price_breakup_itemize_discounts` | Text → Price breakup | `false` (lists each automatic discount — line allocations and `cart_level_discount_applications`, coupon codes excluded — as a smaller "↳" row under Discount on MRP, by its Shopify title; `automaticDiscountRows` in `helpers.js`. Discount on MRP is unchanged. cartx's own discounts use `text.pb_cartx_gift` / `text.pb_cartx_volume`) |
 | `gift_line_show_price` | Design → Cart items | `false` (free gift lines show the struck original price, "~~₹999~~ Free"; only when the line is charged ₹0) |
 | `variant_show_option_names` | Design → Cart items | `false` ("Size: M / Colour: Red" instead of "M / Red") |
 | `price_decimals` | Design → Cart items | `store` (the store's money format), `hide_zero` (drop ".00" only), `hide` (always round). Formatting is `formatAmount` in `app/lib/money-format.js`, shared by the server and the drawer |
@@ -113,7 +115,7 @@ Header: `clear_all`, `clear_all_confirm`.
 Freebies section: `freebies_heading`, `freebies_counter` (`{count}/{total}`), `freebies_locked` (`{amount}`), `freebies_locked_qty` (`{count}`).
 Upsells: `upsells_empty_heading`, `upsells_subheading`, `upsell_sold_out`, `upsell_adding`.
 Sublines (empty = hidden): `coupon_link_subtitle` (on the "Apply Coupon ›" row), `upsells_subheading`, `checkout_subtext` (inside the checkout button).
-Price breakup: `price_breakup_link`, `price_breakup_title`, `pb_total_mrp`, `pb_discount_mrp`, `pb_coupon_discount`, `pb_shipping`, `pb_shipping_value`, `pb_total`, `shipping_note` (multi-line; shows a box and an info toggle).
+Price breakup: `price_breakup_link`, `price_breakup_title`, `pb_total_mrp`, `pb_discount_mrp`, `pb_coupon_discount`, `pb_shipping`, `pb_shipping_value`, `pb_total`, `pb_cartx_gift`, `pb_cartx_volume`, `shipping_note` (multi-line; shows a box and an info toggle).
 
 `coupon_placeholder`: older configs saved `"Discount code"` while the input ignored the setting and showed "Apply Coupon". That exact value is treated as unset so those stores keep "Apply Coupon".
 

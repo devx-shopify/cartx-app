@@ -3097,3 +3097,35 @@ cart-notification-component [role="dialog"] {
   border-radius: 50%;
   animation: cartmax-spin 0.8s linear infinite;
 }
+
+/* Footer total: MRP struck through beside the total (layout.footer_total_show_mrp) */
+.cartmax-footer-price-line {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cartmax-footer-price-mrp {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--cartmax-muted, #80828d);
+  text-decoration: line-through;
+}
+
+/* Price Break Up: automatic discounts listed under Discount on MRP */
+.cartmax-pb-row--sub {
+  padding-left: 12px;
+}
+.cartmax-pb-row--sub .cartmax-pb-label,
+.cartmax-pb-row--sub .cartmax-pb-amount {
+  font-size: 12px;
+}
+.cartmax-pb-row--sub .cartmax-pb-label::before {
+  content: "\21B3\00a0";
+}
+
+/* Free line made by a Shopify discount (native B2G2): quantity shown, not editable */
+.cartmax-qty-controls--readonly .cartmax-qty-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
