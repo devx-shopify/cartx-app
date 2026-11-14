@@ -4,7 +4,7 @@
 // order and page rules. A drifted drawer copy that only knew promotions made
 // Settings milestones pop in a moment later (layout shift). Keep this file and
 // its imports dependency-free; a change here needs BOTH deploys.
-import { pageMatch, getActiveEntries, customerMatchesTags, exclusiveMilestones } from './page-target.js'
+import { pageMatch, getActiveEntries, customerMatchesTags, exclusiveMilestones, pageOnlyMilestones, targetsPage } from './page-target.js'
 import { resolveTemplate } from './template.js'
 import { orderTiers } from './tier-order.js'
 import { isScoped, scopedTotals, sourceKey } from './line-match.js'
@@ -39,108 +39,123 @@ export function tierSource(config, scopeRef) {
   return null
 }
 
-function collectBarEntries(config, page, customer) {
-  // "Only this milestone": on its page the bar shows just those milestones.
-  const exclusive = exclusiveMilestones(config.progress_bar.visual_milestones, page, customer)
-  if (exclusive.length > 0) return exclusive.map(milestoneEntry)
-
-  const entries = []
-
-  // Use getActiveEntries for offers — page-specific offers take priority over global ones
-  const eligibleOffers = (config.offers || []).filter(
-    (o) => o.enabled && o.bar?.show && customerMatchesTags(o, customer),
-  )
-  const activeOffers = getActiveEntries(page, eligibleOffers)
-  const activeOfferIds = new Set(activeOffers.map((o) => o.id))
-
-  for (const offer of config.offers || []) {
-    if (!activeOfferIds.has(offer.id)) continue
-
-    // Volume discount offers auto-generate one bar entry per tier
-    if (offer.reward?.type === 'volume_discount') {
-      const tiers = (offer.reward.tiers || []).slice().sort((a, b) => a.quantity - b.quantity)
-      for (const tier of tiers) {
-        const tierMainLabel = `Buy ${tier.quantity}`
-        const tierSubLabel = offer.reward.discount_mode === 'fixed_total'
-          ? `₹${tier.value}`
-          : `${tier.value}% OFF`
-        entries.push({
-          id: offer.id + '_tier_' + tier.quantity,
-          source: 'volume_discount',
-          promotion_id: offer.id,
-          promotion_type: 'offer',
-          threshold: tier.quantity,
-          trigger_type: 'quantity',
-          label: tierMainLabel,
-          sub_label: tierSubLabel,
-          icon_url: offer.bar.icon_url || null,
-          top_message: `Add [[QTY]] more for ${tierMainLabel} @ ${tierSubLabel}!`,
-          ribbon_message: null,
-          _volume_tier_value: tier.value,
-          _volume_discount_mode: offer.reward.discount_mode,
-          // Volume tiers count only the offer's products/collection, like the
-          // discount Function does.
-          _source: offer.source || null,
-          _scope_ref: offer.id,
-        })
+// Bar entries for one offer: one per tier for a volume discount, else one.
+function offerEntries(offer) {
+  if (offer.reward?.type === 'volume_discount') {
+    const tiers = (offer.reward.tiers || []).slice().sort((a, b) => a.quantity - b.quantity)
+    return tiers.map((tier) => {
+      const tierMainLabel = `Buy ${tier.quantity}`
+      const tierSubLabel = offer.reward.discount_mode === 'fixed_total'
+        ? `₹${tier.value}`
+        : `${tier.value}% OFF`
+      return {
+        id: offer.id + '_tier_' + tier.quantity,
+        source: 'volume_discount',
+        promotion_id: offer.id,
+        promotion_type: 'offer',
+        threshold: tier.quantity,
+        trigger_type: 'quantity',
+        label: tierMainLabel,
+        sub_label: tierSubLabel,
+        icon_url: offer.bar.icon_url || null,
+        top_message: `Add [[QTY]] more for ${tierMainLabel} @ ${tierSubLabel}!`,
+        ribbon_message: null,
+        _volume_tier_value: tier.value,
+        _volume_discount_mode: offer.reward.discount_mode,
+        // Volume tiers count only the offer's products/collection, like the
+        // discount Function does.
+        _source: offer.source || null,
+        _scope_ref: offer.id,
       }
-      continue
-    }
-
-    entries.push({
-      id: offer.id,
-      source: 'offer',
-      promotion_id: offer.id,
-      promotion_type: 'offer',
-      threshold:
-        offer.trigger.price_threshold || offer.trigger.quantity_threshold,
-      trigger_type: offer.trigger.price_threshold ? 'price' : 'quantity',
-      label: offer.bar.label,
-      sub_label: offer.bar.sub_label || null,
-      icon_url: offer.bar.icon_url || null,
-      top_message: offer.bar.top_message || null,
-      ribbon_message: offer.bar.ribbon_message || null,
-      // "A collection" counts only that collection; "specific products" is a
-      // presence trigger, so its bar keeps the whole-cart value.
-      _source: offer.source?.type === 'collection' ? offer.source : null,
-      _scope_ref: offer.id,
     })
   }
+  return [{
+    id: offer.id,
+    source: 'offer',
+    promotion_id: offer.id,
+    promotion_type: 'offer',
+    threshold:
+      offer.trigger.price_threshold || offer.trigger.quantity_threshold,
+    trigger_type: offer.trigger.price_threshold ? 'price' : 'quantity',
+    label: offer.bar.label,
+    sub_label: offer.bar.sub_label || null,
+    icon_url: offer.bar.icon_url || null,
+    top_message: offer.bar.top_message || null,
+    ribbon_message: offer.bar.ribbon_message || null,
+    // "A collection" counts only that collection; "specific products" is a
+    // presence trigger, so its bar keeps the whole-cart value.
+    _source: offer.source?.type === 'collection' ? offer.source : null,
+    _scope_ref: offer.id,
+  }]
+}
+
+// (No Array#flatMap: the drawer bundle targets es2018.)
+function allOfferEntries(offers) {
+  const out = []
+  for (const o of offers) out.push(...offerEntries(o))
+  return out
+}
+
+function claimEntry(claim) {
+  return {
+    id: claim.id,
+    source: 'claim_gift',
+    promotion_id: claim.id,
+    promotion_type: 'claim-gift',
+    threshold: claim.trigger.threshold,
+    trigger_type: claim.trigger.type,
+    label: claim.bar.label,
+    sub_label: claim.bar.sub_label || null,
+    icon_url: claim.bar.icon_url || null,
+    top_message: claim.bar.locked_message || null,
+  }
+}
+
+function collectBarEntries(config, page, customer) {
+  const milestones = config.progress_bar.visual_milestones || []
+  // "Only this milestone": on its page the bar shows just those milestones.
+  const exclusive = exclusiveMilestones(milestones, page, customer)
+  if (exclusive.length > 0) return exclusive.map(milestoneEntry)
+
+  const barOffers = (config.offers || []).filter(
+    (o) => o.enabled && o.bar?.show && customerMatchesTags(o, customer),
+  )
+  const barClaims = (config.claim_gifts || []).filter(
+    (c) => c.enabled && c.bar?.show && customerMatchesTags(c, customer),
+  )
+
+  // "Only this page's promotions": on its page the bar shows every milestone,
+  // offer and claim gift targeted at this page; "All pages" ones are hidden.
+  if (pageOnlyMilestones(milestones, page, customer).length > 0) {
+    const here = (e) => targetsPage(e, page)
+    return [
+      ...allOfferEntries(barOffers.filter(here)),
+      ...barClaims.filter(here).map(claimEntry),
+      ...milestones
+        .filter((m) => m.enabled && here(m) && customerMatchesTags(m, customer))
+        .map(milestoneEntry),
+    ]
+  }
+
+  // Page-specific offers take priority over global ones
+  const activeOffers = getActiveEntries(page, barOffers)
+  const entries = allOfferEntries(activeOffers)
 
   // Coupons no longer contribute to the progress bar — they're showcase only
 
-  // Check if any page-specific offers matched — if so, suppress global claims/milestones
+  // When page-specific offers matched, global claims and milestones are
+  // suppressed; milestones targeted at this page still show.
   const hasPageSpecificOffers = activeOffers.some(
     (o) => !(o.page_handles || []).includes('/')
   )
 
-  // Use getActiveEntries for claims — but suppress if page-specific offers exist
-  const eligibleClaims = (config.claim_gifts || []).filter(
-    (c) => c.enabled && c.bar?.show && customerMatchesTags(c, customer),
-  )
-  const activeClaims = hasPageSpecificOffers ? [] : getActiveEntries(page, eligibleClaims)
-  const activeClaimIds = new Set(activeClaims.map((c) => c.id))
+  const activeClaims = hasPageSpecificOffers ? [] : getActiveEntries(page, barClaims)
+  entries.push(...activeClaims.map(claimEntry))
 
-  for (const claim of config.claim_gifts || []) {
-    if (!activeClaimIds.has(claim.id)) continue
-    entries.push({
-      id: claim.id,
-      source: 'claim_gift',
-      promotion_id: claim.id,
-      promotion_type: 'claim-gift',
-      threshold: claim.trigger.threshold,
-      trigger_type: claim.trigger.type,
-      label: claim.bar.label,
-      sub_label: claim.bar.sub_label || null,
-      icon_url: claim.bar.icon_url || null,
-      top_message: claim.bar.locked_message || null,
-    })
-  }
-
-  for (const m of config.progress_bar.visual_milestones || []) {
-    if (hasPageSpecificOffers) continue
+  for (const m of milestones) {
     if (!m.enabled) continue
     if (!pageMatch(m.page_handles, page)) continue
+    if (hasPageSpecificOffers && !targetsPage(m, page)) continue
     if (!customerMatchesTags(m, customer)) continue
     entries.push(milestoneEntry(m))
   }

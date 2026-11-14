@@ -187,8 +187,10 @@ export const VisualMilestoneSchema = z.object({
   // Which cart lines count toward the threshold. Absent = the whole cart.
   source: MilestoneSourceSchema.optional(),
   // 'only_this': on its (specific) pages the bar shows only this milestone and
-  // gift offers pause there. Absent = shown with the other milestones.
-  display: z.enum(['with_others', 'only_this']).optional(),
+  // gift offers pause there. 'page_only': on its pages the bar shows every
+  // milestone, offer and claim gift targeted at that page; "All pages" ones are
+  // hidden and their gifts pause. Absent = shown with the other milestones.
+  display: z.enum(['with_others', 'only_this', 'page_only']).optional(),
 })
 
 export const UpsellProductSchema = z.object({

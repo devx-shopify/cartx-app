@@ -1245,15 +1245,29 @@
     if (required.length && !required.some((t2) => tags.includes(t2))) return false;
     return true;
   }
-  function exclusiveMilestones(milestones, currentPath, customer) {
+  function targetsPage(entry, currentPath) {
     const path = cleanPath(currentPath);
+    return ((entry == null ? void 0 : entry.page_handles) || []).some((h2) => h2 !== "/" && h2 === path);
+  }
+  function milestonesWithDisplay(milestones, currentPath, customer, display) {
     return (milestones || []).filter(
-      (m2) => m2.enabled && m2.display === "only_this" && (m2.page_handles || []).some((h2) => h2 !== "/" && h2 === path) && customerMatchesTags(m2, customer)
+      (m2) => m2.enabled && m2.display === display && targetsPage(m2, currentPath) && customerMatchesTags(m2, customer)
     );
   }
-  function offersPausedOnPage(config, currentPath, customer) {
+  function exclusiveMilestones(milestones, currentPath, customer) {
+    return milestonesWithDisplay(milestones, currentPath, customer, "only_this");
+  }
+  function pageOnlyMilestones(milestones, currentPath, customer) {
+    return milestonesWithDisplay(milestones, currentPath, customer, "page_only");
+  }
+  function pausedOnPage(config, currentPath, customer) {
     var _a;
-    return exclusiveMilestones((_a = config == null ? void 0 : config.progress_bar) == null ? void 0 : _a.visual_milestones, currentPath, customer).length > 0;
+    const milestones = (_a = config == null ? void 0 : config.progress_bar) == null ? void 0 : _a.visual_milestones;
+    if (exclusiveMilestones(milestones, currentPath, customer).length > 0) return () => true;
+    if (pageOnlyMilestones(milestones, currentPath, customer).length > 0) {
+      return (entry) => !targetsPage(entry, currentPath);
+    }
+    return () => false;
   }
 
   // ../lib/template.js
@@ -1417,96 +1431,106 @@
     for (const m2 of ms) if (m2.id === scopeRef) return m2.source || null;
     return null;
   }
-  function collectBarEntries(config, page, customer) {
+  function offerEntries(offer) {
     var _a, _b;
-    const exclusive = exclusiveMilestones(config.progress_bar.visual_milestones, page, customer);
-    if (exclusive.length > 0) return exclusive.map(milestoneEntry);
-    const entries = [];
-    const eligibleOffers = (config.offers || []).filter(
-      (o2) => {
-        var _a2;
-        return o2.enabled && ((_a2 = o2.bar) == null ? void 0 : _a2.show) && customerMatchesTags(o2, customer);
-      }
-    );
-    const activeOffers = getActiveEntries(page, eligibleOffers);
-    const activeOfferIds = new Set(activeOffers.map((o2) => o2.id));
-    for (const offer of config.offers || []) {
-      if (!activeOfferIds.has(offer.id)) continue;
-      if (((_a = offer.reward) == null ? void 0 : _a.type) === "volume_discount") {
-        const tiers = (offer.reward.tiers || []).slice().sort((a2, b2) => a2.quantity - b2.quantity);
-        for (const tier of tiers) {
-          const tierMainLabel = `Buy ${tier.quantity}`;
-          const tierSubLabel = offer.reward.discount_mode === "fixed_total" ? `\u20B9${tier.value}` : `${tier.value}% OFF`;
-          entries.push({
-            id: offer.id + "_tier_" + tier.quantity,
-            source: "volume_discount",
-            promotion_id: offer.id,
-            promotion_type: "offer",
-            threshold: tier.quantity,
-            trigger_type: "quantity",
-            label: tierMainLabel,
-            sub_label: tierSubLabel,
-            icon_url: offer.bar.icon_url || null,
-            top_message: `Add [[QTY]] more for ${tierMainLabel} @ ${tierSubLabel}!`,
-            ribbon_message: null,
-            _volume_tier_value: tier.value,
-            _volume_discount_mode: offer.reward.discount_mode,
-            // Volume tiers count only the offer's products/collection, like the
-            // discount Function does.
-            _source: offer.source || null,
-            _scope_ref: offer.id
-          });
-        }
-        continue;
-      }
-      entries.push({
-        id: offer.id,
-        source: "offer",
-        promotion_id: offer.id,
-        promotion_type: "offer",
-        threshold: offer.trigger.price_threshold || offer.trigger.quantity_threshold,
-        trigger_type: offer.trigger.price_threshold ? "price" : "quantity",
-        label: offer.bar.label,
-        sub_label: offer.bar.sub_label || null,
-        icon_url: offer.bar.icon_url || null,
-        top_message: offer.bar.top_message || null,
-        ribbon_message: offer.bar.ribbon_message || null,
-        // "A collection" counts only that collection; "specific products" is a
-        // presence trigger, so its bar keeps the whole-cart value.
-        _source: ((_b = offer.source) == null ? void 0 : _b.type) === "collection" ? offer.source : null,
-        _scope_ref: offer.id
+    if (((_a = offer.reward) == null ? void 0 : _a.type) === "volume_discount") {
+      const tiers = (offer.reward.tiers || []).slice().sort((a2, b2) => a2.quantity - b2.quantity);
+      return tiers.map((tier) => {
+        const tierMainLabel = `Buy ${tier.quantity}`;
+        const tierSubLabel = offer.reward.discount_mode === "fixed_total" ? `\u20B9${tier.value}` : `${tier.value}% OFF`;
+        return {
+          id: offer.id + "_tier_" + tier.quantity,
+          source: "volume_discount",
+          promotion_id: offer.id,
+          promotion_type: "offer",
+          threshold: tier.quantity,
+          trigger_type: "quantity",
+          label: tierMainLabel,
+          sub_label: tierSubLabel,
+          icon_url: offer.bar.icon_url || null,
+          top_message: `Add [[QTY]] more for ${tierMainLabel} @ ${tierSubLabel}!`,
+          ribbon_message: null,
+          _volume_tier_value: tier.value,
+          _volume_discount_mode: offer.reward.discount_mode,
+          // Volume tiers count only the offer's products/collection, like the
+          // discount Function does.
+          _source: offer.source || null,
+          _scope_ref: offer.id
+        };
       });
     }
+    return [{
+      id: offer.id,
+      source: "offer",
+      promotion_id: offer.id,
+      promotion_type: "offer",
+      threshold: offer.trigger.price_threshold || offer.trigger.quantity_threshold,
+      trigger_type: offer.trigger.price_threshold ? "price" : "quantity",
+      label: offer.bar.label,
+      sub_label: offer.bar.sub_label || null,
+      icon_url: offer.bar.icon_url || null,
+      top_message: offer.bar.top_message || null,
+      ribbon_message: offer.bar.ribbon_message || null,
+      // "A collection" counts only that collection; "specific products" is a
+      // presence trigger, so its bar keeps the whole-cart value.
+      _source: ((_b = offer.source) == null ? void 0 : _b.type) === "collection" ? offer.source : null,
+      _scope_ref: offer.id
+    }];
+  }
+  function allOfferEntries(offers) {
+    const out = [];
+    for (const o2 of offers) out.push(...offerEntries(o2));
+    return out;
+  }
+  function claimEntry(claim) {
+    return {
+      id: claim.id,
+      source: "claim_gift",
+      promotion_id: claim.id,
+      promotion_type: "claim-gift",
+      threshold: claim.trigger.threshold,
+      trigger_type: claim.trigger.type,
+      label: claim.bar.label,
+      sub_label: claim.bar.sub_label || null,
+      icon_url: claim.bar.icon_url || null,
+      top_message: claim.bar.locked_message || null
+    };
+  }
+  function collectBarEntries(config, page, customer) {
+    const milestones = config.progress_bar.visual_milestones || [];
+    const exclusive = exclusiveMilestones(milestones, page, customer);
+    if (exclusive.length > 0) return exclusive.map(milestoneEntry);
+    const barOffers = (config.offers || []).filter(
+      (o2) => {
+        var _a;
+        return o2.enabled && ((_a = o2.bar) == null ? void 0 : _a.show) && customerMatchesTags(o2, customer);
+      }
+    );
+    const barClaims = (config.claim_gifts || []).filter(
+      (c2) => {
+        var _a;
+        return c2.enabled && ((_a = c2.bar) == null ? void 0 : _a.show) && customerMatchesTags(c2, customer);
+      }
+    );
+    if (pageOnlyMilestones(milestones, page, customer).length > 0) {
+      const here = (e2) => targetsPage(e2, page);
+      return [
+        ...allOfferEntries(barOffers.filter(here)),
+        ...barClaims.filter(here).map(claimEntry),
+        ...milestones.filter((m2) => m2.enabled && here(m2) && customerMatchesTags(m2, customer)).map(milestoneEntry)
+      ];
+    }
+    const activeOffers = getActiveEntries(page, barOffers);
+    const entries = allOfferEntries(activeOffers);
     const hasPageSpecificOffers = activeOffers.some(
       (o2) => !(o2.page_handles || []).includes("/")
     );
-    const eligibleClaims = (config.claim_gifts || []).filter(
-      (c2) => {
-        var _a2;
-        return c2.enabled && ((_a2 = c2.bar) == null ? void 0 : _a2.show) && customerMatchesTags(c2, customer);
-      }
-    );
-    const activeClaims = hasPageSpecificOffers ? [] : getActiveEntries(page, eligibleClaims);
-    const activeClaimIds = new Set(activeClaims.map((c2) => c2.id));
-    for (const claim of config.claim_gifts || []) {
-      if (!activeClaimIds.has(claim.id)) continue;
-      entries.push({
-        id: claim.id,
-        source: "claim_gift",
-        promotion_id: claim.id,
-        promotion_type: "claim-gift",
-        threshold: claim.trigger.threshold,
-        trigger_type: claim.trigger.type,
-        label: claim.bar.label,
-        sub_label: claim.bar.sub_label || null,
-        icon_url: claim.bar.icon_url || null,
-        top_message: claim.bar.locked_message || null
-      });
-    }
-    for (const m2 of config.progress_bar.visual_milestones || []) {
-      if (hasPageSpecificOffers) continue;
+    const activeClaims = hasPageSpecificOffers ? [] : getActiveEntries(page, barClaims);
+    entries.push(...activeClaims.map(claimEntry));
+    for (const m2 of milestones) {
       if (!m2.enabled) continue;
       if (!pageMatch(m2.page_handles, page)) continue;
+      if (hasPageSpecificOffers && !targetsPage(m2, page)) continue;
       if (!customerMatchesTags(m2, customer)) continue;
       entries.push(milestoneEntry(m2));
     }
@@ -1707,6 +1731,9 @@
     var toRemove = [];
     var triggeredIds = {};
     var triggeredGiftVids = {};
+    var isPaused = typeof paused === "function" ? paused : function() {
+      return !!paused;
+    };
     for (var i2 = 0; i2 < offers.length; i2++) {
       var offer = offers[i2];
       if (!pageMatch(offer.page_handles, page)) continue;
@@ -1722,7 +1749,7 @@
           }
           triggeredGiftVids[offer.id] = grantSet;
         }
-        if (!paused && offer.reward && offer.reward.type === "auto_add_gift" && offer.reward.add_mode === "auto") {
+        if (!isPaused(offer) && offer.reward && offer.reward.type === "auto_add_gift" && offer.reward.add_mode === "auto") {
           var giftVids = offer.reward.gift_variants || [];
           for (var g2 = 0; g2 < giftVids.length; g2++) {
             var vid = String(normalizeVariantId(giftVids[g2]));
@@ -1794,7 +1821,7 @@
     var cfgOffers = cachedConfig.offers || [];
     var cfgClaims = cachedConfig.claim_gifts || [];
     var configPopulated = cfgOffers.length > 0 || cfgClaims.length > 0;
-    var paused = offersPausedOnPage(cachedConfig, page, customer);
+    var paused = pausedOnPage(cachedConfig, page, customer);
     var offerResult = evaluateOffers(cfgOffers, cart, adjTotal, adjQty, page, customer, paused);
     var claimRemovals = evaluateClaimRemovals(cfgClaims, items, adjTotal, adjQty, configPopulated);
     if (claimRemovals.length) {

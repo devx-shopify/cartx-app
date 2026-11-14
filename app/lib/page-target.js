@@ -50,6 +50,23 @@ export function customerMatchesTags(rule, customer) {
   return true
 }
 
+/** True when `entry` targets `currentPath` itself (not via "All pages"). */
+export function targetsPage(entry, currentPath) {
+  const path = cleanPath(currentPath)
+  return (entry?.page_handles || []).some((h) => h !== '/' && h === path)
+}
+
+// Enabled, page-targeted custom milestones on this page with the given display.
+function milestonesWithDisplay(milestones, currentPath, customer, display) {
+  return (milestones || []).filter(
+    (m) =>
+      m.enabled &&
+      m.display === display &&
+      targetsPage(m, currentPath) &&
+      customerMatchesTags(m, customer),
+  )
+}
+
 /**
  * Custom milestones set to "Only this milestone" that apply on this page.
  * Only page-targeted milestones qualify: an "All pages" milestone can't take
@@ -57,17 +74,36 @@ export function customerMatchesTags(rule, customer) {
  * offers + claim gifts pause on the page (gifts already in the cart stay).
  */
 export function exclusiveMilestones(milestones, currentPath, customer) {
-  const path = cleanPath(currentPath)
-  return (milestones || []).filter(
-    (m) =>
-      m.enabled &&
-      m.display === 'only_this' &&
-      (m.page_handles || []).some((h) => h !== '/' && h === path) &&
-      customerMatchesTags(m, customer),
-  )
+  return milestonesWithDisplay(milestones, currentPath, customer, 'only_this')
 }
 
-/** True when an "Only this milestone" milestone pauses offers on this page. */
+/**
+ * Custom milestones set to "Only this page's promotions" that apply on this
+ * page. When this returns any (and no "Only this milestone" one does), the bar
+ * shows every milestone, offer and claim gift targeted at this page, hides the
+ * "All pages" ones, and pauses only the "All pages" gift offers + claim gifts.
+ */
+export function pageOnlyMilestones(milestones, currentPath, customer) {
+  return milestonesWithDisplay(milestones, currentPath, customer, 'page_only')
+}
+
+/** True when an "Only this milestone" milestone pauses every offer on this page. */
 export function offersPausedOnPage(config, currentPath, customer) {
   return exclusiveMilestones(config?.progress_bar?.visual_milestones, currentPath, customer).length > 0
+}
+
+/**
+ * Which gift offers / claim gifts are paused on this page, as a predicate
+ * `(entry) => boolean`:
+ * - "Only this milestone" here → all of them.
+ * - "Only this page's promotions" here → those not targeted at this page.
+ * - otherwise → none.
+ */
+export function pausedOnPage(config, currentPath, customer) {
+  const milestones = config?.progress_bar?.visual_milestones
+  if (exclusiveMilestones(milestones, currentPath, customer).length > 0) return () => true
+  if (pageOnlyMilestones(milestones, currentPath, customer).length > 0) {
+    return (entry) => !targetsPage(entry, currentPath)
+  }
+  return () => false
 }
