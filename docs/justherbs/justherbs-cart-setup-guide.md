@@ -168,3 +168,24 @@ The "Special Price" row, option names in the variant line, bold milestone text, 
 | 11 | Admin preview | — | The Customize Cart preview follows each setting above |
 
 When the release is deployed, these features are live for every store, and this kit can be imported on the Just Herbs store.
+
+## 10. B2G2 quantity, itemized discounts and MRP total (release of 14 Nov 2026)
+
+Built in PR #51/#52 (merged to `main`, server on Fly). The drawer part goes live after `shopify app deploy`. The kit turns both new settings on:
+
+| Setting (Customize Cart) | Kit value |
+|---|---|
+| Design → Footer → Show MRP struck through next to the total (`layout.footer_total_show_mrp`) | on |
+| Price breakup → List automatic discounts under Discount on MRP (`layout.price_breakup_itemize_discounts`) | on |
+
+After the deploy, on the live store (cartx is live on Just Herbs) either re-import the kit or tick both boxes in Customize Cart and Save. Then check:
+
+| # | Cart | Expected |
+|---|---|---|
+| 1 | 4 B2G2 lipsticks (2 paid + 2 free) | The ₹0 free line shows the quantity stepper "− 2 +" with the buttons greyed out; changing the paid line updates the free line |
+| 2 | Same cart, open Price Break Up | Discount on MRP −₹3,598, with "↳ B2G2 −₹398" under it; Total ₹398 |
+| 3 | 3 lipsticks with the 10% automatic discount | Discount on MRP −₹2,460, with "↳ *10% discount title* −₹60" under it; Total ₹537 |
+| 4 | Any cart with compare-at prices | Footer reads "Total: ₹537 ~~₹2,997~~" |
+| 5 | Coupon applied | The coupon stays in the Coupon Discount row, not under Discount on MRP |
+
+The sub-row label is the discount's title in Shopify admin, so give the 10% automatic discount a shopper-friendly title (e.g. "Extra 10% Off").

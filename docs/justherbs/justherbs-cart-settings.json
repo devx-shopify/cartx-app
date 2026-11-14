@@ -120,7 +120,9 @@
     "special_offer_max": 6,
     "special_offer_show_on_empty": false,
     "special_offer_card_style": "compact",
-    "savings_include_compare": true
+    "savings_include_compare": true,
+    "footer_total_show_mrp": true,
+    "price_breakup_itemize_discounts": true
   },
   "sections": {
     "show_coupons": true,
