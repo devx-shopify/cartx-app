@@ -8,6 +8,7 @@ import { pickRecommendations, selectUpsells } from '../../lib/upsell-recs.js';
 import { adjustedTotal, adjustedQty } from '../../lib/upsell-rank.js';
 import { initStore as gqlInitStore, subscribe as gqlSubscribe, getOptimisticCart as gqlGetCart, changeQuantity as gqlChangeQuantity, removeLine as gqlRemoveLine, addLine as gqlAddLine, applyDiscountCode as gqlApplyCoupon, removeDiscountCode as gqlRemoveCoupon, whenSettled as gqlWhenSettled } from './cart-store';
 import { isAjaxCartStoreEnabled, subscribe as ajaxSubscribe, getOptimisticCart as ajaxGetCart, init as ajaxInit, reconcileFromServer as ajaxReconcile, addLine as ajaxAddLine, changeQuantity as ajaxChangeQty, removeLine as ajaxRemoveLine, whenSettled as ajaxWhenSettled, getState as ajaxGetState, onAddRejected as ajaxOnAddRejected, cartHasDiscounts } from './ajax-cart-store';
+import { sectionShownOnPage } from '../../lib/page-target.js';
 import { tracker } from './tracker';
 import { ANALYTICS_EVENTS } from './analytics-events';
 
@@ -910,6 +911,7 @@ export default class CartDrawer extends Component {
       max: Math.min(20, Math.max(1, Number(l.special_offer_max) || 6)),
       show_on_empty: l.special_offer_show_on_empty === true,
       card_style: l.special_offer_card_style === 'standard' ? 'standard' : 'compact',
+      show_on: l.special_offer_show_on || null,
     };
     var ab = drawer.announcement_bar || {};
     this._announcement = {
@@ -3711,6 +3713,8 @@ export default class CartDrawer extends Component {
     var cart = this.state.cart;
     var items = (cart && cart.items) || [];
     if (items.length === 0 && !s.show_on_empty) return null;
+    // "Show on": hidden on this page → no row and no product fetch.
+    if (!sectionShownOnPage(s.show_on, window.location.pathname)) return null;
     this._ensureSpecialProducts();
     var cards = pickSpecialProducts(this.state.specialProducts, items, s.max);
     if (cards.length === 0) return null;
@@ -3794,6 +3798,9 @@ export default class CartDrawer extends Component {
   renderUpsells() {
     var result = this.state.evalResult;
     if (!result || !result.upsells || !result.upsells.enabled) return null;
+    // The server already skips upsells on hidden pages; this covers a result
+    // reused from another page.
+    if (!sectionShownOnPage(result.upsells.show_on, window.location.pathname)) return null;
 
     var cart = this.state.cart;
     var items = (cart && cart.items) || [];

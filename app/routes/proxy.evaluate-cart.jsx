@@ -7,7 +7,7 @@ import { loadStorefrontToken } from "../lib/storefront-token.server.js";
 import { adjustedTotal, adjustedQty, isFrozenPage, computeTotalSavings } from "../lib/helpers.server.js";
 import { evaluateOffers } from "../lib/evaluate/triggers.server.js";
 import { buildBar, getRibbonFromBar } from "../lib/evaluate/bar.server.js";
-import { offersPausedOnPage, pausedOnPage } from "../lib/page-target.js";
+import { offersPausedOnPage, pausedOnPage, sectionShownOnPage } from "../lib/page-target.js";
 import { resolveAvailableCoupons } from "../lib/evaluate/coupons.server.js";
 import { resolveClaimGifts } from "../lib/evaluate/claims.server.js";
 import { loadUpsellAddRates } from "../lib/upsell-stats.server.js";
@@ -182,8 +182,9 @@ export const action = async ({ request }) => {
 
   // Upsells never fail the whole response: on a DB hiccup the drawer just
   // renders without them.
+  // "Show on" hides upsells on chosen pages: skip the DB work there too.
   let upsells = null;
-  if (config.upsells?.enabled) {
+  if (config.upsells?.enabled && sectionShownOnPage(config.upsells.show_on, page)) {
     try {
       upsells = await buildUpsellsPayload({
         shopId,

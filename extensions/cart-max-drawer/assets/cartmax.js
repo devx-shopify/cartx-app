@@ -1269,6 +1269,13 @@
     }
     return () => false;
   }
+  function sectionShownOnPage(showOn, currentPath) {
+    const mode = showOn == null ? void 0 : showOn.mode;
+    const handles = ((showOn == null ? void 0 : showOn.page_handles) || []).filter((h2) => h2 && h2 !== "/");
+    if (mode !== "only" && mode !== "except" || handles.length === 0) return true;
+    const hit = handles.includes(cleanPath(currentPath));
+    return mode === "only" ? hit : !hit;
+  }
 
   // ../lib/template.js
   function resolveTemplate(template, values = {}, moneyFormat, decimals) {
@@ -4617,7 +4624,8 @@
         }).filter(Boolean),
         max: Math.min(20, Math.max(1, Number(l2.special_offer_max) || 6)),
         show_on_empty: l2.special_offer_show_on_empty === true,
-        card_style: l2.special_offer_card_style === "standard" ? "standard" : "compact"
+        card_style: l2.special_offer_card_style === "standard" ? "standard" : "compact",
+        show_on: l2.special_offer_show_on || null
       };
       var ab = drawer.announcement_bar || {};
       this._announcement = {
@@ -6916,6 +6924,7 @@
       var cart = this.state.cart;
       var items = cart && cart.items || [];
       if (items.length === 0 && !s2.show_on_empty) return null;
+      if (!sectionShownOnPage(s2.show_on, window.location.pathname)) return null;
       this._ensureSpecialProducts();
       var cards = pickSpecialProducts(this.state.specialProducts, items, s2.max);
       if (cards.length === 0) return null;
@@ -6975,6 +6984,7 @@
     renderUpsells() {
       var result = this.state.evalResult;
       if (!result || !result.upsells || !result.upsells.enabled) return null;
+      if (!sectionShownOnPage(result.upsells.show_on, window.location.pathname)) return null;
       var cart = this.state.cart;
       var items = cart && cart.items || [];
       if (items.length === 0 && this._upsells.show_on_empty !== "always") return null;

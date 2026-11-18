@@ -14,6 +14,7 @@ import { getActivePlan, planAllowsDrawer } from "../lib/billing.server.js";
 import { syncDrawerMetafield } from "../lib/drawer-metafield.server.js";
 import { ensureStorefrontToken } from "../lib/storefront-token.server.js";
 import CartPreview from "../components/CartPreview.jsx";
+import ShowOnPages from "../components/ShowOnPages.jsx";
 import TabNav from "../components/TabNav.jsx";
 
 // GoKwik "open checkout" snippet used by the customizer's checkout action. Calls
@@ -1939,7 +1940,12 @@ function FeaturesTab({ s, update, onTestConfetti }) {
             checked={!!s.layout.special_offer_show_on_empty}
             onChange={(e) => update("layout.special_offer_show_on_empty", e.target.checked)}
           />
+          <ShowOnPages
+            value={s.layout.special_offer_show_on}
+            onChange={(v) => update("layout.special_offer_show_on", v)}
+          />
           <s-text color="subdued">Products already in the cart or out of stock are skipped. Prices are the products' own price and compare-at price. Move the row with Section order (above or below Upsells).</s-text>
+          <s-text color="subdued">The preview here always shows the row; Show on applies on the store.</s-text>
         </div>
       </CollapsibleSection>
 

@@ -77,6 +77,7 @@ Both font settings fall back to `sans-serif` if the font fails to load.
 | `special_offer_max` | Features → Special Offer | 1–20 (6) |
 | `special_offer_card_style` | Features → Special Offer | `compact`, `standard` (same card as Upsells) |
 | `special_offer_show_on_empty` | Features → Special Offer | `false` |
+| `special_offer_show_on` | Features → Special Offer → Show on | `{mode, page_handles, page_targets}`; mode `all` (default), `only`, `except`. Missing or no pages = every page. Query string ignored. Preview always shows the row. |
 
 ## Sections (`drawer.sections`)
 
@@ -119,6 +120,10 @@ Sublines (empty = hidden): `coupon_link_subtitle` (on the "Apply Coupon ›" row
 Price breakup: `price_breakup_link`, `price_breakup_title`, `pb_total_mrp`, `pb_discount_mrp`, `pb_coupon_discount`, `pb_shipping`, `pb_shipping_value`, `pb_total`, `pb_cartx_gift`, `pb_cartx_volume`, `shipping_note` (multi-line; shows a box and an info toggle).
 
 `coupon_placeholder`: older configs saved `"Discount code"` while the input ignored the setting and showed "Apply Coupon". That exact value is treated as unset so those stores keep "Apply Coupon".
+
+## Upsells "Show on" (`config.upsells.show_on`)
+
+Set in Upsells → Settings → Where upsells show. Same shape and rules as `special_offer_show_on` (`sectionShownOnPage` in `app/lib/page-target.js`, shared by server and drawer). On a hidden page the proxy skips building the upsell payload, and the drawer also hides a result reused from another page.
 
 ## Data the server now sends
 

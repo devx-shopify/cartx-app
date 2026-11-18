@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { pageMatch, getActiveEntries, exclusiveMilestones, offersPausedOnPage, pageOnlyMilestones, pausedOnPage, targetsPage } from './page-target.js'
+import { pageMatch, getActiveEntries, exclusiveMilestones, offersPausedOnPage, pageOnlyMilestones, pausedOnPage, targetsPage, sectionShownOnPage } from './page-target.js'
+import { UpsellSettingsSchema, DrawerConfigSchema } from './schemas.js'
 import { evaluateOffers } from './evaluate/triggers.server.js'
 import { buildBar } from './progress-bar.js'
 
@@ -162,5 +163,47 @@ describe('"With others" next to page-specific offers', () => {
     expect(tiers).toContain('b1g1')
     expect(tiers).toContain('b2g3')
     expect(tiers).not.toContain('m499')
+  })
+})
+
+describe('section "Show on" (upsells, Special Offer)', () => {
+  const sale = '/collections/b2g2-new'
+  it('shows everywhere when the setting is missing or "all" (configs saved before it existed)', () => {
+    expect(sectionShownOnPage(undefined, sale)).toBe(true)
+    expect(sectionShownOnPage(null, '/')).toBe(true)
+    expect(sectionShownOnPage({ mode: 'all', page_handles: [sale] }, sale)).toBe(true)
+  })
+  it('"only" shows on the listed pages, ignoring the query string', () => {
+    const s = { mode: 'only', page_handles: [sale] }
+    expect(sectionShownOnPage(s, sale + '?page=2')).toBe(true)
+    expect(sectionShownOnPage(s, '/collections/all')).toBe(false)
+  })
+  it('"except" hides on the listed pages only', () => {
+    const s = { mode: 'except', page_handles: [sale, '/collections/buy-5-at-495'] }
+    expect(sectionShownOnPage(s, sale + '?page=2')).toBe(false)
+    expect(sectionShownOnPage(s, '/collections/buy-5-at-495')).toBe(false)
+    expect(sectionShownOnPage(s, '/products/salt-sand')).toBe(true)
+  })
+  it('an empty page list never hides the section', () => {
+    expect(sectionShownOnPage({ mode: 'only', page_handles: [] }, sale)).toBe(true)
+    expect(sectionShownOnPage({ mode: 'except', page_handles: ['/'] }, sale)).toBe(true)
+  })
+  it('an upsells config saved before "Show on" still validates and defaults to all pages', () => {
+    const old = {
+      enabled: true, heading: 'You may also like', products: [], mode: 'static',
+      no_match: 'default', fill_with_default: false, sold_out: 'hide',
+      max_visible: 4, max_per_trigger: 10, strategies: {},
+    }
+    const parsed = UpsellSettingsSchema.parse(old)
+    expect(parsed.show_on?.mode ?? 'all').toBe('all')
+    expect(sectionShownOnPage(parsed.show_on, sale)).toBe(true)
+  })
+})
+
+describe('Special Offer "Show on" in drawer settings', () => {
+  it('drawer settings without the key still validate', () => {
+    const r = DrawerConfigSchema.safeParse({})
+    expect(r.success).toBe(true)
+    expect(sectionShownOnPage(r.data?.layout?.special_offer_show_on, '/collections/b2g2-new')).toBe(true)
   })
 })

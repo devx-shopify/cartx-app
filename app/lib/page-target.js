@@ -107,3 +107,21 @@ export function pausedOnPage(config, currentPath, customer) {
   }
   return () => false
 }
+
+/**
+ * True when a drawer section with a "Show on" setting (`{ mode, page_handles }`)
+ * appears on `currentPath`:
+ * - mode 'all' (or the setting missing, as on every config saved before it
+ *   existed) → every page.
+ * - 'only' → just the listed pages.
+ * - 'except' → every page but the listed ones.
+ * An empty page list means every page in both modes, so a half-finished
+ * setting never hides the section store-wide.
+ */
+export function sectionShownOnPage(showOn, currentPath) {
+  const mode = showOn?.mode
+  const handles = (showOn?.page_handles || []).filter((h) => h && h !== '/')
+  if ((mode !== 'only' && mode !== 'except') || handles.length === 0) return true
+  const hit = handles.includes(cleanPath(currentPath))
+  return mode === 'only' ? hit : !hit
+}
