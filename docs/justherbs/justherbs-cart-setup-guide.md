@@ -189,3 +189,22 @@ After the deploy, on the live store (cartx is live on Just Herbs) either re-impo
 | 5 | Coupon applied | The coupon stays in the Coupon Discount row, not under Discount on MRP |
 
 The sub-row label is the discount's title in Shopify admin, so give the 10% automatic discount a shopper-friendly title (e.g. "Extra 10% Off").
+
+## 11. Hide recommendations on offer collections (release of 18 Nov 2026)
+
+Built in PR #55/#56 (merged to `main`, server on Fly). The drawer part goes live after `shopify app deploy`. The client asked to hide "Recommended For You" on the offer collections. This is a store setting, not part of the kit import, so set it by hand on the live store.
+
+cartx → **Upsells → Settings → Where upsells show**:
+1. **Show on:** **All pages except specific pages**.
+2. **Add collections** → pick **buy-2-at-599**, **b2g2-new** and **buy-5-at-495**.
+3. **Save**.
+
+The "Special Price" row has the same option in **Customize Cart → Features → Special Offer → Show on**. Leave it on **All pages** unless the client asks to hide it too. The admin preview always shows that row.
+
+| # | Page | Expected |
+|---|---|---|
+| 1 | `/collections/b2g2-new`, open the cart | No "Recommended For You" row; everything else unchanged |
+| 2 | `/collections/b2g2-new?page=2` | Still hidden (the query string is ignored) |
+| 3 | `/collections/buy-2-at-599` and `/collections/buy-5-at-495` | Hidden |
+| 4 | Any other page (home, a product page, another collection) | "Recommended For You" shows as before |
+| 5 | Special Price row | Shows on every page (Show on left at All pages) |
