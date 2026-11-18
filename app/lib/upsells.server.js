@@ -341,6 +341,7 @@ export async function buildUpsellsPayload({ shopId, themeId, upsells, items, bar
     enabled: true,
     heading: upsells.heading,
     show_on_empty_cart: upsells.show_on_empty_cart || false,
+    show_on: upsells.show_on || null,
     settings,
     add_rates: addRates,
     defaults,

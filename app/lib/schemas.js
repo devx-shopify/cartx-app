@@ -233,6 +233,18 @@ export const UpsellStrategiesSchema = z.object({
   }).default({}),
 }).default({})
 
+// "Show on" for a drawer section: every page, only the listed pages, or every
+// page except them. Missing = every page (configs saved before it existed).
+export const SectionShowOnSchema = z.object({
+  mode: z.enum(['all', 'only', 'except']).default('all'),
+  page_handles: z.array(z.string()).max(100).default([]),
+  page_targets: z.array(z.object({
+    handle: z.string(),
+    label: z.string().default(''),
+    kind: z.string().default(''),
+  })).max(100).optional(),
+}).default({})
+
 export const UpsellSettingsSchema = z.object({
   enabled: z.boolean(),
   heading: z.string(),
@@ -245,6 +257,7 @@ export const UpsellSettingsSchema = z.object({
   max_visible: z.number().int().min(1).max(UPSELL_CAP_LIMIT).default(4),
   max_per_trigger: z.number().int().min(1).max(UPSELL_CAP_LIMIT).default(10),
   strategies: UpsellStrategiesSchema,
+  show_on: SectionShowOnSchema,
 })
 
 // One product → recommended products mapping (admin save + import row).
@@ -446,6 +459,7 @@ export const DrawerConfigSchema = z.object({
     special_offer_max: z.number().int().min(1).max(20).default(6),
     special_offer_show_on_empty: z.boolean().default(false),
     special_offer_card_style: z.enum(['compact', 'standard']).default('compact'),
+    special_offer_show_on: SectionShowOnSchema,
     freebies_show_icon: z.boolean().default(true),
     // Rows for gifts not unlocked yet, with an "n/N Unlocked" counter.
     freebies_show_locked: z.boolean().default(false),

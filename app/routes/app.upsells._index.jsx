@@ -10,7 +10,8 @@ import TabNav from "../components/TabNav.jsx";
 import { OrderedProducts, Thumb, mergeSelection, productGid } from "../components/UpsellProducts.jsx";
 import { loadConfig, saveConfig, getShopAndTheme, getSelectedTheme } from "../lib/config.server.js";
 import { markStep } from "../lib/onboarding.server.js";
-import { UpsellSettingsSchema, UPSELL_CAP_LIMIT } from "../lib/schemas.js";
+import { UpsellSettingsSchema, SectionShowOnSchema, UPSELL_CAP_LIMIT } from "../lib/schemas.js";
+import ShowOnPages from "../components/ShowOnPages.jsx";
 import { listRules, deleteRules, setRulesEnabled, fetchDefaultProducts, getShopCurrency, friendlyError } from "../lib/upsells.server.js";
 import { planImport, applyImport, undoLastImport, lastImport } from "../lib/upsell-import.server.js";
 import { MAX_IMPORT_BYTES } from "../lib/upsell-csv.js";
@@ -78,6 +79,11 @@ async function saveSettings({ admin, session, shopId, themeId }, body) {
   }
   const fieldErrors = settingsErrors(merged);
   if (Object.keys(fieldErrors).length) return { error: "Fix the highlighted fields.", fieldErrors };
+  if (body.settings?.show_on !== undefined) {
+    const showOn = SectionShowOnSchema.safeParse(body.settings.show_on);
+    if (!showOn.success) return { error: "The Show on pages couldn't be saved. Please check them and try again." };
+    merged.show_on = showOn.data;
+  }
   merged.max_visible = Number(merged.max_visible);
   merged.max_per_trigger = Number(merged.max_per_trigger);
   merged.strategies = { ...(config.upsells.strategies || {}) };
@@ -303,6 +309,10 @@ function SettingsTab({ form, setForm, fieldErrors, totalRules, totalDefaults, go
             onChange={(e) => set("strategy_performance")(e.target.checked)}
           />
         </VStack>
+      </s-section>
+
+      <s-section heading="Where upsells show">
+        <ShowOnPages value={form.show_on} onChange={set("show_on")} />
       </s-section>
 
       <s-section heading="Appearance">
@@ -764,7 +774,12 @@ function settingsFrom(upsells) {
   const out = {};
   for (const key of SETTINGS_KEYS) out[key] = upsells[key];
   for (const key of STRATEGY_KEYS) out[`strategy_${key}`] = upsells.strategies?.[key]?.enabled === true;
+  out.show_on = upsells.show_on || { mode: "all", page_handles: [] };
   return out;
+}
+// Compare "Show on" by what it does, not by key order or page labels.
+function showOnKey(v) {
+  return JSON.stringify([v?.mode || "all", v?.page_handles || []]);
 }
 function defaultsFrom(upsells) {
   return (upsells.products || []).map((p) => ({ id: numericId(p.product_id), title: p.title, image: p.image_url, price: p.price, hidden: unsellableReason(p) }));
@@ -791,7 +806,8 @@ export default function Upsells() {
 
   const dirty = useMemo(() => {
     const saved = settingsFrom(data.upsells);
-    const formChanged = FORM_KEYS.some((k) => String(form[k]) !== String(saved[k]));
+    const formChanged = FORM_KEYS.some((k) => String(form[k]) !== String(saved[k]))
+      || showOnKey(form.show_on) !== showOnKey(saved.show_on);
     const productsChanged = products.map((p) => p.id).join(",") !== defaultsFrom(data.upsells).map((p) => p.id).join(",");
     return formChanged || productsChanged;
   }, [form, products, data.upsells]);
