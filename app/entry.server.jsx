@@ -5,6 +5,7 @@ import { createReadableStreamFromReadable } from "@react-router/node";
 import { isbot } from "isbot";
 import { addDocumentResponseHeaders } from "./shopify.server";
 import { initSentry, captureException } from "./lib/sentry.server.js";
+import { isHiddenPublicPath, notFoundResponse } from "./lib/public-site.server.js";
 
 // Initialize error reporting as early as possible (no-op without SENTRY_DSN).
 initSentry();
@@ -31,6 +32,10 @@ export default async function handleRequest(
   responseHeaders,
   reactRouterContext,
 ) {
+  // Public-site kill switch: serve a bare 404 instead of the branded page or
+  // error boundary, so a hidden page reveals nothing (see public-site.server.js).
+  if (isHiddenPublicPath(new URL(request.url))) return notFoundResponse();
+
   addDocumentResponseHeaders(request, responseHeaders);
   const userAgent = request.headers.get("user-agent");
   const callbackName = isbot(userAgent ?? "") ? "onAllReady" : "onShellReady";

@@ -1,6 +1,7 @@
 import { Form, useLoaderData } from "react-router";
 import { requireAdmin } from "../lib/admin-auth.server.js";
 import { recentAudit } from "../lib/audit.server.js";
+import { assertPublicPageEnabled } from "../lib/public-site.server.js";
 
 const ACTION_LABELS = {
   set_enterprise_price: "Set enterprise price",
@@ -10,6 +11,7 @@ const ACTION_LABELS = {
 };
 
 export const loader = async ({ request }) => {
+  assertPublicPageEnabled(request);
   const user = await requireAdmin(request);
   const entries = await recentAudit(200);
   return { entries, user };

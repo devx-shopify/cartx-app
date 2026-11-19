@@ -1,13 +1,16 @@
 import { Form, redirect, useActionData, useNavigation } from "react-router";
 import { getAdminUser, login, createUserSession } from "../lib/admin-auth.server.js";
+import { assertPublicPageEnabled } from "../lib/public-site.server.js";
 
 export const loader = async ({ request }) => {
+  assertPublicPageEnabled(request);
   const user = await getAdminUser(request);
   if (user) throw redirect("/enterprise");
   return null;
 };
 
 export const action = async ({ request }) => {
+  assertPublicPageEnabled(request);
   const form = await request.formData();
   const { user, lockedUntil } = await login(form.get("email"), form.get("password"));
   if (lockedUntil) {
