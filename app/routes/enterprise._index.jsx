@@ -3,6 +3,7 @@ import { Form, useActionData, useLoaderData, useNavigation } from "react-router"
 import db from "../db.server.js";
 import { requireAdmin } from "../lib/admin-auth.server.js";
 import { logAudit } from "../lib/audit.server.js";
+import { assertPublicPageEnabled } from "../lib/public-site.server.js";
 
 const DEFAULT_ONBOARDING = JSON.stringify({
   completed: false,
@@ -13,12 +14,14 @@ const DEFAULT_ONBOARDING = JSON.stringify({
 const priceLabel = (p) => (p === 0 ? "Free" : `$${p}/mo`);
 
 export const loader = async ({ request }) => {
+  assertPublicPageEnabled(request);
   const user = await requireAdmin(request);
   const stores = await db.store.findMany({ orderBy: { createdAt: "desc" } });
   return { stores, user };
 };
 
 export const action = async ({ request }) => {
+  assertPublicPageEnabled(request);
   const me = await requireAdmin(request);
   const form = await request.formData();
   const _action = form.get("_action");

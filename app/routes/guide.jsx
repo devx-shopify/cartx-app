@@ -1,4 +1,10 @@
 import MarketingShell, { TOKENS, FONT_STACK, HEADING_FONT } from "../components/MarketingShell.jsx";
+import { assertPublicPageEnabled } from "../lib/public-site.server.js";
+
+export const loader = ({ request }) => {
+  assertPublicPageEnabled(request);
+  return null;
+};
 
 export const meta = () => [
   { title: "User Guide — cartx" },
