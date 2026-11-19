@@ -1,5 +1,6 @@
 import { useLoaderData } from "react-router";
 import MarketingShell, { TOKENS, FONT_STACK, HEADING_FONT } from "../components/MarketingShell.jsx";
+import { assertPublicPageEnabled } from "../lib/public-site.server.js";
 
 export const meta = () => [
   { title: "Privacy Policy — cartx" },
@@ -9,9 +10,12 @@ export const meta = () => [
 const LAST_UPDATED = "May 25, 2026";
 
 // Single contact address — override via the CARTX_CONTACT_EMAIL Fly secret.
-export const loader = () => ({
-  contactEmail: process.env.CARTX_CONTACT_EMAIL || "ansh.varshney@devxlabs.ai",
-});
+export const loader = ({ request }) => {
+  assertPublicPageEnabled(request);
+  return {
+    contactEmail: process.env.CARTX_CONTACT_EMAIL || "ansh.varshney@devxlabs.ai",
+  };
+};
 
 export default function Privacy() {
   const { contactEmail: CONTACT_EMAIL } = useLoaderData();

@@ -8,14 +8,17 @@ import {
   changePassword,
   logout,
 } from "../lib/admin-auth.server.js";
+import { assertPublicPageEnabled } from "../lib/public-site.server.js";
 
 export const loader = async ({ request }) => {
+  assertPublicPageEnabled(request);
   const user = await requireAdmin(request);
   const users = await listAdminUsers();
   return { users, user };
 };
 
 export const action = async ({ request }) => {
+  assertPublicPageEnabled(request);
   const me = await requireAdmin(request);
   const form = await request.formData();
   const _action = form.get("_action");

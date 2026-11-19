@@ -1,4 +1,5 @@
 import { redirect } from "react-router";
+import { assertPublicPageEnabled } from "../../lib/public-site.server.js";
 import MarketingShell, { TOKENS, FONT_STACK, HEADING_FONT, HashLink } from "../../components/MarketingShell.jsx";
 
 export const loader = async ({ request }) => {
@@ -9,6 +10,7 @@ export const loader = async ({ request }) => {
   if (url.searchParams.get("shop")) {
     throw redirect(`/app?${url.searchParams.toString()}`);
   }
+  assertPublicPageEnabled(request);
   return {};
 };
 
